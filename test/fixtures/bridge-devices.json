@@ -1,0 +1,590 @@
+[
+  {
+    "disabled": false,
+    "friendly_name": "Coordinator",
+    "ieee_address": "0x00124b0032d464c8",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "network_address": 0,
+    "supported": true,
+    "type": "Coordinator"
+  },
+  {
+    "date_code": "20250821",
+    "definition": {
+      "description": "Zigbee dual-channel smart switch",
+      "exposes": [
+        {
+          "endpoint": "l1",
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of the switch",
+              "endpoint": "l1",
+              "label": "State",
+              "name": "state",
+              "property": "state_l1",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            }
+          ],
+          "type": "switch"
+        },
+        {
+          "endpoint": "l2",
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of the switch",
+              "endpoint": "l2",
+              "label": "State",
+              "name": "state",
+              "property": "state_l2",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            }
+          ],
+          "type": "switch"
+        },
+        {
+          "access": 7,
+          "category": "config",
+          "description": "Controls the behavior when the device is powered on after power loss",
+          "endpoint": "l1",
+          "label": "Power-on behavior",
+          "name": "power_on_behavior",
+          "property": "power_on_behavior_l1",
+          "type": "enum",
+          "values": ["off", "on", "toggle", "previous"]
+        },
+        {
+          "access": 7,
+          "description": "Relay separation mode.",
+          "features": [
+            {
+              "access": 2,
+              "description": "Enable/disable detach relay.",
+              "label": "Detach relay outlet1",
+              "name": "detach_relay_outlet1",
+              "property": "detach_relay_outlet1",
+              "type": "binary",
+              "value_off": "DISABLE",
+              "value_on": "ENABLE"
+            },
+            {
+              "access": 2,
+              "description": "Enable/disable detach relay.",
+              "label": "Detach relay outlet2",
+              "name": "detach_relay_outlet2",
+              "property": "detach_relay_outlet2",
+              "type": "binary",
+              "value_off": "DISABLE",
+              "value_on": "ENABLE"
+            }
+          ],
+          "label": "Detach relay mode",
+          "name": "detach_relay_mode",
+          "property": "detach_relay_mode",
+          "type": "composite"
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Triggered action (e.g. a button click)",
+          "label": "Action",
+          "name": "action",
+          "property": "action",
+          "type": "enum",
+          "values": ["toggle_l1", "toggle_l2"]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Link quality (signal strength)",
+          "label": "Linkquality",
+          "name": "linkquality",
+          "property": "linkquality",
+          "type": "numeric",
+          "unit": "lqi",
+          "value_max": 255,
+          "value_min": 0
+        }
+      ],
+      "model": "MINI-ZB2GS-L",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "SONOFF"
+    },
+    "disabled": false,
+    "friendly_name": "woonkamer_lampen-ZB2GS",
+    "ieee_address": "0xf044d3fffe024659",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "SONOFF",
+    "model_id": "MINI-ZB2GS-L",
+    "power_source": "Mains (single phase)",
+    "supported": true,
+    "type": "EndDevice"
+  },
+  {
+    "date_code": "20250425",
+    "definition": {
+      "description": "Smart dimmer module",
+      "exposes": [
+        {
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of this light",
+              "label": "State",
+              "name": "state",
+              "property": "state",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            },
+            {
+              "access": 7,
+              "description": "Brightness of this light",
+              "label": "Brightness",
+              "name": "brightness",
+              "property": "brightness",
+              "type": "numeric",
+              "value_max": 254,
+              "value_min": 0
+            },
+            {
+              "access": 7,
+              "description": "Configure genLevelCtrl",
+              "features": [
+                {
+                  "access": 7,
+                  "description": "Specifies the level that shall be applied, when an on/toggle command causes the light to turn on.",
+                  "label": "On level",
+                  "name": "on_level",
+                  "property": "on_level",
+                  "type": "numeric",
+                  "value_max": 254,
+                  "value_min": 1
+                },
+                {
+                  "access": 7,
+                  "description": "Defines the desired startup level for a device when it is supplied with power",
+                  "label": "Current level startup",
+                  "name": "current_level_startup",
+                  "property": "current_level_startup",
+                  "type": "numeric",
+                  "value_max": 254,
+                  "value_min": 1
+                }
+              ],
+              "label": "Level config",
+              "name": "level_config",
+              "property": "level_config",
+              "type": "composite"
+            }
+          ],
+          "type": "light"
+        },
+        {
+          "access": 2,
+          "description": "Triggers an effect on the light",
+          "label": "Effect",
+          "name": "effect",
+          "property": "effect",
+          "type": "enum",
+          "values": ["blink", "breathe", "okay", "channel_change", "finish_effect", "stop_effect"]
+        },
+        {
+          "access": 7,
+          "category": "config",
+          "description": "Controls the behavior when the device is powered on after power loss",
+          "label": "Power-on behavior",
+          "name": "power_on_behavior",
+          "property": "power_on_behavior",
+          "type": "enum",
+          "values": ["off", "on", "toggle", "previous"]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Link quality (signal strength)",
+          "label": "Linkquality",
+          "name": "linkquality",
+          "property": "linkquality",
+          "type": "numeric",
+          "unit": "lqi",
+          "value_max": 255,
+          "value_min": 0
+        }
+      ],
+      "model": "C201",
+      "options": [],
+      "source": "native",
+      "supports_ota": false,
+      "vendor": "Candeo"
+    },
+    "disabled": false,
+    "friendly_name": "keuken_dimmer-candeo",
+    "ieee_address": "0x1cc089fffe39c60e",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "Candeo",
+    "model_id": "C201",
+    "power_source": "Mains (single phase)",
+    "supported": true,
+    "type": "Router"
+  },
+  {
+    "date_code": "20260518",
+    "definition": {
+      "description": "Climate Sensor W100",
+      "exposes": [
+        {
+          "access": 7,
+          "description": "ON: Enables thermostat mode.",
+          "label": "Thermostat mode",
+          "name": "thermostat_mode",
+          "property": "thermostat_mode",
+          "type": "binary",
+          "value_off": "OFF",
+          "value_on": "ON"
+        },
+        {
+          "description": "Climate control (HVAC Mode & Target Temperature)",
+          "features": [
+            {
+              "access": 7,
+              "description": "Mode of this device",
+              "label": "System mode",
+              "name": "system_mode",
+              "property": "system_mode",
+              "type": "enum",
+              "values": ["off", "heat", "cool", "auto"]
+            },
+            {
+              "access": 7,
+              "description": "Mode of the fan",
+              "label": "Fan mode",
+              "name": "fan_mode",
+              "property": "fan_mode",
+              "type": "enum",
+              "values": ["auto", "low", "medium", "high"]
+            },
+            {
+              "access": 7,
+              "description": "Temperature setpoint",
+              "label": "Occupied heating setpoint",
+              "name": "occupied_heating_setpoint",
+              "property": "occupied_heating_setpoint",
+              "type": "numeric",
+              "unit": "°C",
+              "value_max": 30,
+              "value_min": 5,
+              "value_step": 0.5
+            },
+            {
+              "access": 5,
+              "description": "Current temperature measured on the device",
+              "label": "Local temperature",
+              "name": "local_temperature",
+              "property": "local_temperature",
+              "type": "numeric",
+              "unit": "°C"
+            }
+          ],
+          "type": "climate"
+        },
+        {
+          "access": 1,
+          "description": "Latest PMTSD values sent by the W100 when manually changed",
+          "label": "PMTSD from W100 Data",
+          "name": "PMTSD_from_W100_Data",
+          "property": "PMTSD_from_W100_Data",
+          "type": "text"
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Remaining battery in %",
+          "label": "Battery",
+          "name": "battery",
+          "property": "battery",
+          "type": "numeric",
+          "unit": "%",
+          "value_max": 100,
+          "value_min": 0
+        },
+        {
+          "access": 5,
+          "description": "Measured temperature value",
+          "label": "Temperature",
+          "name": "temperature",
+          "property": "temperature",
+          "type": "numeric",
+          "unit": "°C"
+        },
+        {
+          "access": 5,
+          "description": "Measured relative humidity",
+          "label": "Humidity",
+          "name": "humidity",
+          "property": "humidity",
+          "type": "numeric",
+          "unit": "%"
+        },
+        {
+          "access": 3,
+          "category": "config",
+          "description": "Value for external temperature sensor",
+          "label": "External temperature",
+          "name": "external_temperature",
+          "property": "external_temperature",
+          "type": "numeric",
+          "unit": "°C",
+          "value_max": 100,
+          "value_min": -100,
+          "value_step": 0.1
+        },
+        {
+          "access": 2,
+          "category": "config",
+          "description": "Initiate device identification",
+          "label": "Identify",
+          "name": "identify",
+          "property": "identify",
+          "type": "enum",
+          "values": ["identify"]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Triggered action (e.g. a button click)",
+          "label": "Action",
+          "name": "action",
+          "property": "action",
+          "type": "enum",
+          "values": [
+            "W100_PMTSD_request",
+            "hold_plus",
+            "hold_center",
+            "hold_minus",
+            "single_plus",
+            "single_center",
+            "single_minus",
+            "double_plus",
+            "double_center",
+            "double_minus",
+            "release_plus",
+            "release_center",
+            "release_minus"
+          ]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Link quality (signal strength)",
+          "label": "Linkquality",
+          "name": "linkquality",
+          "property": "linkquality",
+          "type": "numeric",
+          "unit": "lqi",
+          "value_max": 255,
+          "value_min": 0
+        }
+      ],
+      "model": "TH-S04D",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Aqara"
+    },
+    "description": "Thermostaat woonkamer",
+    "disabled": false,
+    "friendly_name": "woonkamer_w100",
+    "ieee_address": "0x54ef4410013bd210",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "Aqara",
+    "model_id": "lumi.sensor_ht.agl001",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice"
+  },
+  {
+    "date_code": "20250511",
+    "definition": {
+      "description": "Wireless remote switch H1 (double rocker)",
+      "exposes": [
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Remaining battery in %",
+          "label": "Battery",
+          "name": "battery",
+          "property": "battery",
+          "type": "numeric",
+          "unit": "%",
+          "value_max": 100,
+          "value_min": 0
+        },
+        {
+          "access": 7,
+          "description": "Click mode",
+          "label": "Click mode",
+          "name": "click_mode",
+          "property": "click_mode",
+          "type": "enum",
+          "values": ["fast", "multi"]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Triggered action (e.g. a button click)",
+          "label": "Action",
+          "name": "action",
+          "property": "action",
+          "type": "enum",
+          "values": [
+            "single_left",
+            "single_right",
+            "single_both",
+            "double_left",
+            "double_right",
+            "double_both",
+            "triple_left",
+            "triple_right",
+            "triple_both",
+            "hold_left",
+            "hold_right",
+            "hold_both"
+          ]
+        }
+      ],
+      "model": "WXKG15LM",
+      "options": [],
+      "source": "native",
+      "supports_ota": false,
+      "vendor": "Aqara"
+    },
+    "disabled": false,
+    "friendly_name": "slaapkamer_schakelaar-wrs02",
+    "ieee_address": "0x54ef44100169b28a",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "LUMI",
+    "model_id": "lumi.remote.b28ac1",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice"
+  },
+  {
+    "definition": {
+      "description": "Smart Zigbee Socket",
+      "exposes": [
+        {
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of the switch",
+              "label": "State",
+              "name": "state",
+              "property": "state",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            }
+          ],
+          "type": "switch"
+        },
+        {
+          "access": 1,
+          "description": "Instantaneous measured power",
+          "label": "Power",
+          "name": "power",
+          "property": "power",
+          "type": "numeric",
+          "unit": "W"
+        },
+        {
+          "access": 1,
+          "description": "Sum of consumed energy",
+          "label": "Energy",
+          "name": "energy",
+          "property": "energy",
+          "type": "numeric",
+          "unit": "kWh"
+        },
+        {
+          "access": 3,
+          "description": "Enables/disables physical input on the device",
+          "label": "Child lock",
+          "name": "child_lock",
+          "property": "child_lock",
+          "type": "binary",
+          "value_off": "UNLOCK",
+          "value_on": "LOCK"
+        }
+      ],
+      "model": "A7Z",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Nous"
+    },
+    "disabled": false,
+    "friendly_name": "woonkamer_bank_lamp-socket",
+    "ieee_address": "0xa4c138ae47fdd9c3",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "_TZ3008_reatplte",
+    "model_id": "TS011F",
+    "power_source": "Mains (single phase)",
+    "supported": true,
+    "type": "Router"
+  },
+  {
+    "definition": {
+      "description": "Disabled device",
+      "exposes": [
+        {
+          "features": [
+            {
+              "access": 7,
+              "label": "State",
+              "name": "state",
+              "property": "state",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON"
+            }
+          ],
+          "type": "switch"
+        }
+      ],
+      "model": "ZBMINIL2",
+      "vendor": "SONOFF"
+    },
+    "disabled": true,
+    "friendly_name": "disabled_device",
+    "ieee_address": "0x0000000000000001",
+    "supported": true,
+    "type": "EndDevice"
+  },
+  {
+    "definition": null,
+    "disabled": false,
+    "friendly_name": "unsupported_device",
+    "ieee_address": "0x0000000000000002",
+    "interview_state": "SUCCESSFUL",
+    "supported": false,
+    "type": "EndDevice"
+  }
+]

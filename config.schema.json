@@ -1,0 +1,104 @@
+{
+  "pluginAlias": "MqttCustomizer",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Everything else is configured from the web interface, not here.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "MQTT Customizer",
+        "required": true
+      },
+      "broker": {
+        "title": "MQTT Broker",
+        "type": "object",
+        "properties": {
+          "host": {
+            "title": "Host",
+            "type": "string",
+            "default": "localhost",
+            "required": true
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer",
+            "default": 1883,
+            "minimum": 1,
+            "maximum": 65535,
+            "required": true
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "clientId": {
+            "title": "Client ID",
+            "type": "string",
+            "description": "Leave empty to generate one."
+          }
+        }
+      },
+      "sources": {
+        "title": "Sources",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "title": "ID",
+              "type": "string",
+              "required": true,
+              "description": "Stable identifier. Changing it orphans everything configured against this source."
+            },
+            "adapter": {
+              "title": "Adapter",
+              "type": "string",
+              "required": true,
+              "default": "zigbee2mqtt",
+              "oneOf": [
+                { "title": "Zigbee2MQTT", "enum": ["zigbee2mqtt"] }
+              ]
+            },
+            "baseTopic": {
+              "title": "Base topic",
+              "type": "string",
+              "required": true,
+              "default": "zigbee2mqtt"
+            },
+            "rulesOnly": {
+              "title": "Rules only",
+              "type": "boolean",
+              "default": false,
+              "description": "Do not publish accessories to HomeKit. Devices stay usable as rule triggers and targets."
+            }
+          }
+        }
+      },
+      "web": {
+        "title": "Web Interface",
+        "type": "object",
+        "properties": {
+          "port": {
+            "title": "Port",
+            "type": "integer",
+            "default": 8590,
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "password": {
+            "title": "Password",
+            "type": "string",
+            "description": "Required to open the web interface. It can control your devices, so do not leave it empty."
+          }
+        }
+      }
+    }
+  }
+}

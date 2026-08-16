@@ -1,0 +1,55 @@
+{
+  "name": "homebridge-mqtt-customizer",
+  "displayName": "MQTT Customizer",
+  "version": "0.1.0",
+  "description": "Expose MQTT devices to HomeKit and link them together, configured from a web interface instead of a config form.",
+  "author": "Luud Jacobs",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
+    "homebridge": "^1.8.0 || ^2.0.0"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "mqtt",
+    "zigbee2mqtt",
+    "zigbee",
+    "homekit",
+    "automation",
+    "mosquitto"
+  ],
+  "homepage": "https://github.com/LuudJacobs/homebridge-mqtt-customizer#readme",
+  "bugs": {
+    "url": "https://github.com/LuudJacobs/homebridge-mqtt-customizer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuudJacobs/homebridge-mqtt-customizer.git"
+  },
+  "files": [
+    "dist",
+    "config.schema.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "homebridge": "^1.8.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
