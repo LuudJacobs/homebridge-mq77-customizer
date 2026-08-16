@@ -15,6 +15,12 @@ A Homebridge plugin that exposes MQTT devices to HomeKit and links them together
 npm install -g homebridge-mqtt-customizer
 ```
 
+To install a branch directly from source instead, which builds on install:
+
+```
+npm install -g git+https://github.com/LuudJacobs/homebridge-mqtt-customizer.git#test
+```
+
 Add the platform to your Homebridge config:
 
 ```json
