@@ -210,8 +210,18 @@ function tileServices(
     }
 
     const brightness = byRole.brightness;
+    const speed = byRole.rotationSpeed;
+    const swing = byRole.swingMode;
     const chosen = exposure.tileTypes?.[endpoint] ?? 'Switch';
-    const kind: ServiceKind = brightness ? 'Lightbulb' : TILE_KINDS[chosen];
+
+    // Brightness exists only on a Lightbulb, speed and swing only on a Fan, so
+    // whichever is present settles the tile. Brightness wins if a device
+    // somehow reports both.
+    const kind: ServiceKind = brightness
+      ? 'Lightbulb'
+      : speed || swing
+        ? 'Fan'
+        : TILE_KINDS[chosen];
 
     const bindings: Binding[] = [
       { characteristic: 'On', propertyKey: power.key, role: 'power', writable: true },
@@ -224,6 +234,23 @@ function tileServices(
         role: 'brightness',
         writable: brightness.access.writable,
       });
+    } else {
+      if (speed) {
+        bindings.push({
+          characteristic: 'RotationSpeed',
+          propertyKey: speed.key,
+          role: 'rotationSpeed',
+          writable: speed.access.writable,
+        });
+      }
+      if (swing) {
+        bindings.push({
+          characteristic: 'SwingMode',
+          propertyKey: swing.key,
+          role: 'swingMode',
+          writable: swing.access.writable,
+        });
+      }
     }
 
     const childLock = byRole.childLock;

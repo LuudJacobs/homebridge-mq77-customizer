@@ -9,6 +9,10 @@ export interface SourceConfig {
   adapter: string;
   baseTopic: string;
   rulesOnly?: boolean;
+  /** Explicit subscription filter. Defaults to everything under `baseTopic`. */
+  topics?: string;
+  /** Suffix that turns a state topic into a command topic, usually `set`. */
+  setTopicSuffix?: string;
 }
 
 export interface AdapterContext {

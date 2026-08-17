@@ -140,6 +140,40 @@ describe('lights', () => {
   });
 });
 
+describe('fans', () => {
+  const fan = [
+    property({ semantic: 'state' }),
+    property({ key: 'speed', semantic: 'speed', label: 'Speed', type: 'numeric', min: 0, max: 100, extract: ['speed'] }),
+    property({ key: 'swing', semantic: 'swing', label: 'Swing', type: 'binary', extract: ['swing'] }),
+  ];
+
+  it('puts speed and swing on one Fan service', () => {
+    const plans = planAccessories(device(fan), { properties: ['state', 'speed', 'swing'] });
+    expect(kinds(plans)).toEqual([['Fan']]);
+    expect(plans[0]?.services[0]?.bindings.map((binding) => binding.characteristic)).toEqual([
+      'On',
+      'RotationSpeed',
+      'SwingMode',
+    ]);
+  });
+
+  it('forces a Fan, since speed exists nowhere else', () => {
+    const plans = planAccessories(device(fan), {
+      properties: ['state', 'speed'],
+      tileTypes: { '': 'Outlet' },
+    });
+    expect(kinds(plans)).toEqual([['Fan']]);
+  });
+
+  it('leaves the tile alone when only on/off is selected', () => {
+    const plans = planAccessories(device(fan), {
+      properties: ['state'],
+      tileTypes: { '': 'Outlet' },
+    });
+    expect(kinds(plans)).toEqual([['Outlet']]);
+  });
+});
+
 describe('sensors', () => {
   const sensors = [
     property({ key: 'temperature', semantic: 'temperature', type: 'numeric', access: { readable: true, writable: false } }),

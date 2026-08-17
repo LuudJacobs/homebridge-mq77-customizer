@@ -10,6 +10,8 @@ import type { NormalisedProperty } from '../model/types.js';
 export type Role =
   | 'power'
   | 'brightness'
+  | 'rotationSpeed'
+  | 'swingMode'
   | 'childLock'
   | 'temperature'
   | 'humidity'
@@ -31,6 +33,8 @@ export type ServiceGroup =
 export const ROLE_GROUPS: Record<Role, ServiceGroup> = {
   power: 'tile',
   brightness: 'tile',
+  rotationSpeed: 'tile',
+  swingMode: 'tile',
   childLock: 'tile',
   temperature: 'temperature',
   humidity: 'humidity',
@@ -43,6 +47,9 @@ export const ROLE_GROUPS: Record<Role, ServiceGroup> = {
 
 const NUMERIC_ROLES: Record<string, Role> = {
   brightness: 'brightness',
+  // Flat JSON publishers name a dimmer's value `level` and a fan's `speed`.
+  level: 'brightness',
+  speed: 'rotationSpeed',
   temperature: 'temperature',
   humidity: 'humidity',
   battery: 'battery',
@@ -52,6 +59,7 @@ const NUMERIC_ROLES: Record<string, Role> = {
 
 const BINARY_ROLES: Record<string, Role> = {
   child_lock: 'childLock',
+  swing: 'swingMode',
 };
 
 const ENUM_ROLES: Record<string, Role> = {

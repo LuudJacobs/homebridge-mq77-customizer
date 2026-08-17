@@ -65,7 +65,8 @@
               "required": true,
               "default": "zigbee2mqtt",
               "oneOf": [
-                { "title": "Zigbee2MQTT", "enum": ["zigbee2mqtt"] }
+                { "title": "Zigbee2MQTT", "enum": ["zigbee2mqtt"] },
+                { "title": "Flat JSON topics", "enum": ["json-topic"] }
               ]
             },
             "baseTopic": {
@@ -73,6 +74,16 @@
               "type": "string",
               "required": true,
               "default": "zigbee2mqtt"
+            },
+            "topics": {
+              "title": "Topic filter",
+              "type": "string",
+              "description": "Flat JSON sources only. Defaults to everything under the base topic."
+            },
+            "setTopicSuffix": {
+              "title": "Command topic suffix",
+              "type": "string",
+              "description": "Flat JSON sources only. Usually \"set\". Leave empty to make the source read only."
             },
             "rulesOnly": {
               "title": "Rules only",

@@ -168,3 +168,20 @@ describe('child lock', () => {
     expect(fromHomeKit('LockPhysicalControls', lock, 0)).toBe('UNLOCK');
   });
 });
+
+describe('fan controls', () => {
+  const speed = property({ key: 'speed', type: 'numeric', min: 0, max: 100, onValue: undefined, offValue: undefined });
+  const swing = property({ key: 'swing', onValue: 'ON', offValue: 'OFF' });
+
+  it('passes an already percentage speed through', () => {
+    expect(toHomeKit('RotationSpeed', speed, 60)).toBe(60);
+    expect(fromHomeKit('RotationSpeed', speed, 60)).toBe(60);
+  });
+
+  it('maps swing onto the swing mode flag', () => {
+    expect(toHomeKit('SwingMode', swing, 'ON')).toBe(1);
+    expect(toHomeKit('SwingMode', swing, 'OFF')).toBe(0);
+    expect(fromHomeKit('SwingMode', swing, 1)).toBe('ON');
+    expect(fromHomeKit('SwingMode', swing, 0)).toBe('OFF');
+  });
+});
