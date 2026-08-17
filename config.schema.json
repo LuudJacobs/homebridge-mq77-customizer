@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "MqttCustomizer",
+  "pluginAlias": "Mq77Customizer",
   "pluginType": "platform",
   "singular": true,
   "headerDisplay": "Everything else is configured from the web interface, not here.",
@@ -9,7 +9,7 @@
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "MQTT Customizer",
+        "default": "MQ77 Customizer",
         "required": true
       },
       "broker": {

@@ -70,6 +70,8 @@ export class Store {
   constructor(
     private readonly file: string,
     private readonly log: Logger,
+    /** Older location to adopt from, used once after the plugin was renamed. */
+    private readonly legacyFile?: string,
   ) {}
 
   async load(): Promise<void> {
@@ -80,6 +82,9 @@ export class Store {
       this.log.debug(`Loaded state from ${this.file}`);
     } catch (error) {
       if (isNotFound(error)) {
+        if (await this.adoptLegacy()) {
+          return;
+        }
         this.log.info(`No saved state yet, starting fresh (${this.file})`);
         this.state = emptyState();
         return;
@@ -87,6 +92,30 @@ export class Store {
       // Refuse to silently start empty, that would drop the user's setup and
       // then overwrite the file they could have recovered it from.
       throw new Error(`Could not read ${this.file}: ${describe(error)}`);
+    }
+  }
+
+  /**
+   * Takes over state written under the plugin's previous name.
+   *
+   * The old file is left alone rather than moved, so downgrading is still
+   * possible and a failed adoption cannot lose it.
+   */
+  private async adoptLegacy(): Promise<boolean> {
+    if (!this.legacyFile) {
+      return false;
+    }
+    try {
+      const contents = await readFile(this.legacyFile, 'utf8');
+      this.state = migrate(JSON.parse(contents) as unknown);
+      this.log.info(`Adopted saved state from ${this.legacyFile}`);
+      await this.save();
+      return true;
+    } catch (error) {
+      if (!isNotFound(error)) {
+        this.log.warn(`Could not read the older state at ${this.legacyFile}: ${describe(error)}`);
+      }
+      return false;
     }
   }
 

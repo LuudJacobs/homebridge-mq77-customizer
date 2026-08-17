@@ -46,7 +46,7 @@ describe('Sessions', () => {
 
 describe('readCookie', () => {
   it('finds our cookie among others', () => {
-    expect(readCookie('other=1; mqttcustomizer=abc.def; another=2')).toBe('abc.def');
+    expect(readCookie('other=1; mq77customizer=abc.def; another=2')).toBe('abc.def');
   });
 
   it('returns undefined when absent', () => {

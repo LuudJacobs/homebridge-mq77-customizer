@@ -51,7 +51,7 @@ export class MqttConnection {
       port: this.config.port,
       username: this.config.username || undefined,
       password: this.config.password || undefined,
-      clientId: this.config.clientId || `mqtt-customizer-${Math.random().toString(16).slice(2, 10)}`,
+      clientId: this.config.clientId || `mq77-customizer-${Math.random().toString(16).slice(2, 10)}`,
       reconnectPeriod: 5000,
       connectTimeout: 30000,
       resubscribe: true,

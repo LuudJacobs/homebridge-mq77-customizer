@@ -10,11 +10,11 @@ import { Catalog } from './catalog.js';
 import { resolveConfig, type PluginConfig } from './config.js';
 import { AccessoryManager } from './homekit/manager.js';
 import { MqttConnection } from './mqtt/client.js';
-import { STORAGE_DIR } from './settings.js';
+import { LEGACY_STORAGE_DIR, STORAGE_DIR } from './settings.js';
 import { Store, storeFile } from './store.js';
 import { WebServer } from './web/server.js';
 
-export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
+export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
   private readonly settings: PluginConfig;
   private readonly mqtt: MqttConnection;
   private readonly catalog: Catalog;
@@ -30,7 +30,11 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
     this.settings = resolveConfig(config as Record<string, unknown>, log);
     this.mqtt = new MqttConnection(this.settings.broker, log);
     this.catalog = new Catalog(this.mqtt, log);
-    this.store = new Store(storeFile(api.user.storagePath(), STORAGE_DIR), log);
+    this.store = new Store(
+      storeFile(api.user.storagePath(), STORAGE_DIR),
+      log,
+      storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
+    );
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
 
     this.api.on('didFinishLaunching', () => {
