@@ -29,6 +29,16 @@
   box-sizing: border-box;
 }
 
+/*
+ * The panels are shown and hidden with the `hidden` attribute, which the
+ * browser applies as a plain `[hidden] { display: none }` rule. Any id
+ * selector setting `display` outranks that and pins the panel open, so state
+ * this once and let it win everywhere.
+ */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   padding: 0;
