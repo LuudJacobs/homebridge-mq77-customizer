@@ -277,6 +277,11 @@ header {
   white-space: nowrap;
 }
 
+.tag.publishable {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .rules-only {
   color: var(--warn);
   font-size: 0.82rem;

@@ -62,7 +62,21 @@ Per device you can also:
 
 Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
 
-Only on/off functions can be published so far. Brightness, climate, sensors and buttons arrive with the full mapping in v0.3.0, and the rules engine in v0.5.0.
+### What reaches HomeKit
+
+| Function | Becomes |
+| --- | --- |
+| on/off | Switch, Outlet, Lightbulb or Fan, your choice |
+| brightness | Brightness on a Lightbulb |
+| temperature, humidity | their sensor services |
+| battery | a battery reading on the accessory, with a low warning |
+| child lock | the physical controls lock on the tile |
+| climate | a Thermostat, using the temperature range the device declares |
+| button actions | one button per physical button, mapped to single, double and long press |
+
+Button names and gestures are worked out from the action names the device publishes, so a double rocker becomes three buttons without anything being typed out. Gestures HomeKit has no equivalent for, such as triple press, stay available to the rules engine.
+
+The rules engine arrives in v0.5.0.
 
 ## Links
 

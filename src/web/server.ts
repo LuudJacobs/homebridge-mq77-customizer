@@ -7,7 +7,7 @@ import type { Catalog } from '../catalog.js';
 import type { WebConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { StateUpdate } from '../model/types.js';
-import { isPublishable } from '../homekit/mapping.js';
+import { isPublishable, roleFor } from '../homekit/roles.js';
 import { DEVICE_ENDPOINT, TILE_TYPES, type DeviceExposure, type Store, type TileType } from '../store.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
@@ -240,6 +240,7 @@ export class WebServer {
           readable: property.access.readable,
           writable: property.access.writable,
           publishable: isPublishable(property),
+          role: roleFor(property),
         })),
         exposure: this.deps.store.getExposure(key) ?? { properties: [] },
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
