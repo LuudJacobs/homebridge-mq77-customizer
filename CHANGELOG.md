@@ -14,3 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tick a function to publish it to HomeKit, applied immediately with no Homebridge restart
 - Tile type per endpoint, optional separate accessory per endpoint, and accessory name overrides
 - Functions with no HomeKit equivalent stay listed and marked rather than hidden
+- Brightness, thermostat, temperature, humidity, battery and child lock reach HomeKit
+- Buttons inferred from the actions a device publishes, one per physical button
+- Property name to characteristic table, so new sensor types need no change to the mapper
