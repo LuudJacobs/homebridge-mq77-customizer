@@ -35,6 +35,8 @@ Add the platform to your Homebridge config:
 }
 ```
 
+The web interface can switch your devices, so `web.password` is required. Without it the interface does not start.
+
 Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigbee2mqtt`.
 
 ### Source options
@@ -48,9 +50,19 @@ Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigb
 
 ## Usage
 
-This release connects to the broker and builds the device catalog. It publishes no accessories and serves no web interface yet, so there is nothing to configure beyond the platform block above. Run Homebridge with `-D` to see the catalog being discovered.
+Open `http://<your-homebridge-host>:8590` and sign in with the password from the config. A password is required, the web interface refuses to start without one.
 
-Selecting which devices and functions reach HomeKit arrives in v0.2.0, the HomeKit mapping in v0.3.0, and the rules engine in v0.5.0.
+Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
+
+Per device you can also:
+
+- choose the tile HomeKit shows, Switch, Outlet, Lightbulb or Fan
+- publish each endpoint as its own accessory, for multi channel switches
+- rename the accessory
+
+Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
+
+Only on/off functions can be published so far. Brightness, climate, sensors and buttons arrive with the full mapping in v0.3.0, and the rules engine in v0.5.0.
 
 ## Links
 

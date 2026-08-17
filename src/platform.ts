@@ -8,18 +8,19 @@ import type {
 
 import { Catalog } from './catalog.js';
 import { resolveConfig, type PluginConfig } from './config.js';
+import { AccessoryManager } from './homekit/manager.js';
 import { MqttConnection } from './mqtt/client.js';
-import { PLATFORM_NAME, PLUGIN_NAME, STORAGE_DIR } from './settings.js';
+import { STORAGE_DIR } from './settings.js';
 import { Store, storeFile } from './store.js';
+import { WebServer } from './web/server.js';
 
 export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
   private readonly settings: PluginConfig;
   private readonly mqtt: MqttConnection;
   private readonly catalog: Catalog;
   private readonly store: Store;
-
-  /** Accessories restored from Homebridge's cache, keyed by UUID. */
-  private readonly cached = new Map<string, PlatformAccessory>();
+  private readonly accessories: AccessoryManager;
+  private web?: WebServer;
 
   constructor(
     private readonly log: Logging,
@@ -30,6 +31,7 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
     this.mqtt = new MqttConnection(this.settings.broker, log);
     this.catalog = new Catalog(this.mqtt, log);
     this.store = new Store(storeFile(api.user.storagePath(), STORAGE_DIR), log);
+    this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -42,7 +44,7 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
 
   /** Homebridge replays cached accessories here before `didFinishLaunching`. */
   configureAccessory(accessory: PlatformAccessory): void {
-    this.cached.set(accessory.UUID, accessory);
+    this.accessories.restore(accessory);
   }
 
   private async start(): Promise<void> {
@@ -63,6 +65,11 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
 
     this.mqtt.connect();
 
+    // Reconcile whenever the catalog changes, so a device joining or leaving
+    // adds or removes its accessories without a restart.
+    this.catalog.on('devices', () => this.accessories.sync());
+    this.catalog.on('state', (update) => this.accessories.handleState(update));
+
     try {
       await this.catalog.start(this.settings.sources);
     } catch (error) {
@@ -70,23 +77,26 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
       return;
     }
 
-    this.catalog.on('devices', (devices) => {
-      this.log.debug(`Catalog now holds ${devices.length} devices across all sources`);
+    // Runs once with whatever the catalog already holds, which also clears
+    // cached accessories belonging to devices or selections that are gone.
+    this.accessories.sync();
+
+    this.web = new WebServer({
+      config: this.settings.web,
+      catalog: this.catalog,
+      store: this.store,
+      log: this.log,
+      onExposureChanged: () => this.accessories.sync(),
     });
 
-    if (this.cached.size > 0) {
-      // v0.1.0 publishes no accessories, so anything cached is stale.
-      this.log.info(`Removing ${this.cached.size} cached accessories from a previous version`);
-      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
-        ...this.cached.values(),
-      ]);
-      this.cached.clear();
+    try {
+      await this.web.start();
+    } catch (error) {
+      this.log.error(`Could not start the web interface: ${describe(error)}`);
+      this.web = undefined;
     }
 
-    this.log.info(
-      `Started with ${this.settings.sources.length} source(s). ` +
-        'The web interface arrives in v0.2.0.',
-    );
+    this.log.info(`Started with ${this.settings.sources.length} source(s)`);
   }
 
   /**
@@ -102,6 +112,7 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
       this.log.error(`Could not save state on shutdown: ${describe(error)}`);
     }
 
+    await withTimeout(this.web?.stop() ?? Promise.resolve(), 2000);
     await this.catalog.stop();
     await withTimeout(this.mqtt.disconnect(), 2000);
   }
