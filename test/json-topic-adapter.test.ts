@@ -68,6 +68,11 @@ describe('discovery', () => {
     expect(propertyKeys(adapter, 'lamp')).toEqual(['state', 'level']);
   });
 
+  it('reports the topic it found the device on', () => {
+    mqtt.deliver('broadlinkrm/tv_lounge', { state: 'ON' });
+    expect(adapter.getDevices()[0]?.topic).toBe('broadlinkrm/tv_lounge');
+  });
+
   it('keeps devices apart by topic', () => {
     mqtt.deliver('broadlinkrm/one', { state: 'ON' });
     mqtt.deliver('broadlinkrm/two', { state: 'OFF' });

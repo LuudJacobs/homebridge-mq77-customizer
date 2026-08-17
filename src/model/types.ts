@@ -71,6 +71,14 @@ export interface NormalisedDevice {
   deviceId: string;
   /** Display name. */
   name: string;
+  /**
+   * The topic this device lives on.
+   *
+   * Shown and searched in the interface, since a friendly name can be
+   * overridden by a description while the topic stays what the device is
+   * actually called on the broker.
+   */
+  topic?: string;
   manufacturer?: string;
   model?: string;
   description?: string;

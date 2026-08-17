@@ -110,6 +110,16 @@ describe('WebServer', () => {
     expect(dual?.properties).toHaveLength(7);
   });
 
+  it('sends the topic so the interface can show and search it', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: { name: string; topic?: string }[];
+    };
+    expect(body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS')?.topic).toBe(
+      'zigbee2mqtt/woonkamer_lampen-ZB2GS',
+    );
+  });
+
   it('marks which properties can reach HomeKit and which stay rules only', async () => {
     const session = await signIn(context.base);
     const body = (await (await session.fetch('/api/state')).json()) as {

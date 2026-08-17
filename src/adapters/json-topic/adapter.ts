@@ -70,6 +70,7 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       sourceId: this.sourceId,
       deviceId: entry.deviceId,
       name: entry.deviceId,
+      topic: entry.topic,
       manufacturer: this.source.id,
       model: 'JSON topic',
       properties: [...entry.properties.values()],

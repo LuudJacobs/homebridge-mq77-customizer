@@ -5,6 +5,8 @@ const state = {
   devices: [],
   tileTypes: [],
   filter: '',
+  /** Hides everything that is not currently published to HomeKit. */
+  exposedOnly: false,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
 };
@@ -18,6 +20,7 @@ const el = {
   devices: document.getElementById('devices'),
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
+  exposedOnly: document.getElementById('exposed-only'),
   logout: document.getElementById('logout'),
 };
 
@@ -167,18 +170,30 @@ function save(device) {
           exposure: device.exposure,
         }),
       })
-        .then(() => refreshBadge(device))
+        .then(() => {
+          refreshBadge(device);
+          if (state.exposedOnly) {
+            // Unticking a device's last function should take it off the list.
+            safeRender();
+          }
+        })
         .catch((error) => setStatus(error.message, 'lost'));
     }, 250),
   );
 }
 
-function paintBadge(badge, device) {
-  const count = device.exposure.properties.filter((propertyKey) =>
-    device.properties.some(
-      (property) => property.key === propertyKey && property.publishable,
-    ),
+/** How many of a device's functions actually reach HomeKit. */
+function exposedCount(device) {
+  if (device.rulesOnly) {
+    return 0;
+  }
+  return device.exposure.properties.filter((propertyKey) =>
+    device.properties.some((property) => property.key === propertyKey && property.publishable),
   ).length;
+}
+
+function paintBadge(badge, device) {
+  const count = exposedCount(device);
   badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
   badge.className = count === 0 ? 'badge none' : 'badge';
 }
@@ -190,14 +205,22 @@ function refreshBadge(device) {
   }
 }
 
+function matchesFilter(device, term) {
+  if (!term) {
+    return true;
+  }
+  // The topic is searched too: a Zigbee2MQTT description overrides the
+  // friendly name, so the topic is often the name the user actually knows.
+  return [device.name, device.topic, device.model, device.manufacturer, device.deviceId]
+    .filter(Boolean)
+    .some((field) => field.toLowerCase().includes(term));
+}
+
 function render() {
   const term = state.filter.trim().toLowerCase();
   const visible = state.devices.filter(
     (device) =>
-      !term ||
-      device.name.toLowerCase().includes(term) ||
-      (device.model ?? '').toLowerCase().includes(term) ||
-      device.deviceId.toLowerCase().includes(term),
+      matchesFilter(device, term) && (!state.exposedOnly || exposedCount(device) > 0),
   );
 
   el.devices.replaceChildren();
@@ -205,7 +228,12 @@ function render() {
   if (visible.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = state.devices.length === 0 ? 'No devices discovered yet.' : 'No matches.';
+    empty.textContent =
+      state.devices.length === 0
+        ? 'No devices discovered yet.'
+        : state.exposedOnly
+          ? 'Nothing is published to HomeKit yet.'
+          : 'No matches.';
     el.devices.append(empty);
     return;
   }
@@ -234,9 +262,13 @@ function renderDevice(device) {
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
+  // Only visible once the card is open, where there is room for it.
+  const topic = document.createElement('span');
+  topic.className = 'device-topic';
+  topic.textContent = device.topic ?? '';
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
-  summary.append(name, meta, badge);
+  summary.append(name, meta, topic, badge);
   card.append(summary);
 
   const body = document.createElement('div');
@@ -496,6 +528,11 @@ el.logout.addEventListener('click', async () => {
 
 el.filter.addEventListener('input', () => {
   state.filter = el.filter.value;
+  safeRender();
+});
+
+el.exposedOnly.addEventListener('change', () => {
+  state.exposedOnly = el.exposedOnly.checked;
   safeRender();
 });
 
