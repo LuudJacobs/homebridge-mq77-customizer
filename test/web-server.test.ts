@@ -120,9 +120,10 @@ describe('WebServer', () => {
       .filter((property) => property.publishable)
       .map((property) => property.key);
 
-    // Only the two switchable channels. Everything else is still listed, so
-    // nothing disappears from the interface just because HomeKit cannot show it.
-    expect(publishable).toEqual(['state_l1', 'state_l2']);
+    // The two switchable channels plus the button actions. Everything else is
+    // still listed, so nothing disappears from the interface just because
+    // HomeKit cannot show it.
+    expect(publishable).toEqual(['state_l1', 'state_l2', 'action']);
     expect(dual?.properties).toHaveLength(7);
   });
 

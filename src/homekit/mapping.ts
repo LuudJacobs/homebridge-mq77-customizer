@@ -1,14 +1,49 @@
 import type { CatalogDevice } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
 import { DEVICE_ENDPOINT, type DeviceExposure, type TileType } from '../store.js';
+import { buttonsFrom, roleFor, ROLE_GROUPS, type Role, type ServiceGroup } from './roles.js';
+import type { CharacteristicKind } from './values.js';
+
+export type ServiceKind =
+  | 'Switch'
+  | 'Outlet'
+  | 'Lightbulb'
+  | 'Fan'
+  | 'Thermostat'
+  | 'TemperatureSensor'
+  | 'HumiditySensor'
+  | 'Battery'
+  | 'StatelessProgrammableSwitch';
+
+export interface CharacteristicProps {
+  minValue?: number;
+  maxValue?: number;
+  minStep?: number;
+  validValues?: number[];
+}
+
+export interface Binding {
+  characteristic: CharacteristicKind;
+  propertyKey: string;
+  role: Role;
+  writable: boolean;
+  /** Narrows the HomeKit control to what the device actually accepts. */
+  props?: CharacteristicProps;
+}
 
 export interface ServicePlan {
-  tile: TileType;
-  /** Property this service switches. */
-  propertyKey: string;
-  /** Distinguishes services of the same type on one accessory. */
+  kind: ServiceKind;
   subtype: string;
   name: string;
+  bindings: Binding[];
+  /** Characteristics with a fixed value, such as a button's index. */
+  constants?: { characteristic: CharacteristicKind; value: number }[];
+  /** Linked to the accessory's primary service, which is how battery is shown. */
+  link?: boolean;
+  /** Button service only: which action values fire which HomeKit event. */
+  events?: Record<string, number>;
+  /** Button service only: the property carrying those values. */
+  actionPropertyKey?: string;
 }
 
 export interface AccessoryPlan {
@@ -25,15 +60,14 @@ export interface AccessoryPlan {
   services: ServicePlan[];
 }
 
-/**
- * Properties that can become a HomeKit tile in this version.
- *
- * v0.2.0 publishes on/off only. Brightness, climate, sensors and buttons
- * arrive with the full mapping table in v0.3.0, at which point this widens.
- */
-export function isPublishable(property: NormalisedProperty): boolean {
-  return property.type === 'binary' && property.access.writable && property.access.readable;
-}
+export { isPublishable, roleFor } from './roles.js';
+
+const TILE_KINDS: Record<TileType, ServiceKind> = {
+  Switch: 'Switch',
+  Outlet: 'Outlet',
+  Lightbulb: 'Lightbulb',
+  Fan: 'Fan',
+};
 
 /**
  * Works out which accessories a device should produce.
@@ -53,7 +87,7 @@ export function planAccessories(
 
   const selected = new Set(exposure.properties);
   const publishable = device.properties.filter(
-    (property) => selected.has(property.key) && isPublishable(property),
+    (property) => selected.has(property.key) && roleFor(property) !== undefined,
   );
   if (publishable.length === 0) {
     return [];
@@ -73,12 +107,20 @@ export function planAccessories(
   const split = exposure.splitEndpoints === true && byEndpoint.size > 1;
 
   if (!split) {
-    return [buildPlan(device, exposure, DEVICE_ENDPOINT, publishable, false)];
+    return present([buildPlan(device, exposure, DEVICE_ENDPOINT, publishable, false)]);
   }
 
-  return [...byEndpoint.entries()].map(([endpoint, properties]) =>
-    buildPlan(device, exposure, endpoint, properties, true),
+  return present(
+    [...byEndpoint.entries()].map(([endpoint, properties]) =>
+      buildPlan(device, exposure, endpoint, properties, true),
+    ),
   );
+}
+
+function present(plans: AccessoryPlan[]): AccessoryPlan[] {
+  // A selection can be publishable in principle yet produce no service, for
+  // instance a child lock with nothing to attach it to.
+  return plans.filter((plan) => plan.services.length > 0);
 }
 
 function buildPlan(
@@ -91,19 +133,35 @@ function buildPlan(
   const seed = split
     ? `${device.sourceId}:${device.deviceId}:${endpoint}`
     : `${device.sourceId}:${device.deviceId}`;
+  const name = exposure.names?.[endpoint] || defaultName(device, endpoint, split);
 
-  const services: ServicePlan[] = properties.map((property) => ({
-    tile: exposure.tileTypes?.[property.endpoint ?? DEVICE_ENDPOINT] ?? 'Switch',
-    propertyKey: property.key,
-    subtype: property.key,
-    // With several services on one accessory HomeKit shows each service name,
-    // so a bare "State" would be ambiguous between endpoints.
-    name: serviceName(device, property, properties.length > 1),
-  }));
+  const grouped = new Map<ServiceGroup, NormalisedProperty[]>();
+  for (const property of properties) {
+    const role = roleFor(property);
+    if (!role) {
+      continue;
+    }
+    const group = ROLE_GROUPS[role];
+    const bucket = grouped.get(group);
+    if (bucket) {
+      bucket.push(property);
+    } else {
+      grouped.set(group, [property]);
+    }
+  }
+
+  const services: ServicePlan[] = [
+    ...tileServices(grouped.get('tile') ?? [], exposure, name, properties.length > 1),
+    ...thermostatServices(grouped.get('thermostat') ?? [], name),
+    ...sensorServices(grouped.get('temperature') ?? [], 'TemperatureSensor', 'CurrentTemperature', name, 'Temperature'),
+    ...sensorServices(grouped.get('humidity') ?? [], 'HumiditySensor', 'CurrentRelativeHumidity', name, 'Humidity'),
+    ...batteryServices(grouped.get('battery') ?? []),
+    ...buttonServices(grouped.get('buttons') ?? [], name),
+  ];
 
   return {
     seed,
-    name: exposure.names?.[endpoint] || defaultName(device, endpoint, split),
+    name,
     sourceId: device.sourceId,
     deviceId: device.deviceId,
     endpoint,
@@ -114,6 +172,245 @@ function buildPlan(
   };
 }
 
+/**
+ * The on/off tile, plus anything that belongs on it.
+ *
+ * Brightness only exists on a Lightbulb, so selecting it settles the tile type
+ * regardless of what was picked. Offering the choice and then ignoring it
+ * would be worse than overriding it.
+ */
+function tileServices(
+  properties: NormalisedProperty[],
+  exposure: DeviceExposure,
+  accessoryName: string,
+  qualify: boolean,
+): ServicePlan[] {
+  // One tile per endpoint, so a dual channel switch kept as a single accessory
+  // still gets both of its channels.
+  const byEndpoint = new Map<string, NormalisedProperty[]>();
+  for (const property of properties) {
+    const endpoint = property.endpoint ?? DEVICE_ENDPOINT;
+    const bucket = byEndpoint.get(endpoint);
+    if (bucket) {
+      bucket.push(property);
+    } else {
+      byEndpoint.set(endpoint, [property]);
+    }
+  }
+
+  const services: ServicePlan[] = [];
+
+  for (const [endpoint, group] of byEndpoint) {
+    const byRole = indexByRole(group);
+    const power = byRole.power;
+    if (!power) {
+      // A child lock with no switch to attach it to has nowhere to live in
+      // HomeKit. It stays available to the rules engine.
+      continue;
+    }
+
+    const brightness = byRole.brightness;
+    const chosen = exposure.tileTypes?.[endpoint] ?? 'Switch';
+    const kind: ServiceKind = brightness ? 'Lightbulb' : TILE_KINDS[chosen];
+
+    const bindings: Binding[] = [
+      { characteristic: 'On', propertyKey: power.key, role: 'power', writable: true },
+    ];
+
+    if (brightness) {
+      bindings.push({
+        characteristic: 'Brightness',
+        propertyKey: brightness.key,
+        role: 'brightness',
+        writable: brightness.access.writable,
+      });
+    }
+
+    const childLock = byRole.childLock;
+    if (childLock) {
+      bindings.push({
+        characteristic: 'LockPhysicalControls',
+        propertyKey: childLock.key,
+        role: 'childLock',
+        writable: childLock.access.writable,
+      });
+    }
+
+    services.push({
+      kind,
+      subtype: power.key,
+      name: qualify ? qualifiedName(accessoryName, power) : accessoryName,
+      bindings,
+    });
+  }
+
+  return services;
+}
+
+function thermostatServices(
+  properties: NormalisedProperty[],
+  accessoryName: string,
+): ServicePlan[] {
+  const byRole = indexByRole(properties);
+  const mode = byRole.thermostatMode;
+  if (!mode) {
+    return [];
+  }
+
+  const bindings: Binding[] = [
+    {
+      characteristic: 'TargetHeatingCoolingState',
+      propertyKey: mode.key,
+      role: 'thermostatMode',
+      writable: true,
+      // Only offer modes the device declares, so HomeKit cannot send one back
+      // that the device would reject.
+      props: { validValues: validModes(mode) },
+    },
+    {
+      characteristic: 'CurrentHeatingCoolingState',
+      propertyKey: mode.key,
+      role: 'thermostatMode',
+      writable: false,
+    },
+  ];
+
+  const target = byRole.targetTemperature;
+  if (target) {
+    bindings.push({
+      characteristic: 'TargetTemperature',
+      propertyKey: target.key,
+      role: 'targetTemperature',
+      writable: true,
+      // HomeKit defaults to 10 to 38, which would refuse this thermostat's
+      // range of 5 to 30.
+      props: { minValue: target.min, maxValue: target.max, minStep: target.step },
+    });
+  }
+
+  const current = byRole.localTemperature;
+  if (current) {
+    bindings.push({
+      characteristic: 'CurrentTemperature',
+      propertyKey: current.key,
+      role: 'localTemperature',
+      writable: false,
+    });
+  }
+
+  return [
+    { kind: 'Thermostat', subtype: mode.key, name: `${accessoryName} Thermostat`, bindings },
+  ];
+}
+
+function sensorServices(
+  properties: NormalisedProperty[],
+  kind: ServiceKind,
+  characteristic: CharacteristicKind,
+  accessoryName: string,
+  label: string,
+): ServicePlan[] {
+  return properties.map((property) => ({
+    kind,
+    subtype: property.key,
+    name: `${accessoryName} ${label}`,
+    bindings: [
+      {
+        characteristic,
+        propertyKey: property.key,
+        role: roleFor(property) as Role,
+        writable: false,
+      },
+    ],
+  }));
+}
+
+/** Battery is linked rather than standalone, so it shows on the accessory itself. */
+function batteryServices(properties: NormalisedProperty[]): ServicePlan[] {
+  return properties.map((property) => ({
+    kind: 'Battery' as const,
+    subtype: property.key,
+    name: 'Battery',
+    link: true,
+    bindings: [
+      { characteristic: 'BatteryLevel' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
+      { characteristic: 'StatusLowBattery' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
+    ],
+  }));
+}
+
+/**
+ * One service per physical button, since HomeKit models a button as a service
+ * carrying single, double and long press rather than a list of named events.
+ */
+function buttonServices(
+  properties: NormalisedProperty[],
+  accessoryName: string,
+): ServicePlan[] {
+  const services: ServicePlan[] = [];
+
+  for (const property of properties) {
+    const buttons = buttonsFrom(property.values ?? []);
+    let index = 1;
+
+    for (const [button, actions] of buttons) {
+      const events: Record<string, number> = {};
+      for (const action of actions) {
+        if (action.event !== undefined) {
+          events[action.value] = action.event;
+        }
+      }
+      // A button whose every gesture is one HomeKit cannot express, such as
+      // triple press only, would be an empty tile. Leave it to the rules engine.
+      if (Object.keys(events).length === 0) {
+        continue;
+      }
+
+      services.push({
+        kind: 'StatelessProgrammableSwitch',
+        subtype: `${property.key}:${button}`,
+        name: `${accessoryName} ${button}`,
+        constants: [{ characteristic: 'ServiceLabelIndex', value: index++ }],
+        events,
+        actionPropertyKey: property.key,
+        bindings: [
+          {
+            characteristic: 'ProgrammableSwitchEvent',
+            propertyKey: property.key,
+            role: 'action',
+            writable: false,
+          },
+        ],
+      });
+    }
+  }
+
+  return services;
+}
+
+function indexByRole(
+  properties: NormalisedProperty[],
+): Partial<Record<Role, NormalisedProperty>> {
+  const byRole: Partial<Record<Role, NormalisedProperty>> = {};
+  for (const property of properties) {
+    const role = roleFor(property);
+    if (role && !byRole[role]) {
+      byRole[role] = property;
+    }
+  }
+  return byRole;
+}
+
+function validModes(mode: NormalisedProperty): number[] | undefined {
+  const names = mode.values?.map((value) => String(value).toLowerCase());
+  if (!names?.length) {
+    return undefined;
+  }
+  const codes = { off: 0, heat: 1, cool: 2, auto: 3 } as Record<string, number>;
+  const valid = names.map((name) => codes[name]).filter((code): code is number => code !== undefined);
+  return valid.length > 0 ? valid : undefined;
+}
+
 function defaultName(device: CatalogDevice, endpoint: string, split: boolean): string {
   if (!split || endpoint === DEVICE_ENDPOINT) {
     return device.name;
@@ -121,37 +418,8 @@ function defaultName(device: CatalogDevice, endpoint: string, split: boolean): s
   return `${device.name} ${endpoint}`;
 }
 
-function serviceName(
-  device: CatalogDevice,
-  property: NormalisedProperty,
-  qualify: boolean,
-): string {
-  if (!qualify) {
-    return device.name;
-  }
-  return property.endpoint ? `${device.name} ${property.endpoint}` : `${device.name} ${property.label}`;
-}
-
-/** Reads a wire value as a HomeKit boolean, using the property's own on/off values. */
-export function toBoolean(property: NormalisedProperty, value: unknown): boolean {
-  if (property.onValue !== undefined && value === property.onValue) {
-    return true;
-  }
-  if (property.offValue !== undefined && value === property.offValue) {
-    return false;
-  }
-  // Devices are not always consistent about types, so fall back to the
-  // obvious readings rather than reporting a stale value.
-  if (typeof value === 'string') {
-    return value.toUpperCase() === 'ON' || value.toUpperCase() === 'TRUE';
-  }
-  return Boolean(value);
-}
-
-/** Produces the wire value for a HomeKit boolean. */
-export function fromBoolean(property: NormalisedProperty, on: boolean): unknown {
-  if (on) {
-    return property.onValue ?? true;
-  }
-  return property.offValue ?? false;
+function qualifiedName(accessoryName: string, property: NormalisedProperty): string {
+  return property.endpoint
+    ? `${accessoryName} ${property.endpoint}`
+    : `${accessoryName} ${property.label}`;
 }
