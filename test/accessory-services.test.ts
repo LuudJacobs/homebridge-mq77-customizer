@@ -320,3 +320,69 @@ describe('a device that has not reported yet', () => {
     expect(primary!.linkedServices).toContain(battery);
   });
 });
+
+describe('changing which gestures a button offers', () => {
+  const selection = (gestures: number[]) => ({
+    properties: ['action'],
+    buttons: { action: { plus: gestures, center: gestures, minus: gestures } },
+  });
+
+  it('tells HomeKit about the new gesture list', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${W100.id}`, { properties: ['action'] });
+    context.manager.sync();
+
+    const before = context.hb
+      .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent);
+    expect(before.props.validValues).toEqual([0, 1, 2]);
+
+    context.store.setExposure(`zigbee:${W100.id}`, selection([2]));
+    context.manager.sync();
+
+    // setProps alone raises no configuration change, so the service has to be
+    // rebuilt or the Home app keeps offering all three.
+    const after = context.hb
+      .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent);
+    expect(after.props.validValues).toEqual([2]);
+    expect(after).not.toBe(before);
+  });
+
+  it('leaves services alone when nothing changed', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${W100.id}`, selection([2]));
+    context.manager.sync();
+
+    const first = context.hb
+      .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent);
+
+    context.manager.sync();
+    context.manager.sync();
+
+    // Rebuilding on every sync would bump the bridge configuration on each
+    // restart and churn the Home app for no reason.
+    const again = context.hb
+      .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent);
+    expect(again).toBe(first);
+  });
+
+  it('still fires only the gesture that was kept', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${W100.id}`, selection([2]));
+    context.manager.sync();
+
+    const seen: number[] = [];
+    context.hb
+      .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+      .on('change', (change) => seen.push(change.newValue as number));
+
+    context.mqtt.deliver(W100.topic, { action: 'single_plus' });
+    context.mqtt.deliver(W100.topic, { action: 'hold_plus' });
+
+    expect(seen).toEqual([2]);
+  });
+});

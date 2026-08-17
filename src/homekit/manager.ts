@@ -180,7 +180,11 @@ export class AccessoryManager {
         continue;
       }
       const planned = plan.services.find((candidate) => candidate.subtype === service.subtype);
-      if (!planned || this.serviceType(planned.kind).UUID !== service.UUID) {
+      if (
+        !planned ||
+        this.serviceType(planned.kind).UUID !== service.UUID ||
+        this.propsChanged(service, planned)
+      ) {
         accessory.removeService(service);
       }
     }
@@ -339,6 +343,47 @@ export class AccessoryManager {
       }
     }
     return siblings;
+  }
+
+  /**
+   * True when a service's declared limits no longer match the plan.
+   *
+   * Changing them in place is invisible to HomeKit: `setProps` raises no
+   * configuration change, so the Home app keeps serving its cached copy and
+   * would still offer, say, all three gestures on a button set to long press
+   * only. Rebuilding the service does raise one, which makes HomeKit re-read.
+   */
+  private propsChanged(service: Service, planned: ServicePlan): boolean {
+    for (const binding of planned.bindings) {
+      if (!binding.props) {
+        continue;
+      }
+      const uuid = this.characteristic(binding.characteristic).UUID;
+      // Looked up directly rather than through getCharacteristic, which would
+      // add the characteristic as a side effect of asking whether it exists.
+      const existingCharacteristic = service.characteristics.find(
+        (candidate) => candidate.UUID === uuid,
+      );
+      if (!existingCharacteristic) {
+        continue;
+      }
+      const current = existingCharacteristic.props as unknown as Record<string, unknown>;
+      for (const [key, wanted] of Object.entries(binding.props)) {
+        if (wanted === undefined) {
+          continue;
+        }
+        const existing = current[key];
+        const differs = Array.isArray(wanted)
+          ? !Array.isArray(existing) ||
+            existing.length !== wanted.length ||
+            wanted.some((value, index) => value !== existing[index])
+          : existing !== wanted;
+        if (differs) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private findProperty(plan: AccessoryPlan, key: string): NormalisedProperty | undefined {
