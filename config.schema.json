@@ -28,7 +28,8 @@
             "default": 1883,
             "minimum": 1,
             "maximum": 65535,
-            "required": true
+            "required": true,
+            "x-schema-form": { "type": "number" }
           },
           "username": {
             "title": "Username",
@@ -90,7 +91,8 @@
             "type": "integer",
             "default": 8590,
             "minimum": 1,
-            "maximum": 65535
+            "maximum": 65535,
+            "x-schema-form": { "type": "number" }
           },
           "password": {
             "title": "Password",
