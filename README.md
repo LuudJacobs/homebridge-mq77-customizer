@@ -44,9 +44,26 @@ Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigb
 | Field | Meaning |
 | --- | --- |
 | `id` | Stable identifier. Changing it orphans everything configured against the source. |
-| `adapter` | `zigbee2mqtt` |
+| `adapter` | `zigbee2mqtt` or `json-topic` |
 | `baseTopic` | Topic prefix the source publishes under. |
+| `topics` | Flat JSON sources only. Subscription filter, defaulting to everything under the base topic. |
+| `setTopicSuffix` | Flat JSON sources only. Usually `set`. Without it the source is read only. |
 | `rulesOnly` | Keep the devices out of HomeKit and use them only as rule triggers and targets. |
+
+### Flat JSON sources
+
+`json-topic` reads any publisher that puts flat JSON on a topic per device. Properties are inferred from the keys seen, accumulated across messages, so a partial update carrying one key does not redefine the device.
+
+```json
+{ "id": "broadlink", "adapter": "json-topic", "baseTopic": "broadlinkrm",
+  "setTopicSuffix": "set", "rulesOnly": true },
+{ "id": "withings", "adapter": "json-topic", "baseTopic": "withingsenv",
+  "rulesOnly": true }
+```
+
+Recognised keys are `state`, `level`, `speed`, `swing`, `temperature`, `humidity` and `co2_levels`. Anything else still becomes a property, typed from its value, and stays available to the rules engine.
+
+Set `rulesOnly` when another plugin already publishes those devices to HomeKit, so they can be used as triggers and targets without appearing twice.
 
 ## Usage
 
@@ -72,6 +89,7 @@ Functions with no HomeKit equivalent are still listed and marked, and stay avail
 | battery | a battery reading on the accessory, with a low warning |
 | child lock | the physical controls lock on the tile |
 | climate | a Thermostat, using the temperature range the device declares |
+| speed, swing | a Fan with rotation speed and swing |
 | button actions | one button per physical button, mapped to single, double and long press |
 
 Button names and gestures are worked out from the action names the device publishes, so a double rocker becomes three buttons without anything being typed out. Gestures HomeKit has no equivalent for, such as triple press, stay available to the rules engine.

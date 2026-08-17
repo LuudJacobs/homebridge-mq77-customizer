@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { adapterNames } from '../src/adapters/index.js';
 import { PLATFORM_NAME } from '../src/settings.js';
 
 const schema = JSON.parse(
@@ -64,6 +65,8 @@ describe('config.schema.json', () => {
   it('offers every adapter the plugin can actually load', () => {
     const [, adapter] = properties(schema.schema).find(([path]) => path === 'sources.[].adapter')!;
     const offered = (adapter.oneOf as { enum: string[] }[]).flatMap((option) => option.enum);
-    expect(offered).toEqual(['zigbee2mqtt']);
+    // Compared against the registry rather than a copy of it, so adding an
+    // adapter without offering it in the config UI fails here.
+    expect(offered.sort()).toEqual([...adapterNames()].sort());
   });
 });
