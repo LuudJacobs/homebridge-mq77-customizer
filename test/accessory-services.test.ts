@@ -27,7 +27,7 @@ interface Harness {
 }
 
 async function harness(): Promise<Harness> {
-  const directory = await mkdtemp(join(tmpdir(), 'mqtt-customizer-svc-'));
+  const directory = await mkdtemp(join(tmpdir(), 'mq77-customizer-svc-'));
   const store = new Store(join(directory, 'state.json'), silentLogger);
   await store.load();
 

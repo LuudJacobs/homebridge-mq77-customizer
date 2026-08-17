@@ -51,7 +51,7 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
   const sources = resolveSources(raw.sources, log);
 
   return {
-    name: asString(raw.name) ?? 'MQTT Customizer',
+    name: asString(raw.name) ?? 'MQ77 Customizer',
     broker,
     sources,
     web,

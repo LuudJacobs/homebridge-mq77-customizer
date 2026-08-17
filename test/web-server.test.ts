@@ -21,7 +21,7 @@ interface Harness {
 }
 
 async function harness(options: { password?: string } = {}): Promise<Harness> {
-  const directory = await mkdtemp(join(tmpdir(), 'mqtt-customizer-web-'));
+  const directory = await mkdtemp(join(tmpdir(), 'mq77-customizer-web-'));
   const store = new Store(join(directory, 'state.json'), silentLogger);
   await store.load();
 
@@ -82,7 +82,7 @@ describe('WebServer', () => {
     const response = await fetch(`${context.base}/`);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');
-    expect(await response.text()).toContain('MQTT Customizer');
+    expect(await response.text()).toContain('MQ77 Customizer');
   });
 
   it('refuses api access without a session', async () => {
@@ -179,7 +179,7 @@ describe('WebServer without a password', () => {
   it('refuses to start and says why', async () => {
     const messages: string[] = [];
     const log: Logger = { ...silentLogger, error: (message) => messages.push(message) };
-    const directory = await mkdtemp(join(tmpdir(), 'mqtt-customizer-web-'));
+    const directory = await mkdtemp(join(tmpdir(), 'mq77-customizer-web-'));
     const store = new Store(join(directory, 'state.json'), silentLogger);
     await store.load();
     const mqtt = new FakeMqtt();
