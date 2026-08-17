@@ -15,6 +15,7 @@ import { FakeMqtt } from './helpers/fake-mqtt.js';
 
 const W100 = { id: '0x54ef4410013bd210', topic: 'zigbee2mqtt/woonkamer_w100' };
 const DIMMER = { id: '0x1cc089fffe39c60e', topic: 'zigbee2mqtt/keuken_dimmer-candeo' };
+const ROCKER = { id: '0x54ef44100169b28a', topic: 'zigbee2mqtt/slaapkamer_schakelaar-wrs02' };
 const SOCKET = { id: '0xa4c138ae47fdd9c3', topic: 'zigbee2mqtt/woonkamer_bank_lamp-socket' };
 
 interface Harness {
@@ -279,5 +280,43 @@ describe('buttons', () => {
     // press was wired to.
     context.mqtt.deliver(W100.topic, { action: 'single_plus' }, { retained: true });
     expect(presses).toEqual([]);
+  });
+});
+
+describe('a device that has not reported yet', () => {
+  it('still serves its battery instead of failing the read', async () => {
+    const context = await harness();
+    // Nothing delivered on the device topic. Zigbee2MQTT does not retain state,
+    // so this is what a battery remote looks like until someone presses it.
+    context.store.setExposure(`zigbee:${ROCKER.id}`, { properties: ['battery', 'action'] });
+    context.manager.sync();
+
+    const battery = context.hb.registered[0]!.getServiceById(Service.Battery, 'battery')!;
+    await expect(
+      battery.getCharacteristic(Characteristic.BatteryLevel).handleGetRequest(),
+    ).resolves.toBeDefined();
+  });
+
+  it('corrects itself as soon as the device does report', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${ROCKER.id}`, { properties: ['battery'] });
+    context.manager.sync();
+
+    context.mqtt.deliver(ROCKER.topic, { battery: 88 });
+
+    const battery = context.hb.registered[0]!.getServiceById(Service.Battery, 'battery')!;
+    expect(battery.getCharacteristic(Characteristic.BatteryLevel).value).toBe(88);
+  });
+
+  it('marks a primary service, which controllers want before showing a linked battery', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${ROCKER.id}`, { properties: ['battery', 'action'] });
+    context.manager.sync();
+
+    const accessory = context.hb.registered[0]!;
+    const battery = accessory.getServiceById(Service.Battery, 'battery')!;
+    const primary = accessory.services.find((service) => service.isPrimaryService);
+    expect(primary).toBeDefined();
+    expect(primary!.linkedServices).toContain(battery);
   });
 });

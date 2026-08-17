@@ -260,12 +260,18 @@ export class AccessoryManager {
 
     characteristic.onGet(() => {
       const value = this.read(plan, servicePlan, binding);
-      if (value === undefined) {
-        throw new this.api.hap.HapStatusError(
-          this.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
-        );
+      if (value !== undefined) {
+        return value;
       }
-      return value;
+      // Zigbee2MQTT does not retain device state, so nothing is known about a
+      // device until it next reports. A battery powered remote may not do that
+      // for hours. Failing the read would make the Home app hide the reading
+      // or mark the accessory unresponsive, so serve what HomeKit already has
+      // and let the first real message correct it.
+      this.log.debug(
+        `No value yet for ${plan.name} ${binding.propertyKey}, reporting the last known one`,
+      );
+      return characteristic.value ?? 0;
     });
 
     if (!binding.writable) {
