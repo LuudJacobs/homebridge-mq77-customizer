@@ -64,6 +64,15 @@ describe('Zigbee2mqttAdapter', () => {
     expect(w100?.model).toBe('TH-S04D');
   });
 
+  it('reports the topic a device lives on, which the interface searches', () => {
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture);
+    const w100 = adapter.getDevices().find((d) => d.deviceId === '0x54ef4410013bd210');
+    // Its name comes from the description, so the topic is the only place the
+    // friendly name survives.
+    expect(w100?.name).toBe('Thermostaat woonkamer');
+    expect(w100?.topic).toBe('zigbee2mqtt/woonkamer_w100');
+  });
+
   it('records state for known properties', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'ON', state_l2: 'OFF' });

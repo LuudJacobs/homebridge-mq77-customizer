@@ -155,6 +155,7 @@ export class Zigbee2mqttAdapter
       sourceId: this.sourceId,
       deviceId: entry.ieee_address,
       name: entry.description || entry.friendly_name,
+      topic: stateTopic,
       manufacturer: entry.definition?.vendor ?? entry.manufacturer,
       model: entry.definition?.model ?? entry.model_id,
       description: entry.definition?.description,
