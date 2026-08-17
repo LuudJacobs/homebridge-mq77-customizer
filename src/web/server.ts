@@ -219,6 +219,7 @@ export class WebServer {
         sourceId: device.sourceId,
         deviceId: device.deviceId,
         name: device.name,
+        topic: device.topic,
         manufacturer: device.manufacturer,
         model: device.model,
         description: device.description,

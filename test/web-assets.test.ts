@@ -37,6 +37,14 @@ describe('web assets', () => {
     expect(html).not.toMatch(/(src|href)="https?:\/\//);
   });
 
+  it('shows the logo in both headers, using the shipped favicon', () => {
+    const logos = [...html.matchAll(/<img[^>]*class="logo"[^>]*src="\/([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    // One on the login screen, one in the signed in header.
+    expect(logos).toEqual(['favicon.svg', 'favicon.svg']);
+  });
+
   it('points at a favicon that is actually shipped', () => {
     const icon = html.match(/rel="icon"[^>]*href="\/([^"]+)"/)?.[1];
     expect(icon).toBe('favicon.svg');

@@ -11,7 +11,7 @@
   <body>
     <div id="login" hidden>
       <form id="login-form">
-        <h1>MQ77 Customizer</h1>
+        <h1><img class="logo" src="/favicon.svg" alt="" width="30" height="30" />MQ77 Customizer</h1>
         <label for="password">Password</label>
         <input id="password" type="password" autocomplete="current-password" required />
         <button type="submit">Sign in</button>
@@ -21,10 +21,14 @@
 
     <div id="app" hidden>
       <header>
-        <h1>MQ77 Customizer</h1>
+        <h1><img class="logo" src="/favicon.svg" alt="" width="26" height="26" />MQ77 Customizer</h1>
         <div class="header-actions">
           <span id="status" class="status">connecting</span>
-          <input id="filter" type="search" placeholder="Filter devices" />
+          <label class="toggle" for="exposed-only">
+            <input id="exposed-only" type="checkbox" />
+            In HomeKit only
+          </label>
+          <input id="filter" type="search" placeholder="Filter name, topic or model" />
           <button id="logout" type="button">Sign out</button>
         </div>
       </header>
