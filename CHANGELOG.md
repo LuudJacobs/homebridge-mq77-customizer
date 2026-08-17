@@ -10,3 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pluggable source adapters producing one normalised device model
 - Zigbee2MQTT source discovering devices and their functions from `bridge/devices`, updating live on joins, renames and removals
 - Persistent state under the Homebridge storage path, kept out of `config.json`
+- Password protected web interface listing every device and function, with live values
+- Tick a function to publish it to HomeKit, applied immediately with no Homebridge restart
+- Tile type per endpoint, optional separate accessory per endpoint, and accessory name overrides
+- Functions with no HomeKit equivalent stay listed and marked rather than hidden
