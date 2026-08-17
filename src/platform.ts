@@ -89,13 +89,38 @@ export class MqttCustomizerPlatform implements DynamicPlatformPlugin {
     );
   }
 
+  /**
+   * Homebridge allows five seconds after `shutdown` before it exits, so this
+   * has to finish quickly. State is saved first because it is the only thing
+   * whose loss would matter, and tearing down a stuck broker connection must
+   * not be able to starve it.
+   */
   private async stop(): Promise<void> {
+    try {
+      await this.store.save();
+    } catch (error) {
+      this.log.error(`Could not save state on shutdown: ${describe(error)}`);
+    }
+
     await this.catalog.stop();
-    await this.mqtt.disconnect();
-    await this.store.save();
+    await withTimeout(this.mqtt.disconnect(), 2000);
   }
 }
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Resolves either way, so a hung teardown step cannot block the ones after it. */
+async function withTimeout(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    work,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+    }),
+  ]);
+  if (timer) {
+    clearTimeout(timer);
+  }
 }
