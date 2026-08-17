@@ -95,7 +95,8 @@
           "password": {
             "title": "Password",
             "type": "string",
-            "description": "Required to open the web interface. It can control your devices, so do not leave it empty."
+            "required": true,
+            "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
           }
         }
       }

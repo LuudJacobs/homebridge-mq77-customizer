@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
@@ -6,14 +7,24 @@ import type { Logger } from './logger.js';
 /** Bumped when the shape changes in a way that needs migrating. */
 export const STORE_VERSION = 1;
 
-/** What the user ticked for one device. Filled in by v0.2.0. */
+/** HomeKit service a binary on/off property is published as. */
+export type TileType = 'Switch' | 'Outlet' | 'Lightbulb' | 'Fan';
+
+export const TILE_TYPES: TileType[] = ['Switch', 'Outlet', 'Lightbulb', 'Fan'];
+
+/** Endpoint key used for properties that belong to the device as a whole. */
+export const DEVICE_ENDPOINT = '';
+
+/** What the user ticked for one device. */
 export interface DeviceExposure {
-  /** Property keys published to HomeKit. */
+  /** Property keys published to HomeKit. Everything else stays rules only. */
   properties: string[];
-  /** HomeKit service to use for a binary `state`, keyed by endpoint. */
-  tileTypes?: Record<string, string>;
-  /** Publish each endpoint as its own accessory. */
+  /** Tile to use for a binary on/off property, keyed by endpoint. */
+  tileTypes?: Record<string, TileType>;
+  /** Publish each endpoint as its own accessory rather than one with several services. */
   splitEndpoints?: boolean;
+  /** Accessory name overrides, keyed by endpoint. */
+  names?: Record<string, string>;
 }
 
 /** Placeholder until the rules engine lands in v0.5.0. */
@@ -28,6 +39,8 @@ export interface PersistedState {
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
   rules: Rule[];
+  /** Signs web session cookies. Generated on first run so logins survive restarts. */
+  sessionSecret?: string;
 }
 
 function emptyState(): PersistedState {
@@ -71,6 +84,26 @@ export class Store {
 
   get data(): Readonly<PersistedState> {
     return this.state;
+  }
+
+  getExposure(key: string): DeviceExposure | undefined {
+    return this.state.exposures[key];
+  }
+
+  setExposure(key: string, exposure: DeviceExposure): void {
+    this.update((state) => {
+      state.exposures[key] = exposure;
+    });
+  }
+
+  /** Returns the session secret, generating and persisting one on first use. */
+  sessionSecret(): string {
+    if (!this.state.sessionSecret) {
+      this.update((state) => {
+        state.sessionSecret = randomBytes(32).toString('hex');
+      });
+    }
+    return this.state.sessionSecret as string;
   }
 
   update(mutate: (state: PersistedState) => void): void {
@@ -121,6 +154,7 @@ function migrate(parsed: unknown): PersistedState {
     version: STORE_VERSION,
     exposures: state.exposures ?? {},
     rules: state.rules ?? [],
+    sessionSecret: state.sessionSecret,
   };
 }
 

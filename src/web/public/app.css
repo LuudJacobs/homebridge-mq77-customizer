@@ -1,0 +1,280 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1b1d22;
+  --muted: #6b7280;
+  --line: #e2e5ea;
+  --accent: #2f6fed;
+  --accent-soft: #e8effd;
+  --warn: #b45309;
+  --error: #b91c1c;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --card: #1c1f25;
+    --text: #e6e8ec;
+    --muted: #9099a6;
+    --line: #2b2f37;
+    --accent: #6f9dff;
+    --accent-soft: #21293a;
+    --warn: #d99a3d;
+    --error: #f27272;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+/* Login */
+
+#login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+#login form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  width: min(22rem, 100%);
+  display: grid;
+  gap: 0.65rem;
+}
+
+label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+input[type="password"],
+input[type="search"],
+input[type="text"],
+select {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+#login button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.error {
+  color: var(--error);
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* App shell */
+
+#app {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0 1rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.status.live {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.status.lost {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.87rem;
+  margin: 0 0 1rem;
+}
+
+/* Devices */
+
+.device {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+
+.device > summary {
+  cursor: pointer;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.device > summary::-webkit-details-marker {
+  display: none;
+}
+
+.device-name {
+  font-weight: 600;
+}
+
+.device-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.badge.none {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.device-body {
+  border-top: 1px solid var(--line);
+  padding: 0.9rem;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  padding-bottom: 0.9rem;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.option {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  font-size: 0.87rem;
+}
+
+.group-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0.9rem 0 0.35rem;
+}
+
+.property {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.3rem 0;
+}
+
+.property label {
+  color: var(--text);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.property .key {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.value.set {
+  color: var(--text);
+}
+
+.tag {
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+
+.rules-only {
+  color: var(--warn);
+  font-size: 0.82rem;
+  margin: 0 0 0.75rem;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 2rem;
+}
