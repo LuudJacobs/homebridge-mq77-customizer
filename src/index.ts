@@ -1,8 +1,8 @@
 import type { API } from 'homebridge';
 
-import { MqttCustomizerPlatform } from './platform.js';
+import { Mq77CustomizerPlatform } from './platform.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 
 export default (api: API): void => {
-  api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, MqttCustomizerPlatform);
+  api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, Mq77CustomizerPlatform);
 };

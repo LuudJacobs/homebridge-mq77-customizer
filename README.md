@@ -1,4 +1,4 @@
-# MQTT Customizer 0.1.0
+# MQ77 Customizer 0.1.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -12,21 +12,21 @@ A Homebridge plugin that exposes MQTT devices to HomeKit and links them together
 ## Installation
 
 ```
-npm install -g homebridge-mqtt-customizer
+npm install -g homebridge-mq77-customizer
 ```
 
 To install a branch directly from source instead, which builds on install:
 
 ```
-npm install -g git+https://github.com/LuudJacobs/homebridge-mqtt-customizer.git#test
+npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#test
 ```
 
 Add the platform to your Homebridge config:
 
 ```json
 {
-  "platform": "MqttCustomizer",
-  "name": "MQTT Customizer",
+  "platform": "Mq77Customizer",
+  "name": "MQ77 Customizer",
   "broker": { "host": "localhost", "port": 1883 },
   "sources": [
     { "id": "zigbee", "adapter": "zigbee2mqtt", "baseTopic": "zigbee2mqtt" }
@@ -78,6 +78,18 @@ Button names and gestures are worked out from the action names the device publis
 
 The rules engine arrives in v0.5.0.
 
+## Upgrading from MQTT Customizer
+
+The plugin used to be called MQTT Customizer. Renaming it changes the platform Homebridge looks for, so update `config.json`:
+
+```json
+"platform": "Mq77Customizer"
+```
+
+Selections saved under the old name are picked up automatically the first time the renamed plugin starts. The old file is left in place rather than moved.
+
+Homebridge may offer to remove accessories belonging to the plugin under its former name. That is safe to accept.
+
 ## Links
 
-[License](https://github.com/LuudJacobs/homebridge-mqtt-customizer/blob/main/LICENSE) • [Changelog](https://github.com/LuudJacobs/homebridge-mqtt-customizer/blob/main/CHANGELOG.md)
+[License](https://github.com/LuudJacobs/homebridge-mq77-customizer/blob/main/LICENSE) • [Changelog](https://github.com/LuudJacobs/homebridge-mq77-customizer/blob/main/CHANGELOG.md)
