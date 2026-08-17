@@ -218,9 +218,13 @@ export class AccessoryManager {
       }
     }
 
-    // Battery shows on the accessory itself rather than as its own tile.
-    for (const service of linked) {
-      primary?.addLinkedService(service);
+    // Battery shows on the accessory itself rather than as its own tile, which
+    // needs both a nominated primary service and the link to it.
+    if (primary) {
+      primary.setPrimaryService(true);
+      for (const service of linked) {
+        primary.addLinkedService(service);
+      }
     }
   }
 

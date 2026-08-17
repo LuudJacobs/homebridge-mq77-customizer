@@ -195,6 +195,10 @@ describe('WebServer without a password', () => {
     await server.start();
 
     expect(messages.join(' ')).toContain('No web password set');
+    // Nothing is served at all, not even the login form, so there is no
+    // unprotected surface to reach.
+    expect(server.port).toBe(0);
+    await expect(fetch('http://127.0.0.1:0/')).rejects.toThrow();
     await server.stop();
   });
 });
@@ -236,6 +240,7 @@ describe('sanitiseExposure', () => {
       tileTypes: {},
       splitEndpoints: false,
       names: {},
+      buttons: {},
     });
     expect(sanitiseExposure({ properties: 'nope' }, known).properties).toEqual([]);
   });

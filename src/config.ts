@@ -16,7 +16,7 @@ export interface PluginConfig {
 }
 
 const DEFAULT_BROKER: BrokerConfig = { host: 'localhost', port: 1883 };
-const DEFAULT_WEB_PORT = 8590;
+const DEFAULT_WEB_PORT = 8888;
 
 /**
  * Fills in defaults and drops entries that cannot work, logging why.
@@ -37,8 +37,16 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
   const webRaw = asObject(raw.web) ?? {};
   const web: WebConfig = {
     port: asNumber(webRaw.port) ?? DEFAULT_WEB_PORT,
-    password: asString(webRaw.password),
+    // Trimmed, so a password of spaces counts as no password rather than as a
+    // secret nobody could type.
+    password: asString(webRaw.password)?.trim() || undefined,
   };
+
+  if (!web.password) {
+    log.warn(
+      'No web password set. The web interface will not start, so nothing is served on its port.',
+    );
+  }
 
   const sources = resolveSources(raw.sources, log);
 

@@ -31,7 +31,7 @@ Add the platform to your Homebridge config:
   "sources": [
     { "id": "zigbee", "adapter": "zigbee2mqtt", "baseTopic": "zigbee2mqtt" }
   ],
-  "web": { "port": 8590, "password": "choose-one" }
+  "web": { "port": 8888, "password": "choose-one" }
 }
 ```
 
@@ -50,7 +50,7 @@ Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigb
 
 ## Usage
 
-Open `http://<your-homebridge-host>:8590` and sign in with the password from the config. A password is required, the web interface refuses to start without one.
+Open `http://<your-homebridge-host>:8888` and sign in with the password from the config. A password is required, the web interface refuses to start without one.
 
 Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
 

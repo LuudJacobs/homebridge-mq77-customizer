@@ -362,9 +362,9 @@ function renderProperty(device, property) {
     }
     device.exposure.properties = [...selected];
     save(device);
-    if (property.role === 'brightness') {
-      // The tile picker locks to Lightbulb once brightness is on, so it has to
-      // be redrawn to stay honest.
+    // Brightness locks the tile picker to Lightbulb, and actions reveal their
+    // per button gestures, so both change what is on screen.
+    if (property.role === 'brightness' || property.role === 'action') {
       safeRender();
     }
   });
@@ -398,6 +398,72 @@ function renderProperty(device, property) {
   value.textContent = formatValue(device, property.key);
 
   row.append(checkbox, label, value);
+
+  // An action property carries several physical buttons, each with gestures
+  // that can be published independently.
+  if (property.buttons?.length && checkbox.checked && !device.rulesOnly) {
+    const group = document.createElement('div');
+    group.className = 'buttons';
+    group.append(...property.buttons.map((button) => renderButton(device, property, button)));
+
+    const wrapper = document.createElement('div');
+    wrapper.append(row, group);
+    return wrapper;
+  }
+
+  return row;
+}
+
+const GESTURE_LABELS = { 0: 'single', 1: 'double', 2: 'long' };
+
+function renderButton(device, property, button) {
+  const row = document.createElement('div');
+  row.className = 'button-row';
+
+  const name = document.createElement('span');
+  name.className = 'button-name';
+  name.textContent = button.name;
+  row.append(name);
+
+  const selection = device.exposure.buttons?.[property.key]?.[button.name];
+
+  for (const gesture of button.gestures) {
+    const id = `b-${key(device)}-${property.key}-${button.name}-${gesture}`;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = id;
+    // No stored selection means everything, which is what a device published
+    // before this existed already does.
+    checkbox.checked = selection === undefined || selection.includes(gesture);
+    checkbox.addEventListener('change', () => {
+      const buttons = { ...device.exposure.buttons };
+      const perButton = { ...buttons[property.key] };
+      const current = new Set(perButton[button.name] ?? button.gestures);
+      if (checkbox.checked) {
+        current.add(gesture);
+      } else {
+        current.delete(gesture);
+      }
+      perButton[button.name] = [...current];
+      buttons[property.key] = perButton;
+      device.exposure.buttons = buttons;
+      save(device);
+    });
+
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = GESTURE_LABELS[gesture] ?? `event ${gesture}`;
+    row.append(checkbox, label);
+  }
+
+  if (button.unsupported.length > 0) {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = `${button.unsupported.length} automation only`;
+    tag.title = `HomeKit has no gesture for: ${button.unsupported.join(', ')}`;
+    row.append(tag);
+  }
+
   return row;
 }
 

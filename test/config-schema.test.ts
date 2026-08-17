@@ -49,6 +49,13 @@ describe('config.schema.json', () => {
     expect(sliders).toEqual([]);
   });
 
+  it('masks password fields, since format alone does not do it in this UI', () => {
+    const plain = properties(schema.schema)
+      .filter(([path, property]) => /password/i.test(path) && property['x-schema-form']?.type !== 'password')
+      .map(([path]) => path);
+    expect(plain).toEqual([]);
+  });
+
   it('asks for a web password, since the interface will not start without one', () => {
     const [, password] = properties(schema.schema).find(([path]) => path === 'web.password')!;
     expect(password.required).toBe(true);

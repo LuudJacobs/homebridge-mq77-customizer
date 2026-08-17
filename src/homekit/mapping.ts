@@ -156,7 +156,7 @@ function buildPlan(
     ...sensorServices(grouped.get('temperature') ?? [], 'TemperatureSensor', 'CurrentTemperature', name, 'Temperature'),
     ...sensorServices(grouped.get('humidity') ?? [], 'HumiditySensor', 'CurrentRelativeHumidity', name, 'Humidity'),
     ...batteryServices(grouped.get('battery') ?? []),
-    ...buttonServices(grouped.get('buttons') ?? [], name),
+    ...buttonServices(grouped.get('buttons') ?? [], name, exposure),
   ];
 
   return {
@@ -346,22 +346,38 @@ function batteryServices(properties: NormalisedProperty[]): ServicePlan[] {
 function buttonServices(
   properties: NormalisedProperty[],
   accessoryName: string,
+  exposure: DeviceExposure,
 ): ServicePlan[] {
   const services: ServicePlan[] = [];
 
   for (const property of properties) {
     const buttons = buttonsFrom(property.values ?? []);
-    let index = 1;
+    const selection = exposure.buttons?.[property.key];
+    let index = 0;
 
     for (const [button, actions] of buttons) {
+      // Numbered over every button the device has, not only the published
+      // ones, so enabling a button later does not renumber the others.
+      index += 1;
+
+      // No entry means every gesture. An empty list means the user turned the
+      // button off, which is different from never having chosen.
+      const allowed = selection?.[button];
+
       const events: Record<string, number> = {};
       for (const action of actions) {
-        if (action.event !== undefined) {
-          events[action.value] = action.event;
+        if (action.event === undefined) {
+          continue;
         }
+        if (allowed && !allowed.includes(action.event)) {
+          continue;
+        }
+        events[action.value] = action.event;
       }
-      // A button whose every gesture is one HomeKit cannot express, such as
-      // triple press only, would be an empty tile. Leave it to the rules engine.
+
+      // A button with nothing left, either because it was switched off or
+      // because every gesture is one HomeKit cannot express, would be an empty
+      // tile. Leave it to the rules engine.
       if (Object.keys(events).length === 0) {
         continue;
       }
@@ -370,7 +386,7 @@ function buttonServices(
         kind: 'StatelessProgrammableSwitch',
         subtype: `${property.key}:${button}`,
         name: `${accessoryName} ${button}`,
-        constants: [{ characteristic: 'ServiceLabelIndex', value: index++ }],
+        constants: [{ characteristic: 'ServiceLabelIndex', value: index }],
         events,
         actionPropertyKey: property.key,
         bindings: [
@@ -379,6 +395,9 @@ function buttonServices(
             propertyKey: property.key,
             role: 'action',
             writable: false,
+            // Restricting the valid values makes the Home app offer only the
+            // gestures that were kept, rather than all three.
+            props: { validValues: [...new Set(Object.values(events))].sort() },
           },
         ],
       });

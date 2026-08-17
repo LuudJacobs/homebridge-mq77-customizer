@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import type { Catalog } from '../catalog.js';
 import type { WebConfig } from '../config.js';
 import type { Logger } from '../logger.js';
-import type { StateUpdate } from '../model/types.js';
-import { isPublishable, roleFor } from '../homekit/roles.js';
+import type { NormalisedProperty, StateUpdate } from '../model/types.js';
+import { buttonsFrom, isPublishable, roleFor } from '../homekit/roles.js';
 import { DEVICE_ENDPOINT, TILE_TYPES, type DeviceExposure, type Store, type TileType } from '../store.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
@@ -241,6 +241,7 @@ export class WebServer {
           writable: property.access.writable,
           publishable: isPublishable(property),
           role: roleFor(property),
+          buttons: describeButtons(property),
         })),
         exposure: this.deps.store.getExposure(key) ?? { properties: [] },
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
@@ -272,6 +273,22 @@ export class WebServer {
   }
 }
 
+/**
+ * The buttons and gestures inferred from an action property, so the interface
+ * can offer them individually rather than all or nothing.
+ */
+function describeButtons(property: NormalisedProperty): unknown {
+  if (roleFor(property) !== 'action') {
+    return undefined;
+  }
+  return [...buttonsFrom(property.values ?? [])].map(([name, actions]) => ({
+    name,
+    gestures: [...new Set(actions.flatMap((action) => (action.event === undefined ? [] : [action.event])))].sort(),
+    /** Values HomeKit has no gesture for, listed so the interface can say so. */
+    unsupported: actions.filter((action) => action.event === undefined).map((action) => action.value),
+  }));
+}
+
 /** Keeps only property keys the device actually has, and known tile types. */
 export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExposure {
   const known = new Set(knownKeys);
@@ -295,13 +312,33 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     }
   }
 
+  const buttons: Record<string, Record<string, number[]>> = {};
+  for (const [propertyKey, perButton] of Object.entries(input.buttons ?? {})) {
+    if (!known.has(propertyKey) || typeof perButton !== 'object' || perButton === null) {
+      continue;
+    }
+    const kept: Record<string, number[]> = {};
+    for (const [button, events] of Object.entries(perButton)) {
+      if (!Array.isArray(events)) {
+        continue;
+      }
+      // An empty list is meaningful: it switches the button off.
+      kept[button] = [...new Set(events.filter((event) => HOMEKIT_EVENTS.includes(event)))];
+    }
+    buttons[propertyKey] = kept;
+  }
+
   return {
     properties,
     tileTypes,
     splitEndpoints: input.splitEndpoints === true,
     names,
+    buttons,
   };
 }
+
+/** Single, double and long press. HomeKit has no others. */
+const HOMEKIT_EVENTS = [0, 1, 2];
 
 function send(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
