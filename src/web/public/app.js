@@ -28,8 +28,10 @@ async function api(path, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (response.status === 401) {
-    showLogin();
+  // Signing in has its own 401, meaning a wrong password. Intercepting it here
+  // too would report every failure as "Not signed in" and hide which it was.
+  if (response.status === 401 && path !== '/api/login') {
+    showLogin('Session was not accepted. Check that cookies are enabled.');
     throw new Error('Not signed in');
   }
   if (!response.ok) {

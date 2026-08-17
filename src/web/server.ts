@@ -69,7 +69,9 @@ export class WebServer {
     });
 
     this.server = server;
-    this.deps.log.info(`Web interface on http://localhost:${this.port}`);
+    // Not "localhost": it is browsed from another machine, and saying
+    // localhost sends people to the wrong host when it does not respond.
+    this.deps.log.info(`Web interface listening on port ${this.port}`);
 
     this.deps.catalog.on('state', (update) => this.broadcastState(update));
     this.deps.catalog.on('devices', () => this.broadcast({ type: 'devices' }));
