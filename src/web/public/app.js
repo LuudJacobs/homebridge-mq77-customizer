@@ -23,6 +23,9 @@ const el = {
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
+/** Marks the one failure that means "show the login form", not "something broke". */
+const NOT_SIGNED_IN = 'not-signed-in';
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -31,8 +34,8 @@ async function api(path, options = {}) {
   // Signing in has its own 401, meaning a wrong password. Intercepting it here
   // too would report every failure as "Not signed in" and hide which it was.
   if (response.status === 401 && path !== '/api/login') {
-    showLogin('Session was not accepted. Check that cookies are enabled.');
-    throw new Error('Not signed in');
+    showLogin();
+    throw new Error(NOT_SIGNED_IN);
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -59,7 +62,22 @@ async function load() {
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
   showApp();
-  render();
+  safeRender();
+}
+
+/**
+ * A rendering fault must not look like a failed sign in.
+ *
+ * Letting it throw would unwind into the sign in handler, which would send the
+ * user back to the login form with a misleading message.
+ */
+function safeRender() {
+  try {
+    render();
+  } catch (error) {
+    console.error('Rendering failed', error);
+    setStatus(`display error: ${error.message}`, 'lost');
+  }
 }
 
 function setStatus(text, kind) {
@@ -360,7 +378,15 @@ el.loginForm.addEventListener('submit', async (event) => {
     el.password.value = '';
     await start();
   } catch (error) {
-    showLogin(error.message);
+    console.error('Sign in failed', error);
+    // Reaching here with NOT_SIGNED_IN means the password was accepted but the
+    // session that came back was not, which is a cookie problem, not a
+    // credentials one.
+    showLogin(
+      error.message === NOT_SIGNED_IN
+        ? 'Password accepted, but the session was rejected. Check that cookies are enabled for this site.'
+        : error.message,
+    );
   }
 });
 
@@ -371,7 +397,7 @@ el.logout.addEventListener('click', async () => {
 
 el.filter.addEventListener('input', () => {
   state.filter = el.filter.value;
-  render();
+  safeRender();
 });
 
 async function start() {
@@ -379,4 +405,13 @@ async function start() {
   listen();
 }
 
-start().catch(() => showLogin());
+// A first visit has no session yet, so a plain login form is the right result
+// and needs no error. Anything else is worth showing.
+start().catch((error) => {
+  if (error.message === NOT_SIGNED_IN) {
+    showLogin();
+    return;
+  }
+  console.error('Startup failed', error);
+  showLogin(error.message);
+});
