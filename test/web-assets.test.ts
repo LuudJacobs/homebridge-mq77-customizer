@@ -36,4 +36,12 @@ describe('web assets', () => {
   it('loads its assets from the same origin, since a strict policy blocks anything else', () => {
     expect(html).not.toMatch(/(src|href)="https?:\/\//);
   });
+
+  it('points at a favicon that is actually shipped', () => {
+    const icon = html.match(/rel="icon"[^>]*href="\/([^"]+)"/)?.[1];
+    expect(icon).toBe('favicon.svg');
+    expect(() =>
+      readFileSync(fileURLToPath(new URL(`../src/web/public/${icon}`, import.meta.url))),
+    ).not.toThrow();
+  });
 });

@@ -26,6 +26,20 @@ const key = (device) => `${device.sourceId}:${device.deviceId}`;
 /** Marks the one failure that means "show the login form", not "something broke". */
 const NOT_SIGNED_IN = 'not-signed-in';
 
+/** What each function turns into in HomeKit, shown next to the checkbox. */
+const ROLE_LABELS = {
+  power: 'on/off',
+  brightness: 'brightness',
+  childLock: 'child lock',
+  temperature: 'temperature sensor',
+  humidity: 'humidity sensor',
+  battery: 'battery',
+  thermostatMode: 'thermostat mode',
+  targetTemperature: 'thermostat setpoint',
+  localTemperature: 'thermostat reading',
+  action: 'buttons',
+};
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -275,8 +289,18 @@ function renderOptions(device) {
       choice.textContent = tile;
       select.append(choice);
     }
-    select.value = device.exposure.tileTypes?.[endpoint] ?? 'Switch';
-    select.disabled = device.rulesOnly;
+    // Brightness only exists on a Lightbulb, so selecting it settles the tile
+    // type and the picker would otherwise be lying.
+    const dimmable = device.properties.some(
+      (property) =>
+        property.role === 'brightness' &&
+        property.endpoint === endpoint &&
+        device.exposure.properties.includes(property.key),
+    );
+
+    select.value = dimmable ? 'Lightbulb' : device.exposure.tileTypes?.[endpoint] ?? 'Switch';
+    select.disabled = device.rulesOnly || dimmable;
+    select.title = dimmable ? 'Fixed to Lightbulb because brightness is selected' : '';
     select.addEventListener('change', () => {
       device.exposure.tileTypes = { ...device.exposure.tileTypes, [endpoint]: select.value };
       save(device);
@@ -338,6 +362,11 @@ function renderProperty(device, property) {
     }
     device.exposure.properties = [...selected];
     save(device);
+    if (property.role === 'brightness') {
+      // The tile picker locks to Lightbulb once brightness is on, so it has to
+      // be redrawn to stay honest.
+      safeRender();
+    }
   });
 
   const label = document.createElement('label');
@@ -349,15 +378,19 @@ function renderProperty(device, property) {
   meta.textContent = property.key;
   label.append(' ', meta);
 
-  if (!property.publishable) {
-    const tag = document.createElement('span');
-    tag.className = 'tag';
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  if (property.publishable) {
+    // Say what it becomes, since these are no longer all plain switches.
+    tag.classList.add('publishable');
+    tag.textContent = ROLE_LABELS[property.role] ?? 'HomeKit';
+    tag.title = 'Tick to publish this to HomeKit.';
+  } else {
     // Be explicit that this is not a dead end, it is still usable in rules.
     tag.textContent = property.writable ? 'automation only' : 'read only';
-    tag.title =
-      'No HomeKit equivalent in this version. Still available to the rules engine.';
-    label.append(tag);
+    tag.title = 'No HomeKit equivalent. Still available to the rules engine.';
   }
+  label.append(tag);
 
   const value = document.createElement('span');
   value.className = device.state[property.key] === undefined ? 'value' : 'value set';
