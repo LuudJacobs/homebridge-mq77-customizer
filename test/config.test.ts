@@ -18,7 +18,7 @@ describe('resolveConfig', () => {
   it('fills in broker and web defaults', () => {
     const config = resolveConfig({}, collectingLogger());
     expect(config.broker).toMatchObject({ host: 'localhost', port: 1883 });
-    expect(config.web.port).toBe(8590);
+    expect(config.web.port).toBe(8888);
   });
 
   it('defaults to a single Zigbee2MQTT source when none are given', () => {
@@ -72,6 +72,12 @@ describe('resolveConfig', () => {
     expect(config.sources).toHaveLength(1);
     expect(config.sources[0]?.baseTopic).toBe('one');
     expect(log.errors).toHaveLength(1);
+  });
+
+  it('treats a blank web password as none, rather than an untypeable secret', () => {
+    expect(resolveConfig({ web: { password: '   ' } }, collectingLogger()).web.password).toBeUndefined();
+    expect(resolveConfig({ web: { password: '' } }, collectingLogger()).web.password).toBeUndefined();
+    expect(resolveConfig({ web: { password: ' hunter2 ' } }, collectingLogger()).web.password).toBe('hunter2');
   });
 
   it('reads rulesOnly', () => {

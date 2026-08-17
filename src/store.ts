@@ -25,6 +25,14 @@ export interface DeviceExposure {
   splitEndpoints?: boolean;
   /** Accessory name overrides, keyed by endpoint. */
   names?: Record<string, string>;
+  /**
+   * Which button gestures reach HomeKit, keyed by action property then button
+   * name, holding the HomeKit event numbers to keep.
+   *
+   * An absent button means every gesture it supports, so a device paired
+   * before this existed keeps working.
+   */
+  buttons?: Record<string, Record<string, number[]>>;
 }
 
 /** Placeholder until the rules engine lands in v0.5.0. */

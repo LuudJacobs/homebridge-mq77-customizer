@@ -37,7 +37,8 @@
           },
           "password": {
             "title": "Password",
-            "type": "string"
+            "type": "string",
+            "x-schema-form": { "type": "password" }
           },
           "clientId": {
             "title": "Client ID",
@@ -89,7 +90,7 @@
           "port": {
             "title": "Port",
             "type": "integer",
-            "default": 8590,
+            "default": 8888,
             "minimum": 1,
             "maximum": 65535,
             "x-schema-form": { "type": "number" }
@@ -98,6 +99,7 @@
             "title": "Password",
             "type": "string",
             "required": true,
+            "x-schema-form": { "type": "password" },
             "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
           }
         }

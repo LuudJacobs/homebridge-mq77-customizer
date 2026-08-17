@@ -255,6 +255,51 @@ describe('buttons', () => {
     expect(plans[0]?.services[0]?.events).not.toHaveProperty('triple_left');
   });
 
+
+  it('publishes only the gestures that were kept', () => {
+    const plans = planAccessories(device([rocker]), {
+      properties: ['action'],
+      buttons: { action: { left: [2], right: [1] } },
+    });
+    const [left, right, both] = plans[0]!.services;
+    expect(left?.events).toEqual({ hold_left: 2 });
+    expect(right?.events).toEqual({ double_right: 1 });
+    // `both` has no entry, so it keeps everything.
+    expect(both?.events).toEqual({ single_both: 0, double_both: 1, hold_both: 2 });
+  });
+
+  it('tells HomeKit which gestures a button offers', () => {
+    const plans = planAccessories(device([rocker]), {
+      properties: ['action'],
+      buttons: { action: { left: [2] } },
+    });
+    // Without this the Home app would offer all three and two would never fire.
+    expect(plans[0]!.services[0]?.bindings[0]?.props?.validValues).toEqual([2]);
+  });
+
+  it('drops a button switched off entirely', () => {
+    const plans = planAccessories(device([rocker]), {
+      properties: ['action'],
+      buttons: { action: { left: [], right: [] } },
+    });
+    expect(plans[0]!.services.map((service) => service.subtype)).toEqual(['action:both']);
+  });
+
+  it('keeps button numbering stable when one is switched off', () => {
+    const all = planAccessories(device([rocker]), { properties: ['action'] });
+    const withoutLeft = planAccessories(device([rocker]), {
+      properties: ['action'],
+      buttons: { action: { left: [] } },
+    });
+
+    const indexOf = (plans: AccessoryPlan[], subtype: string) =>
+      plans[0]!.services.find((service) => service.subtype === subtype)?.constants?.[0]?.value;
+
+    // Renumbering would silently repoint automations at the wrong button.
+    expect(indexOf(all, 'action:both')).toBe(3);
+    expect(indexOf(withoutLeft, 'action:both')).toBe(3);
+  });
+
   it('skips a button whose every gesture is one HomeKit cannot express', () => {
     const tripleOnly = property({
       key: 'action',
