@@ -51,7 +51,7 @@ describe('resolveConfig', () => {
   it('skips unknown adapters and says what is available', () => {
     const log = collectingLogger();
     const config = resolveConfig(
-      { sources: [{ id: 'x', adapter: 'json-topic', baseTopic: 'broadlinkrm' }] },
+      { sources: [{ id: 'x', adapter: 'carrier-pigeon', baseTopic: 'broadlinkrm' }] },
       log,
     );
     expect(config.sources).toEqual([]);

@@ -4,6 +4,8 @@ import type { Role } from './roles.js';
 export type CharacteristicKind =
   | 'On'
   | 'Brightness'
+  | 'RotationSpeed'
+  | 'SwingMode'
   | 'LockPhysicalControls'
   | 'CurrentTemperature'
   | 'TargetTemperature'
@@ -51,7 +53,11 @@ export function toHomeKit(
       return toBoolean(property, value) ? 1 : 0;
 
     case 'Brightness':
+    case 'RotationSpeed':
       return toPercent(property, value);
+
+    case 'SwingMode':
+      return toBoolean(property, value) ? 1 : 0;
 
     case 'BatteryLevel':
       return clamp(asNumber(value), 0, 100);
@@ -97,7 +103,11 @@ export function fromHomeKit(
       return fromBoolean(property, Number(value) === 1);
 
     case 'Brightness':
+    case 'RotationSpeed':
       return fromPercent(property, Number(value));
+
+    case 'SwingMode':
+      return fromBoolean(property, Number(value) === 1);
 
     case 'TargetTemperature':
       return roundToStep(Number(value), property.step);

@@ -106,6 +106,8 @@ function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
       adapter,
       baseTopic,
       rulesOnly: object.rulesOnly === true,
+      topics: asString(object.topics),
+      setTopicSuffix: asString(object.setTopicSuffix),
     });
   }
 

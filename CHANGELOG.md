@@ -17,3 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Brightness, thermostat, temperature, humidity, battery and child lock reach HomeKit
 - Buttons inferred from the actions a device publishes, one per physical button
 - Property name to characteristic table, so new sensor types need no change to the mapper
+- `json-topic` source adapter for publishers that put flat JSON on a topic per device
+- Properties inferred from the keys seen, with unrecognised keys kept for the rules engine
+- Fan rotation speed and swing
