@@ -93,6 +93,17 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       return;
     }
 
+    // An empty payload is how MQTT says a retained topic is finished with, so
+    // clearing one takes the device out of the catalog rather than leaving it
+    // until the next restart.
+    if (payload.length === 0) {
+      if (this.tracked.delete(relative)) {
+        this.log.info(`${relative} was cleared from the broker, dropping it`);
+        this.emit('devices', this.getDevices());
+      }
+      return;
+    }
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(payload.toString());
