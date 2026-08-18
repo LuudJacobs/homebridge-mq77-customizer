@@ -84,6 +84,28 @@ describe('discovery', () => {
     expect(adapter.getDevices()).toEqual([]);
   });
 
+  it('drops a device whose retained topic is cleared', () => {
+    mqtt.deliver('broadlinkrm/test_tv', { state: 'ON' });
+    expect(adapter.getDevices()).toHaveLength(1);
+
+    // An empty payload is how a retained topic is cleared.
+    mqtt.deliver('broadlinkrm/test_tv', '');
+    expect(adapter.getDevices()).toEqual([]);
+  });
+
+  it('says so when a device goes away', () => {
+    let announcements = 0;
+    mqtt.deliver('broadlinkrm/test_tv', { state: 'ON' });
+    adapter.on('devices', () => (announcements += 1));
+
+    mqtt.deliver('broadlinkrm/test_tv', '');
+    expect(announcements).toBe(1);
+
+    // Clearing a topic we never had is not news.
+    mqtt.deliver('broadlinkrm/never_seen', '');
+    expect(announcements).toBe(1);
+  });
+
   it('ignores payloads it cannot read', () => {
     mqtt.deliver('broadlinkrm/lamp', 'not json');
     mqtt.deliver('broadlinkrm/other', '"just a string"');
