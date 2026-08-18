@@ -196,6 +196,12 @@ function exposedCount(device) {
 }
 
 function paintBadge(badge, device) {
+  if (device.rulesOnly) {
+    // Not "none": this device is doing its job, it just does it in rules.
+    badge.textContent = 'rules only';
+    badge.className = 'badge rules';
+    return;
+  }
   const count = exposedCount(device);
   badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
   badge.className = count === 0 ? 'badge none' : 'badge';
@@ -271,6 +277,9 @@ function renderDevice(device) {
   topic.textContent = device.topic ?? '';
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
+  if (device.renameable && !device.rulesOnly) {
+    summary.append(renameButton(device, name));
+  }
   summary.append(name, meta, topic, badge);
   card.append(summary);
 
@@ -294,45 +303,74 @@ function renderDevice(device) {
   return card;
 }
 
+/**
+ * The pencil in the card header, which swaps the name for a field.
+ *
+ * Everything in here has to stop the click reaching the summary, otherwise
+ * editing the name would collapse the card under the cursor.
+ */
+function renameButton(device, name) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'rename-button';
+  button.title = 'Rename this device';
+  button.setAttribute('aria-label', `Rename ${displayName(device)}`);
+  button.textContent = '\u270E';
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    startRename(device, name, button);
+  });
+
+  return button;
+}
+
+function startRename(device, name, button) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'device-rename';
+  input.value = device.exposure.label ?? '';
+  input.placeholder = device.name;
+  input.maxLength = 64;
+
+  const swallow = (event) => event.stopPropagation();
+  input.addEventListener('click', (event) => {
+    event.preventDefault();
+    swallow(event);
+  });
+  input.addEventListener('keydown', (event) => {
+    swallow(event);
+    if (event.key === 'Enter' || event.key === 'Escape') {
+      event.preventDefault();
+      input.blur();
+    }
+  });
+
+  const finish = () => {
+    device.exposure.label = input.value.trim();
+    name.textContent = displayName(device);
+    input.replaceWith(name);
+    button.hidden = false;
+    save(device);
+  };
+  input.addEventListener('blur', finish, { once: true });
+
+  button.hidden = true;
+  name.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
 function renderOptions(device) {
   const wrap = document.createElement('div');
   wrap.className = 'options';
 
-  // Zigbee2MQTT names its own devices and republishes the name, so renaming
-  // one here would leave two names drifting apart. Rename it there instead.
-  if (device.renameable && !device.rulesOnly) {
-    const option = document.createElement('div');
-    option.className = 'option';
-    const id = `name-${key(device)}`;
-    const label = document.createElement('label');
-    label.htmlFor = id;
-    label.textContent = 'Name';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = id;
-    input.className = 'device-rename';
-    input.value = device.exposure.label ?? '';
-    input.placeholder = device.name;
-    input.maxLength = 64;
-    input.addEventListener('input', () => {
-      device.exposure.label = input.value;
-      // The card header is patched rather than re-rendered, so the field does
-      // not lose focus mid word.
-      const heading = input.closest('.device')?.querySelector('.device-name');
-      if (heading) {
-        heading.textContent = displayName(device);
-      }
-      save(device);
-    });
-    option.append(label, input);
-    wrap.append(option);
-  }
-
-  // The tile only decides what the on/off service looks like, so it is worth
-  // showing only where an on/off function is actually ticked.
+  // Shown whenever the device could take a tile, not only once something is
+  // ticked, so the choice can be made before or after selecting functions.
   const endpoints = device.rulesOnly
     ? []
-    : device.endpoints.filter((endpoint) => hasSelectedRole(device, endpoint, 'power'));
+    : device.endpoints.filter((endpoint) => hasPublishableRole(device, endpoint, 'power'));
 
   for (const endpoint of endpoints) {
     const option = document.createElement('div');
@@ -361,20 +399,17 @@ function renderOptions(device) {
     wrap.append(option);
   }
 
-  // Splitting depends on any published function being spread across
+  // Splitting depends on any publishable function being spread across
   // endpoints, not only on/off, so it is counted separately from the tiles.
-  const publishedEndpoints = device.rulesOnly
+  const splittable = device.rulesOnly
     ? []
     : device.endpoints.filter((endpoint) =>
         device.properties.some(
-          (property) =>
-            property.endpoint === endpoint &&
-            property.publishable &&
-            device.exposure.properties.includes(property.key),
+          (property) => property.endpoint === endpoint && property.publishable,
         ),
       );
 
-  if (publishedEndpoints.filter(Boolean).length > 1) {
+  if (splittable.filter(Boolean).length > 1) {
     const option = document.createElement('div');
     option.className = 'option';
     const checkbox = document.createElement('input');
@@ -394,6 +429,13 @@ function renderOptions(device) {
   }
 
   return wrap;
+}
+
+/** Could this endpoint carry the role at all, whether or not it is ticked. */
+function hasPublishableRole(device, endpoint, role) {
+  return device.properties.some(
+    (property) => property.role === role && property.endpoint === endpoint && property.publishable,
+  );
 }
 
 function hasSelectedRole(device, endpoint, role) {
@@ -436,11 +478,18 @@ function renderProperty(device, property) {
   const row = document.createElement('div');
   row.className = 'property';
 
+  // A rules only source publishes nothing, so a row of dead checkboxes would
+  // only invite clicking them.
+  const selectable = !device.rulesOnly && property.publishable;
+  if (!selectable) {
+    row.classList.add('unselectable');
+  }
+
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.id = `p-${key(device)}-${property.key}`;
   checkbox.checked = device.exposure.properties.includes(property.key);
-  checkbox.disabled = !property.publishable || device.rulesOnly;
+  checkbox.disabled = !property.publishable;
   checkbox.addEventListener('change', () => {
     const selected = new Set(device.exposure.properties);
     if (checkbox.checked) {
@@ -459,7 +508,9 @@ function renderProperty(device, property) {
   });
 
   const label = document.createElement('label');
-  label.htmlFor = checkbox.id;
+  if (selectable) {
+    label.htmlFor = checkbox.id;
+  }
   label.textContent = property.label;
 
   const meta = document.createElement('span');
@@ -486,11 +537,15 @@ function renderProperty(device, property) {
   value.dataset.value = `${key(device)}|${property.key}`;
   value.textContent = formatValue(device, property.key);
 
-  row.append(checkbox, label, value);
+  if (selectable) {
+    row.append(checkbox, label, value);
+  } else {
+    row.append(label, value);
+  }
 
   // An action property carries several physical buttons, each with gestures
   // that can be published independently.
-  if (property.buttons?.length && checkbox.checked && !device.rulesOnly) {
+  if (property.buttons?.length && selectable && checkbox.checked) {
     const group = document.createElement('div');
     group.className = 'buttons';
     group.append(...property.buttons.map((button) => renderButton(device, property, button)));

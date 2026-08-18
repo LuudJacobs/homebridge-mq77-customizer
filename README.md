@@ -75,7 +75,7 @@ Per device you can also:
 
 - choose the tile HomeKit shows, Switch, Outlet, Lightbulb or Fan
 - publish each endpoint as its own accessory, for multi channel switches
-- rename the accessory
+- rename the device, using the pencil in the card header, for sources that do not name devices themselves. Zigbee2MQTT does, so rename those in Zigbee2MQTT and the new name arrives here on its own
 
 Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
 
