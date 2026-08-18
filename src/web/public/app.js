@@ -9,6 +9,10 @@ const state = {
   exposedOnly: false,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
+  view: 'devices',
+  rules: [],
+  openRules: new Set(),
+  log: [],
 };
 
 const el = {
@@ -22,6 +26,13 @@ const el = {
   status: document.getElementById('status'),
   exposedOnly: document.getElementById('exposed-only'),
   logout: document.getElementById('logout'),
+  tabDevices: document.getElementById('tab-devices'),
+  tabRules: document.getElementById('tab-rules'),
+  viewDevices: document.getElementById('view-devices'),
+  viewRules: document.getElementById('view-rules'),
+  rules: document.getElementById('rules'),
+  log: document.getElementById('log'),
+  addRule: document.getElementById('add-rule'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -117,6 +128,20 @@ function listen() {
     if (payload.type === 'devices') {
       // The catalog changed, so a device may have joined, left or been renamed.
       load().catch(() => {});
+      return;
+    }
+    if (payload.type === 'rules') {
+      if (state.view === 'rules') {
+        loadRules().catch(() => {});
+      }
+      return;
+    }
+    if (payload.type === 'log') {
+      state.log.unshift(payload.entry);
+      state.log = state.log.slice(0, 200);
+      if (state.view === 'rules') {
+        renderLog();
+      }
       return;
     }
     if (payload.type === 'state') {
@@ -667,4 +692,448 @@ start().catch((error) => {
   }
   console.error('Startup failed', error);
   showLogin(error.message);
+});
+
+/* Rules ------------------------------------------------------------------ */
+
+const MATCH_KINDS = [
+  { kind: 'changedTo', label: 'becomes' },
+  { kind: 'equals', label: 'is' },
+  { kind: 'notEquals', label: 'is not' },
+  { kind: 'changed', label: 'changes' },
+  { kind: 'above', label: 'rises above' },
+  { kind: 'below', label: 'falls below' },
+];
+
+const OUTCOME_LABELS = {
+  fired: 'ran',
+  rateLimited: 'held back',
+  conditionsFailed: 'conditions not met',
+  failed: 'failed',
+  disabled: 'turned off',
+};
+
+/** Properties a rule can watch: anything readable. */
+const watchable = (device) => device.properties.filter((property) => property.readable);
+
+/** Properties a rule can write: anything with a command topic. */
+const writable = (device) => device.properties.filter((property) => property.writable);
+
+function findDevice(ref) {
+  return state.devices.find(
+    (device) => device.sourceId === ref.sourceId && device.deviceId === ref.deviceId,
+  );
+}
+
+function findProperty(ref) {
+  return findDevice(ref)?.properties.find((property) => property.key === ref.propertyKey);
+}
+
+async function loadRules() {
+  const [rules, log] = await Promise.all([api('/api/rules'), api('/api/log')]);
+  state.rules = rules.rules;
+  state.log = log.entries;
+  renderRules();
+  renderLog();
+}
+
+function renderRules() {
+  el.rules.replaceChildren();
+  if (state.rules.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'No rules yet.';
+    el.rules.append(empty);
+    return;
+  }
+  for (const rule of state.rules) {
+    el.rules.append(renderRule(rule));
+  }
+}
+
+function renderRule(rule) {
+  const card = document.createElement('details');
+  card.className = 'device rule';
+  card.open = state.openRules.has(rule.id);
+  card.addEventListener('toggle', () => {
+    if (card.open) {
+      state.openRules.add(rule.id);
+    } else {
+      state.openRules.delete(rule.id);
+    }
+  });
+
+  const summary = document.createElement('summary');
+  const name = document.createElement('span');
+  name.className = 'device-name';
+  name.textContent = rule.name;
+  const detail = document.createElement('span');
+  detail.className = 'device-meta';
+  detail.textContent = summarise(rule);
+  const badge = document.createElement('span');
+  badge.className = rule.enabled ? 'badge' : 'badge none';
+  badge.textContent = rule.enabled ? 'on' : 'off';
+  summary.append(name, detail, badge);
+  card.append(summary);
+
+  card.append(renderRuleBody(rule));
+  return card;
+}
+
+function summarise(rule) {
+  const source = findProperty(rule.trigger);
+  const target = findProperty(rule.actions[0]);
+  const from = source ? `${findDevice(rule.trigger)?.name} ${source.label}` : 'a removed function';
+  const to = target ? `${findDevice(rule.actions[0])?.name} ${target.label}` : 'a removed function';
+  const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
+  return `${from} → ${to}${extra}`;
+}
+
+function renderRuleBody(rule) {
+  const body = document.createElement('div');
+  body.className = 'device-body';
+  const draft = structuredClone(rule);
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'option';
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Name';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = draft.name;
+  nameInput.maxLength = 80;
+  nameInput.addEventListener('input', () => (draft.name = nameInput.value));
+  nameRow.append(nameLabel, nameInput);
+
+  const enabled = document.createElement('label');
+  enabled.className = 'toggle';
+  const enabledBox = document.createElement('input');
+  enabledBox.type = 'checkbox';
+  enabledBox.checked = draft.enabled;
+  enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
+  enabled.append(enabledBox, document.createTextNode('Enabled'));
+  nameRow.append(enabled);
+  body.append(nameRow);
+
+  body.append(sectionTitle('When'));
+  body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
+
+  body.append(sectionTitle('And, optionally'));
+  const conditions = document.createElement('div');
+  const drawConditions = () => {
+    conditions.replaceChildren();
+    draft.conditions.forEach((condition, index) => {
+      conditions.append(
+        refRow(condition, {
+          pick: watchable,
+          withMatch: true,
+          onRemove: () => {
+            draft.conditions.splice(index, 1);
+            drawConditions();
+          },
+        }),
+      );
+    });
+  };
+  drawConditions();
+  body.append(conditions, addButton('Add condition', () => {
+    draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
+    drawConditions();
+  }));
+
+  body.append(sectionTitle('Then'));
+  const actions = document.createElement('div');
+  const drawActions = () => {
+    actions.replaceChildren();
+    draft.actions.forEach((action, index) => {
+      actions.append(
+        refRow(action, {
+          pick: writable,
+          withValue: true,
+          withDelay: true,
+          onRemove:
+            draft.actions.length > 1
+              ? () => {
+                  draft.actions.splice(index, 1);
+                  drawActions();
+                }
+              : undefined,
+        }),
+      );
+    });
+  };
+  drawActions();
+  body.append(actions, addButton('Add action', () => {
+    draft.actions.push({ ...blankRef(writable), value: '' });
+    drawActions();
+  }));
+
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const saveRule = document.createElement('button');
+  saveRule.type = 'button';
+  saveRule.className = 'primary';
+  saveRule.textContent = 'Save';
+  saveRule.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      await loadRules();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.textContent = 'Delete';
+  remove.addEventListener('click', async () => {
+    await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
+    state.openRules.delete(rule.id);
+    await loadRules();
+  });
+
+  footer.append(saveRule, remove, error);
+  body.append(footer);
+  return body;
+}
+
+function sectionTitle(text) {
+  const title = document.createElement('p');
+  title.className = 'group-title';
+  title.textContent = text;
+  return title;
+}
+
+function addButton(text, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'add-row';
+  button.textContent = text;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function blankRef(pick) {
+  const device = state.devices.find((candidate) => pick(candidate).length > 0);
+  return {
+    sourceId: device?.sourceId ?? '',
+    deviceId: device?.deviceId ?? '',
+    propertyKey: pick(device ?? { properties: [] })[0]?.key ?? '',
+  };
+}
+
+/**
+ * One line of a rule: a device, one of its functions, and what to do with it.
+ *
+ * The same row serves triggers, conditions and actions, since all three are a
+ * reference into the same normalised model.
+ */
+function refRow(ref, options) {
+  const row = document.createElement('div');
+  row.className = 'rule-row';
+
+  const devices = document.createElement('select');
+  for (const device of state.devices.filter((candidate) => options.pick(candidate).length > 0)) {
+    const choice = document.createElement('option');
+    choice.value = `${device.sourceId}|${device.deviceId}`;
+    choice.textContent = displayName(device);
+    devices.append(choice);
+  }
+  devices.value = `${ref.sourceId}|${ref.deviceId}`;
+
+  const properties = document.createElement('select');
+  const fillProperties = () => {
+    properties.replaceChildren();
+    const device = findDevice(ref);
+    for (const property of device ? options.pick(device) : []) {
+      const choice = document.createElement('option');
+      choice.value = property.key;
+      choice.textContent = property.label;
+      properties.append(choice);
+    }
+    properties.value = ref.propertyKey;
+    if (!properties.value) {
+      ref.propertyKey = properties.options[0]?.value ?? '';
+      properties.value = ref.propertyKey;
+    }
+  };
+
+  devices.addEventListener('change', () => {
+    const [sourceId, deviceId] = devices.value.split('|');
+    ref.sourceId = sourceId;
+    ref.deviceId = deviceId;
+    ref.propertyKey = '';
+    fillProperties();
+    redrawTail();
+  });
+  properties.addEventListener('change', () => {
+    ref.propertyKey = properties.value;
+    redrawTail();
+  });
+
+  row.append(devices, properties);
+
+  const tail = document.createElement('span');
+  tail.className = 'rule-tail';
+  row.append(tail);
+
+  function redrawTail() {
+    tail.replaceChildren();
+    const property = findProperty(ref);
+
+    if (options.withMatch) {
+      const kinds = document.createElement('select');
+      for (const entry of MATCH_KINDS) {
+        const choice = document.createElement('option');
+        choice.value = entry.kind;
+        choice.textContent = entry.label;
+        kinds.append(choice);
+      }
+      kinds.value = ref.match.kind;
+      kinds.addEventListener('change', () => {
+        ref.match = { kind: kinds.value, value: ref.match.value ?? '' };
+        redrawTail();
+      });
+      tail.append(kinds);
+
+      if (ref.match.kind !== 'changed') {
+        tail.append(valueInput(property, ref.match.value, (value) => (ref.match.value = value)));
+      }
+    }
+
+    if (options.withValue) {
+      tail.append(valueInput(property, ref.value, (value) => (ref.value = value)));
+    }
+
+    if (options.withDelay) {
+      const delay = document.createElement('input');
+      delay.type = 'number';
+      delay.className = 'delay';
+      delay.min = 0;
+      delay.placeholder = 'delay s';
+      delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
+      delay.addEventListener('input', () => {
+        const seconds = Number(delay.value);
+        ref.delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+      });
+      tail.append(delay);
+    }
+
+    if (options.onRemove) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'add-row';
+      remove.textContent = '✕';
+      remove.title = 'Remove';
+      remove.addEventListener('click', options.onRemove);
+      tail.append(remove);
+    }
+  }
+
+  fillProperties();
+  redrawTail();
+  return row;
+}
+
+/** Offers what the property accepts rather than a free text box wherever possible. */
+function valueInput(property, current, onChange) {
+  if (property?.type === 'enum' && property.values?.length) {
+    const select = document.createElement('select');
+    for (const value of property.values) {
+      const choice = document.createElement('option');
+      choice.value = value;
+      choice.textContent = value;
+      select.append(choice);
+    }
+    select.value = current ?? property.values[0];
+    onChange(select.value);
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  if (property?.type === 'binary') {
+    const select = document.createElement('select');
+    for (const value of [property.onValue ?? 'ON', property.offValue ?? 'OFF']) {
+      const choice = document.createElement('option');
+      choice.value = String(value);
+      choice.textContent = String(value);
+      select.append(choice);
+    }
+    select.value = current !== undefined && current !== '' ? String(current) : select.options[0].value;
+    onChange(select.value);
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  const input = document.createElement('input');
+  input.type = property?.type === 'numeric' ? 'number' : 'text';
+  if (property?.min !== undefined) {
+    input.min = property.min;
+  }
+  if (property?.max !== undefined) {
+    input.max = property.max;
+  }
+  input.value = current ?? '';
+  input.addEventListener('input', () => {
+    onChange(input.type === 'number' ? Number(input.value) : input.value);
+  });
+  return input;
+}
+
+function renderLog() {
+  el.log.replaceChildren();
+  if (state.log.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'Nothing has run yet.';
+    el.log.append(empty);
+    return;
+  }
+  for (const entry of state.log.slice(0, 50)) {
+    const line = document.createElement('div');
+    line.className = `log-line ${entry.outcome}`;
+    const when = document.createElement('span');
+    when.className = 'log-time';
+    when.textContent = new Date(entry.at).toLocaleTimeString();
+    const what = document.createElement('span');
+    what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
+    line.append(when, what);
+    el.log.append(line);
+  }
+}
+
+function showView(view) {
+  state.view = view;
+  el.viewDevices.hidden = view !== 'devices';
+  el.viewRules.hidden = view !== 'rules';
+  el.tabDevices.classList.toggle('active', view === 'devices');
+  el.tabRules.classList.toggle('active', view === 'rules');
+  if (view === 'rules') {
+    loadRules().catch((problem) => setStatus(problem.message, 'lost'));
+  }
+}
+
+el.tabDevices.addEventListener('click', () => showView('devices'));
+el.tabRules.addEventListener('click', () => showView('rules'));
+
+el.addRule.addEventListener('click', async () => {
+  const trigger = { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } };
+  const draft = {
+    name: 'New rule',
+    enabled: false,
+    trigger,
+    conditions: [],
+    actions: [{ ...blankRef(writable), value: '' }],
+  };
+  try {
+    const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+    state.openRules.add(created.rule.id);
+    await loadRules();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
 });
