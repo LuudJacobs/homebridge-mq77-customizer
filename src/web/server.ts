@@ -224,6 +224,7 @@ export class WebServer {
         model: device.model,
         description: device.description,
         rulesOnly: device.rulesOnly,
+        renameable: device.renameable,
         endpoints,
         properties: device.properties.map((property) => ({
           key: property.key,
@@ -306,6 +307,8 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     }
   }
 
+  const label = typeof input.label === 'string' ? input.label.trim().slice(0, 64) : '';
+
   const names: Record<string, string> = {};
   for (const [endpoint, name] of Object.entries(input.names ?? {})) {
     if (typeof name === 'string' && name.trim().length > 0) {
@@ -333,6 +336,8 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     properties,
     tileTypes,
     splitEndpoints: input.splitEndpoints === true,
+    // An empty name means "use the source's name", not an empty accessory.
+    ...(label ? { label } : {}),
     names,
     buttons,
   };

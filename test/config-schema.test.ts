@@ -50,6 +50,15 @@ describe('config.schema.json', () => {
     expect(sliders).toEqual([]);
   });
 
+  it('shows adapter specific fields only for that adapter', () => {
+    for (const name of ['topics', 'setTopicSuffix']) {
+      const [, field] = properties(schema.schema).find(([path]) => path.endsWith(`.${name}`))!;
+      // Otherwise a Zigbee2MQTT source offers two fields that do nothing.
+      expect(field.condition?.functionBody).toContain("adapter === 'json-topic'");
+      expect(field.description ?? '').not.toContain('Flat JSON sources only');
+    }
+  });
+
   it('masks password fields, since format alone does not do it in this UI', () => {
     const plain = properties(schema.schema)
       .filter(([path, property]) => /password/i.test(path) && property['x-schema-form']?.type !== 'password')

@@ -19,6 +19,8 @@ export class Zigbee2mqttAdapter
   implements SourceAdapter
 {
   readonly sourceId: string;
+  /** Renaming belongs in Zigbee2MQTT, which publishes the name back to us. */
+  readonly providesNames = true;
 
   private readonly source: SourceConfig;
   private readonly mqtt: MqttConnection;

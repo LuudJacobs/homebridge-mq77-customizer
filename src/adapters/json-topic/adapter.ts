@@ -25,6 +25,8 @@ interface Tracked {
  */
 export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements SourceAdapter {
   readonly sourceId: string;
+  /** Devices are named after their topic, which is rarely what a human wants. */
+  readonly providesNames = false;
 
   private readonly source: SourceConfig;
   private readonly mqtt: MqttConnection;

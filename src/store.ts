@@ -23,6 +23,12 @@ export interface DeviceExposure {
   tileTypes?: Record<string, TileType>;
   /** Publish each endpoint as its own accessory rather than one with several services. */
   splitEndpoints?: boolean;
+  /**
+   * A name for the device itself, used in the interface and as the base for
+   * accessory names. Only offered for sources that do not name devices
+   * themselves.
+   */
+  label?: string;
   /** Accessory name overrides, keyed by endpoint. */
   names?: Record<string, string>;
   /**
