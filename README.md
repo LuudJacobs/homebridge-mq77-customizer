@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.4.0
+# MQ77 Customizer 0.4.1
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -11,15 +11,13 @@ A Homebridge plugin that exposes MQTT devices to HomeKit and links them together
 
 ## Installation
 
-```
-npm install -g homebridge-mq77-customizer
-```
-
-To install a branch directly from source instead, which builds on install:
+Not published to npm. Install from source, which builds on install:
 
 ```
-npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#test
+npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#main
 ```
+
+Use `#test` instead of `#main` to run what is being tested rather than the last release.
 
 Add the platform to your Homebridge config:
 
