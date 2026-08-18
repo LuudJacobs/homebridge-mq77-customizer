@@ -498,3 +498,9 @@ button.primary {
 .log-line.conditionsFailed {
   color: var(--muted);
 }
+
+.device-seen {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
