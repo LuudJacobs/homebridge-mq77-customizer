@@ -157,6 +157,10 @@ function listen() {
         device.lastSeen[propertyKey] = payload.at;
         updateValue(device, propertyKey);
       }
+      const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
+      if (seen) {
+        paintLastSeen(seen, device);
+      }
     }
   };
 }
@@ -170,6 +174,42 @@ function updateValue(device, propertyKey) {
     node.textContent = formatValue(device, propertyKey);
     node.classList.add('set');
   }
+}
+
+/**
+ * When the device last said anything.
+ *
+ * Taken from the newest reading of any of its functions, so it works the same
+ * for every source rather than relying on one of them publishing a timestamp.
+ * Only known since this plugin started, so a quiet device has none.
+ */
+function deviceLastSeen(device) {
+  const times = Object.values(device.lastSeen ?? {});
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+function formatLastSeen(at) {
+  const seen = new Date(at);
+  const pad = (value) => String(value).padStart(2, '0');
+  const time = `${pad(seen.getHours())}:${pad(seen.getMinutes())}`;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  if (seen >= today) {
+    return `Today ${time}:${pad(seen.getSeconds())}`;
+  }
+  if (seen >= yesterday) {
+    return `Yesterday ${time}`;
+  }
+  return `${pad(seen.getDate())}-${pad(seen.getMonth() + 1)} ${time}`;
+}
+
+function paintLastSeen(node, device) {
+  const at = deviceLastSeen(device);
+  node.textContent = at === undefined ? '' : formatLastSeen(at);
 }
 
 function formatValue(device, propertyKey) {
@@ -296,6 +336,10 @@ function renderDevice(device) {
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
+  const seen = document.createElement('span');
+  seen.className = 'device-seen';
+  seen.dataset.seen = key(device);
+  paintLastSeen(seen, device);
   // Only visible once the card is open, where there is room for it.
   const topic = document.createElement('span');
   topic.className = 'device-topic';
@@ -307,7 +351,7 @@ function renderDevice(device) {
   if (device.renameable) {
     summary.append(renameButton(device, name));
   }
-  summary.append(name, meta, topic, badge);
+  summary.append(name, meta, seen, topic, badge);
   card.append(summary);
 
   const body = document.createElement('div');
