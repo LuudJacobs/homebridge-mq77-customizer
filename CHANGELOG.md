@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Rules engine: when something happens on one device, send something to another, across sources
+- Triggers, optional conditions and one or more actions, with optional delays
+- Rules never run on retained messages, so reconnecting cannot replay an old press
+- Per rule rate limit, and a rule that runs away is turned off and logged
+- Rule editor and a run log in the web interface
+
 ## [0.4.1] - 2026-08-18
 
 ### Changed
