@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.4.1] - 2026-08-18
+
+### Changed
+
+- Marked private, since the package is not published. `npm publish` now refuses rather than putting it on the registry by accident
+- Installation documents the only route that works, installing from source, rather than leading with an npm package that does not exist
+
 ## [0.4.0] - 2026-08-18
 
 First release. Everything below arrived across v0.1.0 to v0.4.0, none of which was published separately.
