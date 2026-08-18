@@ -1,0 +1,126 @@
+{
+  "pluginAlias": "Mq77Customizer",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Everything else is configured from the web interface, not here.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "MQ77 Customizer",
+        "required": true
+      },
+      "broker": {
+        "title": "MQTT Broker",
+        "type": "object",
+        "properties": {
+          "host": {
+            "title": "Host",
+            "type": "string",
+            "default": "localhost",
+            "required": true
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer",
+            "default": 1883,
+            "minimum": 1,
+            "maximum": 65535,
+            "required": true,
+            "x-schema-form": { "type": "number" }
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string",
+            "x-schema-form": { "type": "password" }
+          },
+          "clientId": {
+            "title": "Client ID",
+            "type": "string",
+            "description": "Leave empty to generate one."
+          }
+        }
+      },
+      "sources": {
+        "title": "Sources",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "title": "ID",
+              "type": "string",
+              "required": true,
+              "description": "Stable identifier. Changing it orphans everything configured against this source."
+            },
+            "adapter": {
+              "title": "Adapter",
+              "type": "string",
+              "required": true,
+              "default": "zigbee2mqtt",
+              "oneOf": [
+                { "title": "Zigbee2MQTT", "enum": ["zigbee2mqtt"] },
+                { "title": "Flat JSON topics", "enum": ["json-topic"] }
+              ]
+            },
+            "baseTopic": {
+              "title": "Base topic",
+              "type": "string",
+              "required": true,
+              "default": "zigbee2mqtt"
+            },
+            "topics": {
+              "title": "Topic filter",
+              "type": "string",
+              "description": "Defaults to everything under the base topic.",
+              "condition": {
+                "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+              }
+            },
+            "setTopicSuffix": {
+              "title": "Command topic suffix",
+              "type": "string",
+              "description": "Usually \"set\". Leave empty to make the source read only.",
+              "condition": {
+                "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+              }
+            },
+            "rulesOnly": {
+              "title": "Rules only",
+              "type": "boolean",
+              "default": false,
+              "description": "Do not publish accessories to HomeKit. Devices stay usable as rule triggers and targets."
+            }
+          }
+        }
+      },
+      "web": {
+        "title": "Web Interface",
+        "type": "object",
+        "properties": {
+          "port": {
+            "title": "Port",
+            "type": "integer",
+            "default": 8888,
+            "minimum": 1,
+            "maximum": 65535,
+            "x-schema-form": { "type": "number" }
+          },
+          "password": {
+            "title": "Password",
+            "type": "string",
+            "required": true,
+            "x-schema-form": { "type": "password" },
+            "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
+          }
+        }
+      }
+    }
+  }
+}

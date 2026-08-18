@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>MQ77 Customizer</title>
+  <rect width="64" height="64" rx="13" fill="#660066" />
+  <!-- Broadcast arcs radiating from the corner, the MQTT motif. -->
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round">
+    <path d="M10 40 A14 14 0 0 1 24 54" />
+    <path d="M10 28 A26 26 0 0 1 36 54" />
+  </g>
+  <!-- The 7, drawn twice: once in the background colour to cut a clean gap
+       through the outer arc, then in white on top. -->
+  <path
+    d="M27 16 H49 L35 45"
+    fill="none"
+    stroke="#660066"
+    stroke-width="13"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M27 16 H49 L35 45"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
