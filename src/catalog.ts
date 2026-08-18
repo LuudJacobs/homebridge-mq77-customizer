@@ -9,6 +9,8 @@ import { deviceKey, type NormalisedDevice, type StateUpdate } from './model/type
 export interface CatalogDevice extends NormalisedDevice {
   /** Whether this device's source publishes accessories to HomeKit. */
   rulesOnly: boolean;
+  /** Whether a name can be given here, or belongs to the source instead. */
+  renameable: boolean;
 }
 
 export interface CatalogEvents {
@@ -98,8 +100,9 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     const devices: CatalogDevice[] = [];
     for (const [sourceId, adapter] of this.adapters) {
       const rulesOnly = this.sources.get(sourceId)?.rulesOnly === true;
+      const renameable = !adapter.providesNames;
       for (const device of adapter.getDevices()) {
-        devices.push({ ...device, rulesOnly });
+        devices.push({ ...device, rulesOnly, renameable });
       }
     }
     this.devices = devices;

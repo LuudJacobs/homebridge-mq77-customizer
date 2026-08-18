@@ -33,6 +33,7 @@ function device(
     manufacturer: 'SONOFF',
     model: 'ZB2GS',
     rulesOnly: false,
+    renameable: false,
     properties,
     ...overrides,
   };
@@ -137,6 +138,40 @@ describe('lights', () => {
       tileTypes: { '': 'Outlet' },
     });
     expect(kinds(plans)).toEqual([['Outlet']]);
+  });
+});
+
+describe('renaming', () => {
+  it('uses the given name for the accessory', () => {
+    const plans = planAccessories(device([property()]), {
+      properties: ['state'],
+      label: 'Reading lamp',
+    });
+    expect(plans[0]?.name).toBe('Reading lamp');
+  });
+
+  it('falls back to the source name when the given one is blank', () => {
+    const plans = planAccessories(device([property()]), { properties: ['state'], label: '  ' });
+    expect(plans[0]?.name).toBe('Living room');
+  });
+
+  it('carries the given name into split endpoint accessories', () => {
+    const plans = planAccessories(device(dualEndpoint), {
+      properties: ['state_l1', 'state_l2'],
+      splitEndpoints: true,
+      label: 'Hallway',
+    });
+    expect(plans.map((plan) => plan.name)).toEqual(['Hallway l1', 'Hallway l2']);
+  });
+
+  it('lets a per endpoint name still win', () => {
+    const plans = planAccessories(device(dualEndpoint), {
+      properties: ['state_l1', 'state_l2'],
+      splitEndpoints: true,
+      label: 'Hallway',
+      names: { l1: 'Porch' },
+    });
+    expect(plans.map((plan) => plan.name)).toEqual(['Porch', 'Hallway l2']);
   });
 });
 
