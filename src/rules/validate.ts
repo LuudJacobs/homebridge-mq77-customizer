@@ -1,0 +1,132 @@
+import type { Action, Condition, Match, PropertyRef, Rule, Trigger } from './types.js';
+
+const MATCH_KINDS = ['changed', 'equals', 'notEquals', 'changedTo', 'above', 'below'];
+const NEEDS_VALUE = ['equals', 'notEquals', 'changedTo', 'above', 'below'];
+const NEEDS_NUMBER = ['above', 'below'];
+
+/**
+ * Turns whatever the interface sent into a rule, or says why it cannot.
+ *
+ * A malformed rule is rejected rather than stored half understood, since a
+ * rule that silently does nothing is worse than one that refuses to save.
+ */
+export function parseRule(raw: unknown, id: string): { rule: Rule } | { error: string } {
+  if (!isObject(raw)) {
+    return { error: 'A rule must be an object' };
+  }
+
+  const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 80) : '';
+  if (!name) {
+    return { error: 'A rule needs a name' };
+  }
+
+  const trigger = parseRef(raw.trigger);
+  if (!trigger) {
+    return { error: 'The trigger needs a device and a function' };
+  }
+  const triggerMatch = parseMatch(isObject(raw.trigger) ? raw.trigger.match : undefined);
+  if ('error' in triggerMatch) {
+    return { error: `Trigger: ${triggerMatch.error}` };
+  }
+
+  const conditions: Condition[] = [];
+  for (const entry of asArray(raw.conditions)) {
+    const ref = parseRef(entry);
+    const match = parseMatch(isObject(entry) ? entry.match : undefined);
+    if (!ref) {
+      return { error: 'A condition needs a device and a function' };
+    }
+    if ('error' in match) {
+      return { error: `Condition: ${match.error}` };
+    }
+    conditions.push({ ...ref, match: match.match });
+  }
+
+  const actions: Action[] = [];
+  for (const entry of asArray(raw.actions)) {
+    const ref = parseRef(entry);
+    if (!ref || !isObject(entry)) {
+      return { error: 'An action needs a device and a function' };
+    }
+    const value = entry.value;
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      return { error: 'An action needs a value to send' };
+    }
+    const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
+    actions.push({ ...ref, value, ...(delay ? { delayMs: delay } : {}) });
+  }
+
+  if (actions.length === 0) {
+    return { error: 'A rule needs at least one action' };
+  }
+
+  const rateLimitMs =
+    typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
+
+  return {
+    rule: {
+      id,
+      name,
+      enabled: raw.enabled !== false,
+      trigger: { ...trigger, match: triggerMatch.match } as Trigger,
+      conditions,
+      actions,
+      ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
+    },
+  };
+}
+
+function parseMatch(raw: unknown): { match: Match } | { error: string } {
+  if (!isObject(raw) || typeof raw.kind !== 'string' || !MATCH_KINDS.includes(raw.kind)) {
+    return { error: 'unknown test' };
+  }
+  const kind = raw.kind;
+
+  if (!NEEDS_VALUE.includes(kind)) {
+    return { match: { kind: 'changed' } };
+  }
+
+  const value = raw.value;
+  if (NEEDS_NUMBER.includes(kind)) {
+    const number = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(number)) {
+      return { error: `${kind} needs a number` };
+    }
+    return { match: { kind, value: number } as Match };
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+    return { error: `${kind} needs a value` };
+  }
+  return { match: { kind, value } as Match };
+}
+
+function parseRef(raw: unknown): PropertyRef | undefined {
+  if (!isObject(raw)) {
+    return undefined;
+  }
+  const { sourceId, deviceId, propertyKey } = raw;
+  if (
+    typeof sourceId !== 'string' ||
+    typeof deviceId !== 'string' ||
+    typeof propertyKey !== 'string' ||
+    !sourceId ||
+    !deviceId ||
+    !propertyKey
+  ) {
+    return undefined;
+  }
+  return { sourceId, deviceId, propertyKey };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
