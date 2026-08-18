@@ -277,14 +277,6 @@ function renderDevice(device) {
   const body = document.createElement('div');
   body.className = 'device-body';
 
-  if (device.rulesOnly) {
-    const note = document.createElement('p');
-    note.className = 'rules-only';
-    note.textContent =
-      'This source is set to rules only, so nothing here is published to HomeKit.';
-    body.append(note);
-  }
-
   body.append(renderOptions(device));
 
   for (const [title, properties] of groupProperties(device)) {

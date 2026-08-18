@@ -6,7 +6,6 @@
   --line: #e2e5ea;
   --accent: #2f6fed;
   --accent-soft: #e8effd;
-  --warn: #b45309;
   --error: #b91c1c;
   --radius: 10px;
 }
@@ -20,7 +19,6 @@
     --line: #2b2f37;
     --accent: #6f9dff;
     --accent-soft: #21293a;
-    --warn: #d99a3d;
     --error: #f27272;
   }
 }
@@ -347,11 +345,6 @@ header {
   border-color: var(--accent);
 }
 
-.rules-only {
-  color: var(--warn);
-  font-size: 0.82rem;
-  margin: 0 0 0.75rem;
-}
 
 .empty {
   color: var(--muted);
