@@ -92,7 +92,22 @@ Functions with no HomeKit equivalent are still listed and marked, and stay avail
 
 Button names and gestures are worked out from the action names the device publishes, so a double rocker becomes three buttons without anything being typed out. Gestures HomeKit has no equivalent for, such as triple press, stay available to the rules engine.
 
-The rules engine arrives in v0.5.0.
+## Rules
+
+The Rules tab links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+
+A rule is a trigger, any number of conditions that must hold, and one or more actions. Actions can be delayed.
+
+Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
+
+Two things guard against a pair of rules setting each other off:
+
+- a rule will not run more often than its rate limit, one second by default
+- a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
+
+Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+
+Recent activity is listed under the rules, including rules that declined to run and why.
 
 ## Upgrading from MQTT Customizer
 

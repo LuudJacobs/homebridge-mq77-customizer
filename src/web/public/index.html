@@ -33,12 +33,31 @@
         </div>
       </header>
 
-      <p class="hint">
-        Tick what should appear in HomeKit. Changes apply immediately, no restart.
-        Everything else stays available to the rules engine.
-      </p>
+      <nav class="tabs">
+        <button id="tab-devices" type="button" class="tab active">Devices</button>
+        <button id="tab-rules" type="button" class="tab">Rules</button>
+      </nav>
 
-      <main id="devices"></main>
+      <section id="view-devices">
+        <p class="hint">
+          Tick what should appear in HomeKit. Changes apply immediately, no restart.
+          Everything else stays available to the rules engine.
+        </p>
+        <main id="devices"></main>
+      </section>
+
+      <section id="view-rules" hidden>
+        <p class="hint">
+          When something happens on one device, send something to another. Works across
+          sources, and applies immediately.
+        </p>
+        <div class="rules-actions">
+          <button id="add-rule" type="button">Add rule</button>
+        </div>
+        <main id="rules"></main>
+        <h2 class="log-title">Recent activity</h2>
+        <div id="log" class="log"></div>
+      </section>
     </div>
 
     <script src="/app.js" type="module"></script>

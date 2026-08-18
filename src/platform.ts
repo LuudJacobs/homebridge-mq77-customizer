@@ -10,6 +10,7 @@ import { Catalog } from './catalog.js';
 import { resolveConfig, type PluginConfig } from './config.js';
 import { AccessoryManager } from './homekit/manager.js';
 import { MqttConnection } from './mqtt/client.js';
+import { RulesEngine } from './rules/engine.js';
 import { LEGACY_STORAGE_DIR, STORAGE_DIR } from './settings.js';
 import { Store, storeFile } from './store.js';
 import { WebServer } from './web/server.js';
@@ -20,6 +21,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
   private readonly catalog: Catalog;
   private readonly store: Store;
   private readonly accessories: AccessoryManager;
+  private readonly rules: RulesEngine;
   private web?: WebServer;
 
   constructor(
@@ -36,6 +38,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
     );
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
+    this.rules = new RulesEngine(this.catalog, this.store, this.mqtt, log);
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -72,7 +75,10 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
     // Reconcile whenever the catalog changes, so a device joining or leaving
     // adds or removes its accessories without a restart.
     this.catalog.on('devices', () => this.accessories.sync());
-    this.catalog.on('state', (update) => this.accessories.handleState(update));
+    this.catalog.on('state', (update) => {
+      this.accessories.handleState(update);
+      this.rules.handleState(update);
+    });
 
     try {
       await this.catalog.start(this.settings.sources);
@@ -89,6 +95,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       config: this.settings.web,
       catalog: this.catalog,
       store: this.store,
+      rules: this.rules,
       log: this.log,
       onExposureChanged: () => this.accessories.sync(),
     });
@@ -100,7 +107,10 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       this.web = undefined;
     }
 
-    this.log.info(`Started with ${this.settings.sources.length} source(s)`);
+    const ruleCount = this.store.data.rules.filter((rule) => rule.enabled).length;
+    this.log.info(
+      `Started with ${this.settings.sources.length} source(s) and ${ruleCount} enabled rule(s)`,
+    );
   }
 
   /**
@@ -116,6 +126,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       this.log.error(`Could not save state on shutdown: ${describe(error)}`);
     }
 
+    this.rules.stop();
     await withTimeout(this.web?.stop() ?? Promise.resolve(), 2000);
     await this.catalog.stop();
     await withTimeout(this.mqtt.disconnect(), 2000);

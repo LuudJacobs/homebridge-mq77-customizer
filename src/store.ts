@@ -3,9 +3,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { Logger } from './logger.js';
+import type { Rule } from './rules/types.js';
 
 /** Bumped when the shape changes in a way that needs migrating. */
 export const STORE_VERSION = 1;
+
+export type { Rule } from './rules/types.js';
 
 /** HomeKit service a binary on/off property is published as. */
 export type TileType = 'Switch' | 'Outlet' | 'Lightbulb' | 'Fan';
@@ -41,12 +44,6 @@ export interface DeviceExposure {
   buttons?: Record<string, Record<string, number[]>>;
 }
 
-/** Placeholder until the rules engine lands in v0.5.0. */
-export interface Rule {
-  id: string;
-  name: string;
-  enabled: boolean;
-}
 
 export interface PersistedState {
   version: number;
