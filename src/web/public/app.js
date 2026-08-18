@@ -277,7 +277,9 @@ function renderDevice(device) {
   topic.textContent = device.topic ?? '';
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
-  if (device.renameable && !device.rulesOnly) {
+  // Worth offering even on a rules only device: the name is what the device
+  // is called in this interface and in rules, not only in HomeKit.
+  if (device.renameable) {
     summary.append(renameButton(device, name));
   }
   summary.append(name, meta, topic, badge);
@@ -286,7 +288,10 @@ function renderDevice(device) {
   const body = document.createElement('div');
   body.className = 'device-body';
 
-  body.append(renderOptions(device));
+  const options = renderOptions(device);
+  if (options.childElementCount > 0) {
+    body.append(options);
+  }
 
   for (const [title, properties] of groupProperties(device)) {
     const heading = document.createElement('p');
