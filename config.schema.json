@@ -78,12 +78,18 @@
             "topics": {
               "title": "Topic filter",
               "type": "string",
-              "description": "Flat JSON sources only. Defaults to everything under the base topic."
+              "description": "Defaults to everything under the base topic.",
+              "condition": {
+                "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+              }
             },
             "setTopicSuffix": {
               "title": "Command topic suffix",
               "type": "string",
-              "description": "Flat JSON sources only. Usually \"set\". Leave empty to make the source read only."
+              "description": "Usually \"set\". Leave empty to make the source read only.",
+              "condition": {
+                "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+              }
             },
             "rulesOnly": {
               "title": "Rules only",

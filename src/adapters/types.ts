@@ -36,6 +36,13 @@ export interface AdapterEvents {
  */
 export interface SourceAdapter extends EventEmitter<AdapterEvents> {
   readonly sourceId: string;
+  /**
+   * True when the source is the authority on device names.
+   *
+   * Zigbee2MQTT is, so renaming a device here as well would leave two names
+   * that drift apart. A source that names devices after their topic is not.
+   */
+  readonly providesNames: boolean;
   start(): Promise<void>;
   stop(): Promise<void>;
   /** The catalog as currently known. Empty until discovery has produced anything. */

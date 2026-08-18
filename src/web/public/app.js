@@ -26,6 +26,9 @@ const el = {
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
+/** What the device is called here: the given name, or the source's own. */
+const displayName = (device) => device.exposure.label?.trim() || device.name;
+
 /** Marks the one failure that means "show the login form", not "something broke". */
 const NOT_SIGNED_IN = 'not-signed-in';
 
@@ -211,7 +214,7 @@ function matchesFilter(device, term) {
   }
   // The topic is searched too: a Zigbee2MQTT description overrides the
   // friendly name, so the topic is often the name the user actually knows.
-  return [device.name, device.topic, device.model, device.manufacturer, device.deviceId]
+  return [displayName(device), device.name, device.topic, device.model, device.manufacturer, device.deviceId]
     .filter(Boolean)
     .some((field) => field.toLowerCase().includes(term));
 }
@@ -258,7 +261,7 @@ function renderDevice(device) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = device.name;
+  name.textContent = displayName(device);
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
@@ -303,11 +306,41 @@ function renderOptions(device) {
   const wrap = document.createElement('div');
   wrap.className = 'options';
 
-  const endpoints = device.endpoints.filter((endpoint) =>
-    device.properties.some(
-      (property) => property.endpoint === endpoint && property.publishable,
-    ),
-  );
+  // Zigbee2MQTT names its own devices and republishes the name, so renaming
+  // one here would leave two names drifting apart. Rename it there instead.
+  if (device.renameable && !device.rulesOnly) {
+    const option = document.createElement('div');
+    option.className = 'option';
+    const id = `name-${key(device)}`;
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = 'Name';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = id;
+    input.className = 'device-rename';
+    input.value = device.exposure.label ?? '';
+    input.placeholder = device.name;
+    input.maxLength = 64;
+    input.addEventListener('input', () => {
+      device.exposure.label = input.value;
+      // The card header is patched rather than re-rendered, so the field does
+      // not lose focus mid word.
+      const heading = input.closest('.device')?.querySelector('.device-name');
+      if (heading) {
+        heading.textContent = displayName(device);
+      }
+      save(device);
+    });
+    option.append(label, input);
+    wrap.append(option);
+  }
+
+  // The tile only decides what the on/off service looks like, so it is worth
+  // showing only where an on/off function is actually ticked.
+  const endpoints = device.rulesOnly
+    ? []
+    : device.endpoints.filter((endpoint) => hasSelectedRole(device, endpoint, 'power'));
 
   for (const endpoint of endpoints) {
     const option = document.createElement('div');
@@ -321,18 +354,13 @@ function renderOptions(device) {
       choice.textContent = tile;
       select.append(choice);
     }
-    // Brightness only exists on a Lightbulb, so selecting it settles the tile
-    // type and the picker would otherwise be lying.
-    const dimmable = device.properties.some(
-      (property) =>
-        property.role === 'brightness' &&
-        property.endpoint === endpoint &&
-        device.exposure.properties.includes(property.key),
-    );
+    // Brightness exists only on a Lightbulb and speed or swing only on a Fan,
+    // so selecting one settles the tile and the picker would otherwise be lying.
+    const forced = forcedTile(device, endpoint);
 
-    select.value = dimmable ? 'Lightbulb' : device.exposure.tileTypes?.[endpoint] ?? 'Switch';
-    select.disabled = device.rulesOnly || dimmable;
-    select.title = dimmable ? 'Fixed to Lightbulb because brightness is selected' : '';
+    select.value = forced ?? device.exposure.tileTypes?.[endpoint] ?? 'Switch';
+    select.disabled = Boolean(forced);
+    select.title = forced ? `Fixed to ${forced} by the functions selected` : '';
     select.addEventListener('change', () => {
       device.exposure.tileTypes = { ...device.exposure.tileTypes, [endpoint]: select.value };
       save(device);
@@ -341,7 +369,20 @@ function renderOptions(device) {
     wrap.append(option);
   }
 
-  if (endpoints.filter(Boolean).length > 1) {
+  // Splitting depends on any published function being spread across
+  // endpoints, not only on/off, so it is counted separately from the tiles.
+  const publishedEndpoints = device.rulesOnly
+    ? []
+    : device.endpoints.filter((endpoint) =>
+        device.properties.some(
+          (property) =>
+            property.endpoint === endpoint &&
+            property.publishable &&
+            device.exposure.properties.includes(property.key),
+        ),
+      );
+
+  if (publishedEndpoints.filter(Boolean).length > 1) {
     const option = document.createElement('div');
     option.className = 'option';
     const checkbox = document.createElement('input');
@@ -361,6 +402,29 @@ function renderOptions(device) {
   }
 
   return wrap;
+}
+
+function hasSelectedRole(device, endpoint, role) {
+  return device.properties.some(
+    (property) =>
+      property.role === role &&
+      property.endpoint === endpoint &&
+      device.exposure.properties.includes(property.key),
+  );
+}
+
+/** The tile a selection forces, if any. Mirrors what the mapper does. */
+function forcedTile(device, endpoint) {
+  if (hasSelectedRole(device, endpoint, 'brightness')) {
+    return 'Lightbulb';
+  }
+  if (
+    hasSelectedRole(device, endpoint, 'rotationSpeed') ||
+    hasSelectedRole(device, endpoint, 'swingMode')
+  ) {
+    return 'Fan';
+  }
+  return undefined;
 }
 
 const GROUP_ORDER = [
@@ -394,9 +458,10 @@ function renderProperty(device, property) {
     }
     device.exposure.properties = [...selected];
     save(device);
-    // Brightness locks the tile picker to Lightbulb, and actions reveal their
-    // per button gestures, so both change what is on screen.
-    if (property.role === 'brightness' || property.role === 'action') {
+    // On/off decides whether the tile picker is shown at all, brightness,
+    // speed and swing decide what it is locked to, and actions reveal their
+    // per button gestures. All of them change what belongs on screen.
+    if (['power', 'brightness', 'rotationSpeed', 'swingMode', 'action'].includes(property.role)) {
       safeRender();
     }
   });

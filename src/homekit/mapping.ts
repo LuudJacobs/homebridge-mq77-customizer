@@ -133,7 +133,7 @@ function buildPlan(
   const seed = split
     ? `${device.sourceId}:${device.deviceId}:${endpoint}`
     : `${device.sourceId}:${device.deviceId}`;
-  const name = exposure.names?.[endpoint] || defaultName(device, endpoint, split);
+  const name = exposure.names?.[endpoint] || defaultName(device, exposure, endpoint, split);
 
   const grouped = new Map<ServiceGroup, NormalisedProperty[]>();
   for (const property of properties) {
@@ -457,11 +457,17 @@ function validModes(mode: NormalisedProperty): number[] | undefined {
   return valid.length > 0 ? valid : undefined;
 }
 
-function defaultName(device: CatalogDevice, endpoint: string, split: boolean): string {
+function defaultName(
+  device: CatalogDevice,
+  exposure: DeviceExposure,
+  endpoint: string,
+  split: boolean,
+): string {
+  const base = exposure.label?.trim() || device.name;
   if (!split || endpoint === DEVICE_ENDPOINT) {
-    return device.name;
+    return base;
   }
-  return `${device.name} ${endpoint}`;
+  return `${base} ${endpoint}`;
 }
 
 function qualifiedName(accessoryName: string, property: NormalisedProperty): string {
