@@ -171,9 +171,55 @@ function updateValue(device, propertyKey) {
     `[data-value="${CSS.escape(key(device))}|${CSS.escape(propertyKey)}"]`,
   );
   if (node) {
-    node.textContent = formatValue(device, propertyKey);
+    paintValue(node, device, propertyKey);
     node.classList.add('set');
   }
+}
+
+/** Writes the value, and explains it on hover when it is a timestamp. */
+function paintValue(node, device, propertyKey) {
+  node.textContent = formatValue(device, propertyKey);
+
+  const property = device.properties.find((candidate) => candidate.key === propertyKey);
+  const moment = asDate(property, device.state[propertyKey]);
+  if (moment) {
+    node.title = moment.toLocaleString();
+    node.classList.add('timestamp');
+  } else {
+    node.removeAttribute('title');
+    node.classList.remove('timestamp');
+  }
+}
+
+/**
+ * Reads a value as a moment in time, or nothing if it is not one.
+ *
+ * Zigbee2MQTT publishes `last_seen` as an ISO string or as an epoch, in
+ * seconds or milliseconds depending on how it is configured, and none of those
+ * is readable at a glance.
+ */
+function asDate(property, value) {
+  if (typeof value === 'string') {
+    // ISO 8601 is distinctive enough to recognise from the value alone.
+    if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value)) {
+      return undefined;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  // A bare number is not: linkquality 200 is not a date. Only trust one when
+  // the property is named like a time.
+  if (typeof value === 'number' && isTimeNamed(property)) {
+    const parsed = new Date(value > 1e11 ? value : value * 1000);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  return undefined;
+}
+
+function isTimeNamed(property) {
+  return /(^|_)(seen|time|timestamp|date|at)(_|$)/.test(property?.semantic ?? property?.key ?? '');
 }
 
 /**
@@ -609,7 +655,7 @@ function renderProperty(device, property) {
   const value = document.createElement('span');
   value.className = device.state[property.key] === undefined ? 'value' : 'value set';
   value.dataset.value = `${key(device)}|${property.key}`;
-  value.textContent = formatValue(device, property.key);
+  paintValue(value, device, property.key);
 
   if (selectable) {
     row.append(checkbox, label, value);
