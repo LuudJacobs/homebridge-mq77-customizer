@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.1] - 2026-08-19
+
+### Added
+
+- Optional link to the Zigbee2MQTT interface in the tab bar, set with `web.zigbee2mqttUrl`
+
 ## [0.6.0] - 2026-08-19
 
 ### Added
