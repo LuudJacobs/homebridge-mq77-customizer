@@ -504,3 +504,9 @@ button.primary {
   font-size: 0.78rem;
   white-space: nowrap;
 }
+
+.value.timestamp {
+  cursor: help;
+  text-decoration: underline dotted var(--line);
+  text-underline-offset: 3px;
+}
