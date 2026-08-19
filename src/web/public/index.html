@@ -24,17 +24,26 @@
         <h1><img class="logo" src="/favicon.svg" alt="" width="26" height="26" />MQ77 Customizer</h1>
         <div class="header-actions">
           <span id="status" class="status">connecting</span>
-          <label class="toggle" for="exposed-only">
+          <label class="toggle" id="only-exposed" for="exposed-only">
             <input id="exposed-only" type="checkbox" />
             In HomeKit only
           </label>
-          <select id="sort" title="Sort the device list">
-            <option value="name">Name</option>
-            <option value="topic">Topic</option>
-            <option value="device">Device</option>
-            <option value="seen">Last seen</option>
-          </select>
-          <input id="filter" type="search" placeholder="Filter name, topic or model" />
+          <label class="toggle" id="only-enabled" for="enabled-only" hidden>
+            <input id="enabled-only" type="checkbox" />
+            Enabled only
+          </label>
+          <span id="kind-filters" class="kind-filters" hidden>
+            <label class="toggle" for="kind-automation">
+              <input id="kind-automation" type="checkbox" checked />
+              Automation
+            </label>
+            <label class="toggle" for="kind-mirror">
+              <input id="kind-mirror" type="checkbox" checked />
+              Mirror
+            </label>
+          </span>
+          <select id="sort" title="Sort the list"></select>
+          <input id="filter" type="search" />
           <button id="logout" type="button">Sign out</button>
         </div>
       </header>
