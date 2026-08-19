@@ -76,6 +76,10 @@ h1 {
   padding: 1rem;
 }
 
+header select {
+  max-width: 9rem;
+}
+
 #login form {
   background: var(--card);
   border: 1px solid var(--line);
