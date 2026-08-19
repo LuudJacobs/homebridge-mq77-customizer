@@ -1,4 +1,13 @@
-import type { Action, Condition, Match, PropertyRef, Rule, Trigger } from './types.js';
+import type {
+  Action,
+  AnyRule,
+  Condition,
+  Match,
+  MirrorRule,
+  PropertyRef,
+  Rule,
+  Trigger,
+} from './types.js';
 
 const MATCH_KINDS = ['changed', 'equals', 'notEquals', 'changedTo', 'above', 'below'];
 const NEEDS_VALUE = ['equals', 'notEquals', 'changedTo', 'above', 'below'];
@@ -10,7 +19,7 @@ const NEEDS_NUMBER = ['above', 'below'];
  * A malformed rule is rejected rather than stored half understood, since a
  * rule that silently does nothing is worse than one that refuses to save.
  */
-export function parseRule(raw: unknown, id: string): { rule: Rule } | { error: string } {
+export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error: string } {
   if (!isObject(raw)) {
     return { error: 'A rule must be an object' };
   }
@@ -18,6 +27,10 @@ export function parseRule(raw: unknown, id: string): { rule: Rule } | { error: s
   const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 80) : '';
   if (!name) {
     return { error: 'A rule needs a name' };
+  }
+
+  if (raw.kind === 'mirror') {
+    return parseMirror(raw, id, name);
   }
 
   const trigger = parseRef(raw.trigger);
@@ -85,6 +98,57 @@ export function parseRule(raw: unknown, id: string): { rule: Rule } | { error: s
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
   };
+}
+
+function parseMirror(
+  raw: Record<string, unknown>,
+  id: string,
+  name: string,
+): { rule: MirrorRule } | { error: string } {
+  const groups: PropertyRef[][] = [];
+
+  for (const entry of asArray(raw.groups)) {
+    const refs: PropertyRef[] = [];
+    for (const member of asArray(entry)) {
+      const ref = parseRef(member);
+      if (!ref) {
+        return { error: 'Every mirrored function needs a device and a function' };
+      }
+      // The same property twice would make it mirror onto itself.
+      if (refs.some((existing) => sameRef(existing, ref))) {
+        return { error: 'A function cannot be mirrored with itself' };
+      }
+      refs.push(ref);
+    }
+    if (refs.length < 2) {
+      return { error: 'Mirroring needs at least two devices' };
+    }
+    groups.push(refs);
+  }
+
+  if (groups.length === 0) {
+    return { error: 'Pick at least one function to mirror' };
+  }
+
+  const rateLimitMs =
+    typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
+
+  return {
+    rule: {
+      id,
+      kind: 'mirror',
+      name,
+      enabled: raw.enabled !== false,
+      groups,
+      ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
+    },
+  };
+}
+
+function sameRef(a: PropertyRef, b: PropertyRef): boolean {
+  return (
+    a.sourceId === b.sourceId && a.deviceId === b.deviceId && a.propertyKey === b.propertyKey
+  );
 }
 
 function parseMatch(raw: unknown): { match: Match } | { error: string } {

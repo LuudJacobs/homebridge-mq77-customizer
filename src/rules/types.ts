@@ -40,6 +40,7 @@ export interface Action extends PropertyRef {
 
 export interface Rule {
   id: string;
+  kind?: 'standard';
   name: string;
   enabled: boolean;
   trigger: Trigger;
@@ -53,6 +54,28 @@ export interface Rule {
    * cannot run away faster than this.
    */
   rateLimitMs?: number;
+}
+
+/**
+ * Keeps a set of properties equal to each other.
+ *
+ * Not expressible as a trigger and an action, because every member is both.
+ * Each group is one thing being kept in sync, so a pair of devices can mirror
+ * their on/off state and their brightness as one rule.
+ */
+export interface MirrorRule {
+  id: string;
+  kind: 'mirror';
+  name: string;
+  enabled: boolean;
+  groups: PropertyRef[][];
+  rateLimitMs?: number;
+}
+
+export type AnyRule = Rule | MirrorRule;
+
+export function isMirror(rule: AnyRule): rule is MirrorRule {
+  return rule.kind === 'mirror';
 }
 
 export type LogOutcome = 'fired' | 'rateLimited' | 'conditionsFailed' | 'failed' | 'disabled';
