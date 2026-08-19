@@ -77,6 +77,8 @@ Per device you can also:
 
 Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
 
+Accessory names are corrected to what HomeKit accepts, which must start and end with a letter or number. A name like `Gang licht (voordeur)` is published as `Gang licht voordeur`. The name shown here is left as you wrote it.
+
 ### What reaches HomeKit
 
 | Function | Becomes |
