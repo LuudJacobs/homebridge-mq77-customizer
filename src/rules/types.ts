@@ -70,6 +70,8 @@ export interface MirrorRule {
   enabled: boolean;
   groups: PropertyRef[][];
   rateLimitMs?: number;
+  /** How long the group is left alone after a write. See DEFAULT_SETTLE_MS. */
+  settleMs?: number;
 }
 
 export type AnyRule = Rule | MirrorRule;
@@ -90,6 +92,23 @@ export interface LogEntry {
 }
 
 export const DEFAULT_RATE_LIMIT_MS = 1000;
+
+/**
+ * How long a mirror group is left alone after it has been written to.
+ *
+ * Long enough for a device to act and report back, short enough that flipping
+ * a switch twice still feels responsive.
+ */
+export const DEFAULT_SETTLE_MS = 1500;
+
+/**
+ * The shortest window worth having.
+ *
+ * Below this a pair of devices that disagree can trade places fast enough to
+ * look like a runaway, which is the fault this window exists to prevent.
+ */
+export const MIN_SETTLE_MS = 250;
+export const MAX_SETTLE_MS = 60_000;
 
 /** Firing more often than this in the window below means something is looping. */
 export const RUNAWAY_FIRINGS = 20;
