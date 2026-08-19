@@ -3,12 +3,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { Logger } from './logger.js';
-import type { Rule } from './rules/types.js';
+import type { AnyRule } from './rules/types.js';
 
 /** Bumped when the shape changes in a way that needs migrating. */
 export const STORE_VERSION = 1;
 
-export type { Rule } from './rules/types.js';
+export type { AnyRule, MirrorRule, Rule } from './rules/types.js';
 
 /** HomeKit service a binary on/off property is published as. */
 export type TileType = 'Switch' | 'Outlet' | 'Lightbulb' | 'Fan';
@@ -49,7 +49,7 @@ export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
-  rules: Rule[];
+  rules: AnyRule[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }

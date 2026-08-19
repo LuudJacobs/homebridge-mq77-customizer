@@ -9,12 +9,15 @@ import type { Store } from '../store.js';
 import { convertValue } from './convert.js';
 import { describeMatch, matches } from './match.js';
 import {
+  isMirror,
   DEFAULT_RATE_LIMIT_MS,
   RUNAWAY_FIRINGS,
   RUNAWAY_WINDOW_MS,
   type Action,
   type LogEntry,
   type LogOutcome,
+  type AnyRule,
+  type MirrorRule,
   type PropertyRef,
   type Rule,
 } from './types.js';
@@ -77,7 +80,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
 
       for (const rule of rules) {
-        if (!rule.enabled || !refersTo(rule.trigger, update, propertyKey)) {
+        if (!rule.enabled) {
+          continue;
+        }
+        if (isMirror(rule)) {
+          this.mirror(rule, update, propertyKey, value);
+          continue;
+        }
+        if (!refersTo(rule.trigger, update, propertyKey)) {
           continue;
         }
         if (!matches(rule.trigger.match, value, previous)) {
@@ -86,6 +96,107 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         this.fire(rule, { property: rule.trigger, value });
       }
     }
+  }
+
+  /**
+   * Brings the rest of a group into line with the member that just changed.
+   *
+   * A member that already holds the value is left alone, which is what stops
+   * mirroring looping: the device we write to reports back, that report
+   * mirrors again, and every other member is by then already equal, so
+   * nothing is sent and it stops after one round.
+   */
+  private mirror(
+    rule: MirrorRule,
+    update: StateUpdate,
+    propertyKey: string,
+    value: unknown,
+  ): void {
+    for (const group of rule.groups) {
+      const from = group.find((member) => refersTo(member, update, propertyKey));
+      if (!from) {
+        continue;
+      }
+      const source = this.property(from);
+      if (!source) {
+        continue;
+      }
+
+      const sent: string[] = [];
+      const problems: string[] = [];
+
+      for (const member of group) {
+        if (member === from) {
+          continue;
+        }
+        const target = this.property(member);
+        if (!target) {
+          problems.push(`${member.propertyKey} is not on that device any more`);
+          continue;
+        }
+        if (!target.setTopic) {
+          problems.push(`${target.label} cannot be written to`);
+          continue;
+        }
+
+        const wanted = convertValue(source, target, value);
+        if (wanted === undefined) {
+          continue;
+        }
+
+        const current = this.catalog.getState(member.sourceId, member.deviceId)?.[
+          member.propertyKey
+        ];
+        if (current !== undefined && matches({ kind: 'equals', value: wanted }, current)) {
+          continue;
+        }
+
+        if (!this.allowed(rule)) {
+          return;
+        }
+
+        this.mqtt.publish(
+          target.setTopic,
+          JSON.stringify(writePath(target.encode ?? target.extract, wanted)),
+        );
+        sent.push(target.label);
+      }
+
+      if (problems.length > 0) {
+        this.record(rule, 'failed', problems.join('; '));
+      } else if (sent.length > 0) {
+        this.record(rule, 'fired', `${source.label} copied to ${sent.join(', ')}`);
+      }
+    }
+  }
+
+  /** Shared rate limit and runaway guard, for whichever kind of rule. */
+  private allowed(rule: AnyRule): boolean {
+    const now = Date.now();
+    const limit = rule.rateLimitMs ?? 0;
+    const last = this.lastFired.get(rule.id);
+    if (last !== undefined && limit > 0 && now - last < limit) {
+      return false;
+    }
+    if (this.isRunaway(rule, now)) {
+      this.disable(rule);
+      return false;
+    }
+    this.lastFired.set(rule.id, now);
+    return true;
+  }
+
+  private disable(rule: AnyRule): void {
+    this.store.update((state) => {
+      const stored = state.rules.find((candidate) => candidate.id === rule.id);
+      if (stored) {
+        stored.enabled = false;
+      }
+    });
+    this.log.error(
+      `Rule "${rule.name}" fired ${RUNAWAY_FIRINGS} times in ${RUNAWAY_WINDOW_MS / 1000}s and has been turned off. It is probably triggering itself.`,
+    );
+    this.record(rule, 'disabled', 'Fired too often, so it was turned off. Check it is not triggering itself');
   }
 
   private fire(rule: Rule, trigger: { property: PropertyRef; value: unknown }): void {
@@ -101,16 +212,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     if (this.isRunaway(rule, now)) {
       // Two rules triggering each other would otherwise saturate the broker.
       // Turning it off is louder than letting it churn quietly.
-      this.store.update((state) => {
-        const stored = state.rules.find((candidate) => candidate.id === rule.id);
-        if (stored) {
-          stored.enabled = false;
-        }
-      });
-      this.log.error(
-        `Rule "${rule.name}" fired ${RUNAWAY_FIRINGS} times in ${RUNAWAY_WINDOW_MS / 1000}s and has been turned off. It is probably triggering itself.`,
-      );
-      this.record(rule, 'disabled', 'Fired too often, so it was turned off. Check it is not triggering itself');
+      this.disable(rule);
       return;
     }
 
@@ -211,7 +313,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     return convertValue(source, target, trigger.value);
   }
 
-  private isRunaway(rule: Rule, now: number): boolean {
+  private isRunaway(rule: AnyRule, now: number): boolean {
     const times = (this.recentFirings.get(rule.id) ?? []).filter(
       (at) => now - at < RUNAWAY_WINDOW_MS,
     );
@@ -226,7 +328,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ?.properties.find((property) => property.key === ref.propertyKey);
   }
 
-  private record(rule: Rule, outcome: LogOutcome, detail: string): void {
+  private record(rule: AnyRule, outcome: LogOutcome, detail: string): void {
     const entry: LogEntry = { at: Date.now(), ruleId: rule.id, ruleName: rule.name, outcome, detail };
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {

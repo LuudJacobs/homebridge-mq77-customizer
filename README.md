@@ -102,6 +102,14 @@ An action either sends a fixed value or matches whatever set the rule off, which
 
 Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
 
+### Mirror rules
+
+Ticking Mirror swaps the trigger and actions for a simpler question: which devices, and which of their functions should stay in step. Every member is both a trigger and a target, so changing any one of them brings the rest into line.
+
+Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
+
+A member that already holds the value is left alone. That is what stops mirroring looping: the device written to reports back, that report mirrors again, every other member is by then already equal, and it stops after one round.
+
 Two things guard against a pair of rules setting each other off:
 
 - a rule will not run more often than its rate limit, one second by default
