@@ -67,6 +67,44 @@ describe('Store', () => {
   });
 });
 
+describe('keeping a way back', () => {
+  it('keeps what it found at startup, whatever happens afterwards', async () => {
+    const file = await temporaryFile();
+    const first = new Store(file, silentLogger);
+    await first.load();
+    first.update((state) => {
+      state.rules = [{ id: 'r1', name: 'First', enabled: true } as never];
+    });
+    await first.save();
+
+    // A later run that loses everything, however it managed to.
+    const second = new Store(file, silentLogger);
+    await second.load();
+    second.update((state) => {
+      state.rules = [];
+      state.exposures = {};
+    });
+    await second.save();
+    await second.save();
+
+    // Backed up once at startup, so repeated writes cannot replace the good
+    // copy with the empty one.
+    const backup = JSON.parse(await readFile(`${file}.bak`, 'utf8')) as { rules: unknown[] };
+    expect(backup.rules).toHaveLength(1);
+  });
+
+  it('does not mind there being nothing to back up yet', async () => {
+    const file = await temporaryFile();
+    const store = new Store(file, silentLogger);
+    await store.load();
+    store.update((state) => {
+      state.exposures['a:b'] = { properties: [] };
+    });
+    await expect(store.save()).resolves.toBeUndefined();
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ exposures: { 'a:b': {} } });
+  });
+});
+
 describe('adopting state from the previous plugin name', () => {
   it('takes over the older file when there is no current one', async () => {
     const legacy = await temporaryFile();
