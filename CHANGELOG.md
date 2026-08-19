@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.0] - 2026-08-20
+
+### Added
+
+- Activity is its own tab, listing both kinds of rule with each entry saying which it came from
+- Each tab offers the controls that suit it: In HomeKit only on Devices, Enabled only on the rule tabs, a checkbox per kind on Activity
+- Rule lists can be ordered by name, or by the first device on either side, and filtered by the devices a rule touches as well as its name
+
+### Changed
+
+- Automation and mirrored devices are separate tabs rather than one list behind a checkbox
+- Filters and orderings are kept per tab
+
 ## [0.6.1] - 2026-08-19
 
 ### Added
