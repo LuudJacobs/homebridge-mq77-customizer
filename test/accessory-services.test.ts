@@ -386,3 +386,42 @@ describe('changing which gestures a button offers', () => {
     expect(seen).toEqual([2]);
   });
 });
+
+describe('not talking to HomeKit for nothing', () => {
+  it('says nothing when a device repeats a value it already reported', async () => {
+    const context = await harness();
+    context.mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127 });
+    context.store.setExposure(`zigbee:${DIMMER.id}`, { properties: ['state', 'brightness'] });
+    context.manager.sync();
+
+    const light = context.hb.registered[0]!.getServiceById(Service.Lightbulb, 'state')!;
+    const changes: string[] = [];
+    for (const characteristic of [Characteristic.On, Characteristic.Brightness]) {
+      light.getCharacteristic(characteristic).on('change', () => changes.push('changed'));
+    }
+
+    // Zigbee2MQTT republishes full state constantly, more so with last_seen
+    // on. None of this is news to HomeKit.
+    for (let repeat = 0; repeat < 20; repeat++) {
+      context.mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127, linkquality: repeat });
+    }
+    expect(changes).toEqual([]);
+  });
+
+  it('still passes on a value that did move', async () => {
+    const context = await harness();
+    context.mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127 });
+    context.store.setExposure(`zigbee:${DIMMER.id}`, { properties: ['state', 'brightness'] });
+    context.manager.sync();
+
+    const light = context.hb.registered[0]!.getServiceById(Service.Lightbulb, 'state')!;
+    const seen: unknown[] = [];
+    light.getCharacteristic(Characteristic.Brightness).on('change', (change) => seen.push(change.newValue));
+
+    context.mqtt.deliver(DIMMER.topic, { brightness: 254 });
+    context.mqtt.deliver(DIMMER.topic, { brightness: 254 });
+    context.mqtt.deliver(DIMMER.topic, { brightness: 0 });
+
+    expect(seen).toEqual([100, 0]);
+  });
+});
