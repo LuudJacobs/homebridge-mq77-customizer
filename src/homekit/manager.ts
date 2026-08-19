@@ -298,7 +298,15 @@ export class AccessoryManager {
     });
   }
 
-  /** Puts the value we already know into the characteristic. */
+  /**
+   * Puts the value we already know into the characteristic.
+   *
+   * A value that has not moved is not sent on. HAP notifies every connected
+   * controller on each update whether or not anything changed, and a whole
+   * service is refreshed when any one of its inputs moves, so without this a
+   * device reporting its unchanged state, which Zigbee2MQTT does constantly,
+   * would keep the Home app busy for nothing.
+   */
   private push(
     service: Service,
     plan: AccessoryPlan,
@@ -306,9 +314,14 @@ export class AccessoryManager {
     binding: Binding,
   ): void {
     const value = this.read(plan, servicePlan, binding);
-    if (value !== undefined) {
-      service.updateCharacteristic(this.characteristic(binding.characteristic), value);
+    if (value === undefined) {
+      return;
     }
+    const characteristic = service.getCharacteristic(this.characteristic(binding.characteristic));
+    if (characteristic.value === value) {
+      return;
+    }
+    characteristic.updateValue(value);
   }
 
   private read(
