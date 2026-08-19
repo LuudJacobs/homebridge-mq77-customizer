@@ -8,6 +8,9 @@ import { Catalog } from '../src/catalog.js';
 import { silentLogger } from '../src/logger.js';
 import { RulesEngine } from '../src/rules/engine.js';
 import { RUNAWAY_FIRINGS } from '../src/rules/types.js';
+
+/** Mirrors the constant in the engine. */
+const SETTLE_MS = 3000;
 import type { MirrorRule } from '../src/rules/types.js';
 import { parseRule } from '../src/rules/validate.js';
 import { Store } from '../src/store.js';
@@ -53,21 +56,30 @@ async function harness(rules: MirrorRule[]) {
 
 describe('mirroring', () => {
   it('copies in either direction', async () => {
-    const { mqtt } = await harness([mirrorRule()]);
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([mirrorRule()]);
 
-    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
-    expect(mqtt.published.at(-1)).toEqual({
-      topic: `${SOCKET.topic}/set`,
-      payload: '{"state":"ON"}',
-      retain: false,
-    });
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+      expect(mqtt.published.at(-1)).toEqual({
+        topic: `${SOCKET.topic}/set`,
+        payload: '{"state":"ON"}',
+        retain: false,
+      });
 
-    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
-    expect(mqtt.published.at(-1)).toEqual({
-      topic: `${SWITCH.topic}/set`,
-      payload: '{"state_l1":"OFF"}',
-      retain: false,
-    });
+      // The group is left to settle first. A change arriving within a few
+      // seconds of a write cannot be told apart from the echo of that write.
+      vi.advanceTimersByTime(SETTLE_MS + 100);
+
+      mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+      expect(mqtt.published.at(-1)).toEqual({
+        topic: `${SWITCH.topic}/set`,
+        payload: '{"state_l1":"OFF"}',
+        retain: false,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('settles instead of looping when the other device reports back', async () => {
@@ -153,6 +165,51 @@ describe('mirroring', () => {
 });
 
 describe('not wearing itself out', () => {
+  it('cannot ping pong when two devices never agree', async () => {
+    vi.useFakeTimers();
+    try {
+      const { store, mqtt } = await harness([mirrorRule()]);
+
+      // Neither device ever takes the value it is sent, so each keeps
+      // reporting the state the other one is trying to change. This is what
+      // filled the log with "State copied to State" several times a second.
+      for (let round = 0; round < 200; round++) {
+        mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+        mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+        vi.advanceTimersByTime(50);
+      }
+
+      expect(store.data.rules[0]?.enabled).toBe(true);
+      // Ten seconds of disagreement, at most one exchange every three.
+      expect(mqtt.published.length).toBeLessThanOrEqual(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still acts on a real change once the group has settled', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([mirrorRule()]);
+
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+      expect(mqtt.published).toHaveLength(1);
+
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      vi.advanceTimersByTime(SETTLE_MS + 100);
+
+      // Someone turns the socket off by hand, which the switch should follow.
+      mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+      expect(mqtt.published.at(-1)).toEqual({
+        topic: `${SWITCH.topic}/set`,
+        payload: '{"state_l1":"OFF"}',
+        retain: false,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sends one write while the device is still acting on the last one', async () => {
     const { mqtt } = await harness([mirrorRule()]);
 
@@ -201,7 +258,7 @@ describe('not wearing itself out', () => {
     expect(store.data.rules[0]?.enabled).toBe(true);
   });
 
-  it('writes again once the device has had its chance and did not comply', async () => {
+  it('tries again once the settling window has passed and it still disagrees', async () => {
     vi.useFakeTimers();
     try {
       const { mqtt } = await harness([mirrorRule()]);
@@ -209,23 +266,12 @@ describe('not wearing itself out', () => {
       mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
       expect(mqtt.published).toHaveLength(1);
 
-      // Long enough that the write is no longer plausibly on its way.
-      vi.advanceTimersByTime(20_000);
+      vi.advanceTimersByTime(SETTLE_MS + 100);
       mqtt.deliver(SWITCH.topic, { state_l1: 'ON', linkquality: 55 });
       expect(mqtt.published).toHaveLength(2);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('stops waiting as soon as the device answers', async () => {
-    const { mqtt } = await harness([mirrorRule()]);
-
-    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
-    // The socket says it went off instead, so the next change is not settled.
-    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
-    expect(mqtt.published).toHaveLength(2);
-    expect(mqtt.published.at(-1)?.payload).toBe('{"state_l1":"OFF"}');
   });
 });
 

@@ -108,7 +108,9 @@ Ticking Mirror swaps the trigger and actions for a simpler question: which devic
 
 Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
 
-A member that already holds the value is left alone. That is what stops mirroring looping: the device written to reports back, that report mirrors again, every other member is by then already equal, and it stops after one round.
+A member that already holds the value is left alone, and after a write the group is left to settle for three seconds. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
+
+The cost is that flipping a mirrored device again within three seconds of a change is ignored. Devices that disagree are retried every three seconds rather than as fast as they can talk.
 
 Two things guard against a pair of rules setting each other off:
 
