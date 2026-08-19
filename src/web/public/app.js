@@ -7,6 +7,7 @@ const state = {
   filter: '',
   /** Hides everything that is not currently published to HomeKit. */
   exposedOnly: false,
+  sort: 'name',
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
@@ -25,6 +26,7 @@ const el = {
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
   exposedOnly: document.getElementById('exposed-only'),
+  sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   tabDevices: document.getElementById('tab-devices'),
   tabRules: document.getElementById('tab-rules'),
@@ -325,22 +327,58 @@ function refreshBadge(device) {
   }
 }
 
+/** What each ordering compares, other than last seen which is a number. */
+const SORT_KEYS = {
+  name: (device) => displayName(device),
+  topic: (device) => device.topic ?? '',
+  device: (device) => [device.manufacturer, device.model].filter(Boolean).join(' '),
+};
+
+function sortDevices(devices) {
+  const sorted = [...devices];
+
+  if (state.sort === 'seen') {
+    // Newest first, and anything that has said nothing yet goes last rather
+    // than pretending to be very old.
+    return sorted.sort((a, b) => (deviceLastSeen(b) ?? -1) - (deviceLastSeen(a) ?? -1));
+  }
+
+  const key = SORT_KEYS[state.sort] ?? SORT_KEYS.name;
+  return sorted.sort((a, b) => compareNames(key(a), key(b)) || compareNames(displayName(a), displayName(b)));
+}
+
+/** Case and accent insensitive, and puts device2 after device10 the way people expect. */
+function compareNames(a, b) {
+  return String(a ?? '').localeCompare(String(b ?? ''), undefined, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+}
+
 function matchesFilter(device, term) {
   if (!term) {
     return true;
   }
   // The topic is searched too: a Zigbee2MQTT description overrides the
   // friendly name, so the topic is often the name the user actually knows.
-  return [displayName(device), device.name, device.topic, device.model, device.manufacturer, device.deviceId]
+  return [
+    displayName(device),
+    device.name,
+    device.topic,
+    device.model,
+    device.manufacturer,
+    device.deviceId,
+  ]
     .filter(Boolean)
     .some((field) => field.toLowerCase().includes(term));
 }
 
 function render() {
   const term = state.filter.trim().toLowerCase();
-  const visible = state.devices.filter(
-    (device) =>
-      matchesFilter(device, term) && (!state.exposedOnly || exposedCount(device) > 0),
+  const visible = sortDevices(
+    state.devices.filter(
+      (device) => matchesFilter(device, term) && (!state.exposedOnly || exposedCount(device) > 0),
+    ),
   );
 
   el.devices.replaceChildren();
@@ -763,6 +801,11 @@ el.filter.addEventListener('input', () => {
   safeRender();
 });
 
+el.sort.addEventListener('change', () => {
+  state.sort = el.sort.value;
+  safeRender();
+});
+
 el.exposedOnly.addEventListener('change', () => {
   state.exposedOnly = el.exposedOnly.checked;
   safeRender();
@@ -802,6 +845,11 @@ const OUTCOME_LABELS = {
   failed: 'failed',
   disabled: 'turned off',
 };
+
+/** By display name, for the pickers a rule is built from. */
+function byName(devices) {
+  return [...devices].sort((a, b) => compareNames(displayName(a), displayName(b)));
+}
 
 /** Properties a rule can watch: anything readable. */
 const watchable = (device) => device.properties.filter((property) => property.readable);
@@ -1068,7 +1116,7 @@ function drawMirror(body, draft) {
   const devices = document.createElement('div');
   devices.className = 'mirror-devices';
 
-  const candidates = state.devices.filter((device) => writable(device).length > 0);
+  const candidates = byName(state.devices.filter((device) => writable(device).length > 0));
   for (const device of candidates) {
     const id = `${device.sourceId}|${device.deviceId}`;
     const label = document.createElement('label');
@@ -1285,7 +1333,9 @@ function refRow(ref, options) {
   row.className = 'rule-row';
 
   const devices = document.createElement('select');
-  for (const device of state.devices.filter((candidate) => options.pick(candidate).length > 0)) {
+  // Always by name here, whatever the device list is sorted by. A rule is
+  // written by looking for a device by name, not by when it last reported.
+  for (const device of byName(state.devices.filter((candidate) => options.pick(candidate).length > 0))) {
     const choice = document.createElement('option');
     choice.value = `${device.sourceId}|${device.deviceId}`;
     choice.textContent = displayName(device);
