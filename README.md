@@ -108,9 +108,9 @@ Ticking Mirror swaps the trigger and actions for a simpler question: which devic
 
 Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
 
-A member that already holds the value is left alone, and after a write the group is left to settle for three seconds. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
+A member that already holds the value is left alone, and after a write the group is left to settle, one and a half seconds by default. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
 
-The cost is that flipping a mirrored device again within three seconds of a change is ignored. Devices that disagree are retried every three seconds rather than as fast as they can talk.
+The cost is that flipping a mirrored device again within the settling window is ignored, and devices that disagree are retried once per window rather than as fast as they can talk. Set it per rule between 0.25 and 60 seconds. Below a quarter of a second two devices that disagree can trade places fast enough to look like the runaway the window exists to prevent.
 
 Two things guard against a pair of rules setting each other off:
 

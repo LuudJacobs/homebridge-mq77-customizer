@@ -11,6 +11,7 @@ import { describeMatch, matches } from './match.js';
 import {
   isMirror,
   DEFAULT_RATE_LIMIT_MS,
+  DEFAULT_SETTLE_MS,
   RUNAWAY_FIRINGS,
   RUNAWAY_WINDOW_MS,
   type Action,
@@ -24,17 +25,7 @@ import {
 
 const LOG_SIZE = 200;
 
-/**
- * How long a group is left alone after it has been written to.
- *
- * Mirroring only converges if every member reaches the same value. When one
- * lags, or reports its old state once more after being written to, each report
- * drives the group back the other way and the two devices trade places
- * forever. Nothing about the values themselves can tell that apart from a
- * person flipping a switch, so the group simply stops listening while it
- * settles.
- */
-const SETTLE_MS = 3000;
+
 
 export interface EngineEvents {
   /** A rule ran, or declined to. */
@@ -142,7 +133,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       // acting on either is wrong.
       const groupKey = `${rule.id}:${index}`;
       const wroteAt = this.settling.get(groupKey);
-      if (wroteAt !== undefined && Date.now() - wroteAt < SETTLE_MS) {
+      if (wroteAt !== undefined && Date.now() - wroteAt < (rule.settleMs ?? DEFAULT_SETTLE_MS)) {
         continue;
       }
 

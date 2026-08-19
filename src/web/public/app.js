@@ -1090,6 +1090,30 @@ function drawMirror(body, draft) {
   }
   body.append(devices);
 
+  const settleRow = document.createElement('div');
+  settleRow.className = 'option';
+  const settleLabel = document.createElement('label');
+  settleLabel.textContent = 'Settle for';
+  const settle = document.createElement('input');
+  settle.type = 'number';
+  settle.className = 'delay';
+  settle.min = 0.25;
+  settle.max = 60;
+  settle.step = 0.25;
+  settle.placeholder = '1.5';
+  settle.value = draft.settleMs ? draft.settleMs / 1000 : '';
+  settle.title =
+    'How long the group ignores reports after being written to. Too short and two devices that disagree can trade places.';
+  settle.addEventListener('input', () => {
+    const seconds = Number(settle.value);
+    draft.settleMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+  });
+  const settleUnit = document.createElement('span');
+  settleUnit.className = 'device-meta';
+  settleUnit.textContent = 'seconds after a change';
+  settleRow.append(settleLabel, settle, settleUnit);
+  body.append(settleRow);
+
   body.append(sectionTitle('Functions to mirror'));
   const fields = document.createElement('div');
   body.append(fields);

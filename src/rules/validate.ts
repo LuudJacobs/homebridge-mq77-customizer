@@ -1,3 +1,4 @@
+import { MAX_SETTLE_MS, MIN_SETTLE_MS } from './types.js';
 import type {
   Action,
   AnyRule,
@@ -132,6 +133,10 @@ function parseMirror(
 
   const rateLimitMs =
     typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
+  const settleMs =
+    typeof raw.settleMs === 'number'
+      ? clamp(raw.settleMs, MIN_SETTLE_MS, MAX_SETTLE_MS)
+      : undefined;
 
   return {
     rule: {
@@ -141,6 +146,7 @@ function parseMirror(
       enabled: raw.enabled !== false,
       groups,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
+      ...(settleMs === undefined ? {} : { settleMs }),
     },
   };
 }
