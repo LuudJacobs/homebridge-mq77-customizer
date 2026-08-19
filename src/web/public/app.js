@@ -871,6 +871,13 @@ function renderRule(rule) {
 }
 
 function summarise(rule) {
+  if (rule.kind === 'mirror') {
+    const devices = new Set(
+      rule.groups.flat().map((ref) => findDevice(ref)?.name ?? 'a removed device'),
+    );
+    const fields = rule.groups.length;
+    return `${[...devices].join(' ↔ ')} · ${fields} field${fields === 1 ? '' : 's'}`;
+  }
   const source = findProperty(rule.trigger);
   const target = findProperty(rule.actions[0]);
   const from = source ? `${findDevice(rule.trigger)?.name} ${source.label}` : 'a removed function';
@@ -878,7 +885,6 @@ function summarise(rule) {
   const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
   return `${from} → ${to}${extra}`;
 }
-
 function renderRuleBody(rule) {
   const body = document.createElement('div');
   body.className = 'device-body';
@@ -902,8 +908,86 @@ function renderRuleBody(rule) {
   enabledBox.checked = draft.enabled;
   enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
   enabled.append(enabledBox, document.createTextNode('Enabled'));
-  nameRow.append(enabled);
+
+  const mirror = document.createElement('label');
+  mirror.className = 'toggle';
+  mirror.title = 'Keep the same function on several devices in step with each other';
+  const mirrorBox = document.createElement('input');
+  mirrorBox.type = 'checkbox';
+  mirrorBox.checked = draft.kind === 'mirror';
+  mirror.append(mirrorBox, document.createTextNode('Mirror'));
+
+  nameRow.append(enabled, mirror);
   body.append(nameRow);
+
+  // A mirror has no trigger and no actions, so the rest of the form is a
+  // different shape entirely rather than a variation on the same one.
+  const shape = document.createElement('div');
+  const drawShape = () => {
+    shape.replaceChildren();
+    if (draft.kind === 'mirror') {
+      drawMirror(shape, draft);
+    } else {
+      drawWhenThen(shape, draft);
+    }
+  };
+
+  mirrorBox.addEventListener('change', () => {
+    if (mirrorBox.checked) {
+      draft.kind = 'mirror';
+    } else {
+      delete draft.kind;
+    }
+    drawShape();
+  });
+
+  drawShape();
+  body.append(shape);
+  body.append(ruleFooter(rule, draft));
+  return body;
+}
+
+function ruleFooter(rule, draft) {
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      await loadRules();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.textContent = 'Delete';
+  remove.addEventListener('click', async () => {
+    await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
+    state.openRules.delete(rule.id);
+    await loadRules();
+  });
+
+  footer.append(save, remove, error);
+  return footer;
+}
+
+/** The ordinary trigger, conditions and actions form. */
+function drawWhenThen(body, draft) {
+  draft.trigger = draft.trigger ?? {
+    ...blankRef(watchable),
+    match: { kind: 'changedTo', value: '' },
+  };
+  draft.conditions = draft.conditions ?? [];
+  draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
 
   body.append(sectionTitle('When'));
   body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
@@ -926,10 +1010,13 @@ function renderRuleBody(rule) {
     });
   };
   drawConditions();
-  body.append(conditions, addButton('Add condition', () => {
-    draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
-    drawConditions();
-  }));
+  body.append(
+    conditions,
+    addButton('Add condition', () => {
+      draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
+      drawConditions();
+    }),
+  );
 
   body.append(sectionTitle('Then'));
   const actions = document.createElement('div');
@@ -953,42 +1040,189 @@ function renderRuleBody(rule) {
     });
   };
   drawActions();
-  body.append(actions, addButton('Add action', () => {
-    draft.actions.push({ ...blankRef(writable), value: '' });
-    drawActions();
-  }));
+  body.append(
+    actions,
+    addButton('Add action', () => {
+      draft.actions.push({ ...blankRef(writable), value: '' });
+      drawActions();
+    }),
+  );
+}
 
-  const footer = document.createElement('div');
-  footer.className = 'rule-footer';
-  const error = document.createElement('span');
-  error.className = 'error';
+/**
+ * Pick the devices, then the functions to keep in step.
+ *
+ * Functions are matched on meaning rather than on name: a socket calls its
+ * on/off `state` and a two channel switch calls the same thing `state_l1`, and
+ * mirroring one onto the other is exactly what this is for.
+ */
+function drawMirror(body, draft) {
+  draft.groups = draft.groups ?? [];
 
-  const saveRule = document.createElement('button');
-  saveRule.type = 'button';
-  saveRule.className = 'primary';
-  saveRule.textContent = 'Save';
-  saveRule.addEventListener('click', async () => {
-    error.textContent = '';
-    try {
-      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
-      await loadRules();
-    } catch (problem) {
-      error.textContent = problem.message;
+  // The devices already in use, so an existing rule opens with them ticked.
+  const chosen = new Set(
+    draft.groups.flat().map((ref) => `${ref.sourceId}|${ref.deviceId}`),
+  );
+
+  body.append(sectionTitle('Devices'));
+  const devices = document.createElement('div');
+  devices.className = 'mirror-devices';
+
+  const candidates = state.devices.filter((device) => writable(device).length > 0);
+  for (const device of candidates) {
+    const id = `${device.sourceId}|${device.deviceId}`;
+    const label = document.createElement('label');
+    label.className = 'toggle';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = chosen.has(id);
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        chosen.add(id);
+      } else {
+        chosen.delete(id);
+      }
+      pruneGroups();
+      drawFields();
+    });
+    label.append(box, document.createTextNode(displayName(device)));
+    devices.append(label);
+  }
+  body.append(devices);
+
+  body.append(sectionTitle('Functions to mirror'));
+  const fields = document.createElement('div');
+  body.append(fields);
+
+  function selected() {
+    return candidates.filter((device) => chosen.has(`${device.sourceId}|${device.deviceId}`));
+  }
+
+  /** Drops members of a device that is no longer ticked. */
+  function pruneGroups() {
+    draft.groups = draft.groups
+      .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
+      .filter((group) => group.length > 0);
+  }
+
+  /** Meanings every selected device has something for. */
+  function sharedSemantics() {
+    const devices = selected();
+    if (devices.length < 2) {
+      return [];
     }
-  });
+    const [first, ...rest] = devices;
+    return [...new Set(writable(first).map((property) => property.semantic).filter(Boolean))].filter(
+      (semantic) =>
+        rest.every((device) =>
+          writable(device).some((property) => property.semantic === semantic),
+        ),
+    );
+  }
 
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.textContent = 'Delete';
-  remove.addEventListener('click', async () => {
-    await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
-    state.openRules.delete(rule.id);
-    await loadRules();
-  });
+  function labelFor(semantic) {
+    const device = selected()[0];
+    return (
+      writable(device ?? { properties: [] }).find((property) => property.semantic === semantic)
+        ?.label ?? semantic
+    );
+  }
 
-  footer.append(saveRule, remove, error);
-  body.append(footer);
-  return body;
+  function drawFields() {
+    fields.replaceChildren();
+    const devices = selected();
+
+    if (devices.length < 2) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'Pick at least two devices.';
+      fields.append(hint);
+      return;
+    }
+
+    const semantics = sharedSemantics();
+    if (semantics.length === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'These devices have no function in common that can be written to.';
+      fields.append(hint);
+      return;
+    }
+
+    for (const semantic of semantics) {
+      const row = document.createElement('div');
+      row.className = 'rule-row';
+
+      const existing = draft.groups.find((group) =>
+        group.every((ref) => findProperty(ref)?.semantic === semantic),
+      );
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.id = `mirror-${semantic}`;
+      box.checked = Boolean(existing);
+
+      const label = document.createElement('label');
+      label.htmlFor = box.id;
+      label.textContent = labelFor(semantic);
+      row.append(box, label);
+
+      // One picker per device, because a two channel switch has two functions
+      // with the same meaning and only the user knows which one is wanted.
+      const pickers = document.createElement('span');
+      pickers.className = 'rule-tail';
+
+      const refs = devices.map((device) => {
+        const options = writable(device).filter((property) => property.semantic === semantic);
+        const already = existing?.find(
+          (ref) => ref.sourceId === device.sourceId && ref.deviceId === device.deviceId,
+        );
+        const ref = already ?? {
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          propertyKey: options[0]?.key ?? '',
+        };
+
+        if (options.length > 1) {
+          const select = document.createElement('select');
+          for (const option of options) {
+            const choice = document.createElement('option');
+            choice.value = option.key;
+            choice.textContent = `${displayName(device)} ${option.endpoint || option.label}`;
+            select.append(choice);
+          }
+          select.value = ref.propertyKey;
+          select.addEventListener('change', () => {
+            ref.propertyKey = select.value;
+            commit();
+          });
+          pickers.append(select);
+        }
+
+        return ref;
+      });
+
+      row.append(pickers);
+
+      function commit() {
+        draft.groups = draft.groups.filter((group) => group !== existingGroup());
+        if (box.checked) {
+          draft.groups.push(refs);
+        }
+      }
+
+      function existingGroup() {
+        return draft.groups.find((group) =>
+          group.every((ref) => findProperty(ref)?.semantic === semantic),
+        );
+      }
+
+      box.addEventListener('change', commit);
+      fields.append(row);
+    }
+  }
+
+  drawFields();
 }
 
 function sectionTitle(text) {
