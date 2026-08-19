@@ -25,14 +25,16 @@ import {
 const LOG_SIZE = 200;
 
 /**
- * How long a write is assumed to be on its way.
+ * How long a group is left alone after it has been written to.
  *
- * A device takes a moment to act and report back, and Zigbee2MQTT keeps
- * republishing the trigger's full state in the meantime. Without this, every
- * one of those republishes sends another write to a device that is already
- * doing what was asked.
+ * Mirroring only converges if every member reaches the same value. When one
+ * lags, or reports its old state once more after being written to, each report
+ * drives the group back the other way and the two devices trade places
+ * forever. Nothing about the values themselves can tell that apart from a
+ * person flipping a switch, so the group simply stops listening while it
+ * settles.
  */
-const IN_FLIGHT_MS = 15_000;
+const SETTLE_MS = 3000;
 
 export interface EngineEvents {
   /** A rule ran, or declined to. */
@@ -52,8 +54,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** Firing times per rule, trimmed to the runaway window. */
   private readonly recentFirings = new Map<string, number[]>();
   private readonly entries: LogEntry[] = [];
-  /** Writes sent but not yet confirmed by the device, keyed by property. */
-  private readonly inFlight = new Map<string, { value: unknown; at: number }>();
+  /** When each mirror group was last written to, so it can be left to settle. */
+  private readonly settling = new Map<string, number>();
   private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(
@@ -85,9 +87,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       const previous = this.previous.get(cacheKey);
       this.previous.set(cacheKey, value);
 
-      // The device has spoken for itself, so whatever we sent is settled,
-      // whether it complied or not.
-      this.inFlight.delete(cacheKey);
 
       // A retained message is the broker replaying something that already
       // happened. Acting on it would fire every rule again on each reconnect.
@@ -128,13 +127,22 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     propertyKey: string,
     value: unknown,
   ): void {
-    for (const group of rule.groups) {
+    for (const [index, group] of rule.groups.entries()) {
       const from = group.find((member) => refersTo(member, update, propertyKey));
       if (!from) {
         continue;
       }
       const source = this.property(from);
       if (!source) {
+        continue;
+      }
+
+      // Every report during the settling window is either the confirmation we
+      // were waiting for or the stale one that would send us backwards, and
+      // acting on either is wrong.
+      const groupKey = `${rule.id}:${index}`;
+      const wroteAt = this.settling.get(groupKey);
+      if (wroteAt !== undefined && Date.now() - wroteAt < SETTLE_MS) {
         continue;
       }
 
@@ -160,7 +168,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
           continue;
         }
 
-        if (this.settled(member, wanted)) {
+        const current = this.catalog.getState(member.sourceId, member.deviceId)?.[
+          member.propertyKey
+        ];
+        if (
+          current !== undefined &&
+          matches({ kind: 'equals', value: wanted as string | number | boolean }, current)
+        ) {
           continue;
         }
 
@@ -181,12 +195,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         return;
       }
 
+      this.settling.set(groupKey, Date.now());
+
       for (const write of writes) {
         this.mqtt.publish(
           write.target.setTopic as string,
           JSON.stringify(writePath(write.target.encode ?? write.target.extract, write.wanted)),
         );
-        this.inFlight.set(refKey(write.member), { value: write.wanted, at: Date.now() });
       }
 
       this.record(
@@ -195,31 +210,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         `${source.label} copied to ${writes.map((write) => write.target.label).join(', ')}`,
       );
     }
-  }
-
-  /**
-   * True when a member already holds the value, or is already on its way to it.
-   *
-   * The first stops mirroring going round in circles. The second stops a burst
-   * of writes while the device is still acting on the first one.
-   */
-  private settled(member: PropertyRef, wanted: unknown): boolean {
-    const key = refKey(member);
-
-    const pending = this.inFlight.get(key);
-    if (pending) {
-      if (Date.now() - pending.at > IN_FLIGHT_MS) {
-        this.inFlight.delete(key);
-      } else if (matches({ kind: 'equals', value: wanted as string | number | boolean }, pending.value)) {
-        return true;
-      }
-    }
-
-    const current = this.catalog.getState(member.sourceId, member.deviceId)?.[member.propertyKey];
-    return (
-      current !== undefined &&
-      matches({ kind: 'equals', value: wanted as string | number | boolean }, current)
-    );
   }
 
   /** Shared rate limit and runaway guard, for whichever kind of rule. */
@@ -393,10 +383,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
-}
-
-function refKey(ref: PropertyRef): string {
-  return `${ref.sourceId}:${ref.deviceId}:${ref.propertyKey}`;
 }
 
 function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): boolean {
