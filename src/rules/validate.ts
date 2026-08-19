@@ -48,12 +48,23 @@ export function parseRule(raw: unknown, id: string): { rule: Rule } | { error: s
     if (!ref || !isObject(entry)) {
       return { error: 'An action needs a device and a function' };
     }
+    const copies =
+      isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
+
     const value = entry.value;
-    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+    const literal =
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+
+    if (!copies && !literal) {
       return { error: 'An action needs a value to send' };
     }
+
     const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
-    actions.push({ ...ref, value, ...(delay ? { delayMs: delay } : {}) });
+    actions.push({
+      ...ref,
+      ...(copies ? { valueFrom: { kind: 'trigger' } as const } : { value: value as string | number | boolean }),
+      ...(delay ? { delayMs: delay } : {}),
+    });
   }
 
   if (actions.length === 0) {

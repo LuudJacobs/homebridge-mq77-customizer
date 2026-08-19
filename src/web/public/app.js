@@ -1096,7 +1096,32 @@ function refRow(ref, options) {
     }
 
     if (options.withValue) {
-      tail.append(valueInput(property, ref.value, (value) => (ref.value = value)));
+      const mode = document.createElement('select');
+      for (const entry of [
+        { kind: 'literal', label: 'set to' },
+        { kind: 'trigger', label: 'match the trigger' },
+      ]) {
+        const choice = document.createElement('option');
+        choice.value = entry.kind;
+        choice.textContent = entry.label;
+        mode.append(choice);
+      }
+      mode.value = ref.valueFrom?.kind === 'trigger' ? 'trigger' : 'literal';
+      mode.addEventListener('change', () => {
+        if (mode.value === 'trigger') {
+          ref.valueFrom = { kind: 'trigger' };
+          delete ref.value;
+        } else {
+          delete ref.valueFrom;
+        }
+        redrawTail();
+      });
+      tail.append(mode);
+
+      // Copying the trigger leaves nothing to type, so the value box goes.
+      if (mode.value === 'literal') {
+        tail.append(valueInput(property, ref.value, (value) => (ref.value = value)));
+      }
     }
 
     if (options.withDelay) {
