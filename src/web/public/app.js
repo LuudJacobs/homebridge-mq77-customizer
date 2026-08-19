@@ -35,6 +35,7 @@ const el = {
   rules: document.getElementById('rules'),
   log: document.getElementById('log'),
   addRule: document.getElementById('add-rule'),
+  zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -94,6 +95,13 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+
+  // Only shown when configured, so the tab bar does not carry a dead link.
+  const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
+  el.zigbee2mqttLink.hidden = !zigbee2mqtt;
+  if (zigbee2mqtt) {
+    el.zigbee2mqttLink.href = zigbee2mqtt;
+  }
   showApp();
   safeRender();
 }

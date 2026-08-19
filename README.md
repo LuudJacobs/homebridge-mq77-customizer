@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.6.0
+# MQ77 Customizer 0.6.1
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -34,6 +34,8 @@ Add the platform to your Homebridge config:
 ```
 
 The web interface can switch your devices, so `web.password` is required. Without it the interface does not start.
+
+Set `web.zigbee2mqttUrl` to add a link to the Zigbee2MQTT interface in the tab bar. It has to be a full address starting with `http://` or `https://`, and is left out entirely when unset.
 
 Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigbee2mqtt`.
 
