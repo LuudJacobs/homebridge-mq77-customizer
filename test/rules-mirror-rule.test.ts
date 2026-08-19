@@ -9,8 +9,9 @@ import { silentLogger } from '../src/logger.js';
 import { RulesEngine } from '../src/rules/engine.js';
 import { RUNAWAY_FIRINGS } from '../src/rules/types.js';
 
-/** Mirrors the constant in the engine. */
-const SETTLE_MS = 3000;
+import { DEFAULT_SETTLE_MS } from '../src/rules/types.js';
+
+const SETTLE_MS = DEFAULT_SETTLE_MS;
 import type { MirrorRule } from '../src/rules/types.js';
 import { parseRule } from '../src/rules/validate.js';
 import { Store } from '../src/store.js';
@@ -180,8 +181,8 @@ describe('not wearing itself out', () => {
       }
 
       expect(store.data.rules[0]?.enabled).toBe(true);
-      // Ten seconds of disagreement, at most one exchange every three.
-      expect(mqtt.published.length).toBeLessThanOrEqual(5);
+      // Ten seconds of disagreement, at most one exchange per settling window.
+      expect(mqtt.published.length).toBeLessThanOrEqual(10_000 / DEFAULT_SETTLE_MS + 1);
     } finally {
       vi.useRealTimers();
     }
@@ -275,11 +276,51 @@ describe('not wearing itself out', () => {
   });
 });
 
+describe('the settling window', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('can be shortened per rule', async () => {
+    const { mqtt } = await harness([mirrorRule({ settleMs: 500 })]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(mqtt.published).toHaveLength(1);
+
+    vi.advanceTimersByTime(600);
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    // Would still be settling under the default.
+    expect(mqtt.published).toHaveLength(2);
+  });
+
+  it('can be lengthened per rule', async () => {
+    const { mqtt } = await harness([mirrorRule({ settleMs: 10_000 })]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    vi.advanceTimersByTime(DEFAULT_SETTLE_MS + 100);
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    expect(mqtt.published).toHaveLength(1);
+
+    vi.advanceTimersByTime(10_000);
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    expect(mqtt.published).toHaveLength(2);
+  });
+});
+
 describe('parsing a mirror rule', () => {
   const group = [
     { sourceId: 'z', deviceId: 'a', propertyKey: 'state' },
     { sourceId: 'z', deviceId: 'b', propertyKey: 'state_l1' },
   ];
+
+  it('keeps the settling window within something workable', () => {
+    // Below the floor two devices that disagree could trade places fast
+    // enough to look like the runaway this window exists to prevent.
+    const short = parseRule({ kind: 'mirror', name: 'x', groups: [group], settleMs: 10 }, 'm1');
+    expect('rule' in short && short.rule.settleMs).toBe(250);
+
+    const long = parseRule({ kind: 'mirror', name: 'x', groups: [group], settleMs: 999_999 }, 'm1');
+    expect('rule' in long && long.rule.settleMs).toBe(60_000);
+  });
 
   it('accepts one', () => {
     const parsed = parseRule({ kind: 'mirror', name: 'Together', groups: [group] }, 'm1');
