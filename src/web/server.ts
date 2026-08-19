@@ -313,7 +313,11 @@ export class WebServer {
       };
     });
 
-    return { devices, tileTypes: TILE_TYPES };
+    return {
+      devices,
+      tileTypes: TILE_TYPES,
+      links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
+    };
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {
