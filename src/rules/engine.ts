@@ -6,6 +6,7 @@ import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
+import { convertValue } from './convert.js';
 import { describeMatch, matches } from './match.js';
 import {
   DEFAULT_RATE_LIMIT_MS,
@@ -82,12 +83,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         if (!matches(rule.trigger.match, value, previous)) {
           continue;
         }
-        this.fire(rule);
+        this.fire(rule, { property: rule.trigger, value });
       }
     }
   }
 
-  private fire(rule: Rule): void {
+  private fire(rule: Rule, trigger: { property: PropertyRef; value: unknown }): void {
     const now = Date.now();
     const limit = rule.rateLimitMs ?? DEFAULT_RATE_LIMIT_MS;
     const last = this.lastFired.get(rule.id);
@@ -123,7 +124,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const problems: string[] = [];
     for (const action of rule.actions) {
-      const problem = this.run(action);
+      const problem = this.run(action, trigger);
       if (problem) {
         problems.push(problem);
       }
@@ -157,7 +158,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /** Returns a problem, or undefined when the action was sent. */
-  private run(action: Action): string | undefined {
+  private run(
+    action: Action,
+    trigger: { property: PropertyRef; value: unknown },
+  ): string | undefined {
     const property = this.property(action);
     if (!property) {
       return `${action.propertyKey} is not on that device any more`;
@@ -166,7 +170,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return `${property.label} cannot be written to`;
     }
 
-    const payload = JSON.stringify(writePath(property.encode ?? property.extract, action.value));
+    const value = this.resolve(action, property, trigger);
+    if (value === undefined) {
+      return `nothing to send to ${property.label}`;
+    }
+
+    const payload = JSON.stringify(writePath(property.encode ?? property.extract, value));
 
     if (!action.delayMs) {
       this.mqtt.publish(property.setTopic, payload);
@@ -179,6 +188,27 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }, action.delayMs);
     this.timers.add(timer);
     return undefined;
+  }
+
+  /**
+   * Works out what to send, translating a copied value into the target's terms.
+   *
+   * A switch that says `"ON"` can drive one that expects `true`, and a dimmer
+   * counting to 254 can drive one counting to 100.
+   */
+  private resolve(
+    action: Action,
+    target: NormalisedProperty,
+    trigger: { property: PropertyRef; value: unknown },
+  ): string | number | boolean | undefined {
+    if (action.valueFrom?.kind !== 'trigger') {
+      return action.value;
+    }
+    const source = this.property(trigger.property);
+    if (!source) {
+      return undefined;
+    }
+    return convertValue(source, target, trigger.value);
   }
 
   private isRunaway(rule: Rule, now: number): boolean {
