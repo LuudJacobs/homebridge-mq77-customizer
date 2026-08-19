@@ -41,7 +41,8 @@
 
       <nav class="tabs">
         <button id="tab-devices" type="button" class="tab active">Devices</button>
-        <button id="tab-rules" type="button" class="tab">Rules</button>
+        <button id="tab-automation" type="button" class="tab">Automation</button>
+        <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
           Zigbee2MQTT
           <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
@@ -65,18 +66,31 @@
         <main id="devices"></main>
       </section>
 
-      <section id="view-rules" hidden>
+      <section id="view-automation" hidden>
         <p class="hint">
           When something happens on one device, send something to another. An action can
-          send a fixed value or match whatever set the rule off, so one device can follow
-          another. Works across sources, and applies immediately.
+          send a fixed value or match whatever set the rule off. Works across sources, and
+          applies immediately.
         </p>
         <div class="rules-actions">
-          <button id="add-rule" type="button">Add rule</button>
+          <button id="add-automation" type="button">Add automation</button>
         </div>
-        <main id="rules"></main>
+        <main id="automation"></main>
         <h2 class="log-title">Recent activity</h2>
-        <div id="log" class="log"></div>
+        <div id="automation-log" class="log"></div>
+      </section>
+
+      <section id="view-mirror" hidden>
+        <p class="hint">
+          Keep the same function on several devices in step. Every device is both a
+          trigger and a target, so changing any one of them brings the rest into line.
+        </p>
+        <div class="rules-actions">
+          <button id="add-mirror" type="button">Add mirror</button>
+        </div>
+        <main id="mirror"></main>
+        <h2 class="log-title">Recent activity</h2>
+        <div id="mirror-log" class="log"></div>
       </section>
     </div>
 

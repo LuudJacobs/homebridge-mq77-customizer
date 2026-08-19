@@ -362,7 +362,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   private record(rule: AnyRule, outcome: LogOutcome, detail: string): void {
-    const entry: LogEntry = { at: Date.now(), ruleId: rule.id, ruleName: rule.name, outcome, detail };
+    const entry: LogEntry = {
+      at: Date.now(),
+      ruleId: rule.id,
+      ruleName: rule.name,
+      ruleKind: isMirror(rule) ? 'mirror' : 'standard',
+      outcome,
+      detail,
+    };
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
       this.entries.shift();
