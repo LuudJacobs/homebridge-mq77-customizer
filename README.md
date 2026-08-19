@@ -123,7 +123,7 @@ Two things guard against a pair of rules setting each other off:
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
-Recent activity is listed under the rules, including rules that declined to run and why.
+The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Each entry says whether it came from an automation or a mirror.
 
 ## Upgrading from MQTT Customizer
 

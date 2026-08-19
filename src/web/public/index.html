@@ -43,6 +43,7 @@
         <button id="tab-devices" type="button" class="tab active">Devices</button>
         <button id="tab-automation" type="button" class="tab">Automation</button>
         <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
+        <button id="tab-activity" type="button" class="tab">Activity</button>
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
           Zigbee2MQTT
           <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
@@ -76,8 +77,6 @@
           <button id="add-automation" type="button">Add automation</button>
         </div>
         <main id="automation"></main>
-        <h2 class="log-title">Recent activity</h2>
-        <div id="automation-log" class="log"></div>
       </section>
 
       <section id="view-mirror" hidden>
@@ -89,8 +88,14 @@
           <button id="add-mirror" type="button">Add mirror</button>
         </div>
         <main id="mirror"></main>
-        <h2 class="log-title">Recent activity</h2>
-        <div id="mirror-log" class="log"></div>
+      </section>
+
+      <section id="view-activity" hidden>
+        <p class="hint">
+          What the rules have been doing, newest first, including the ones that decided not
+          to run and why.
+        </p>
+        <div id="activity-log" class="log"></div>
       </section>
     </div>
 
