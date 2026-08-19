@@ -2,11 +2,12 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Catalog } from '../src/catalog.js';
 import { silentLogger } from '../src/logger.js';
 import { RulesEngine } from '../src/rules/engine.js';
+import { RUNAWAY_FIRINGS } from '../src/rules/types.js';
 import type { MirrorRule } from '../src/rules/types.js';
 import { parseRule } from '../src/rules/validate.js';
 import { Store } from '../src/store.js';
@@ -148,6 +149,83 @@ describe('mirroring', () => {
     const { mqtt } = await harness([mirrorRule({ enabled: false })]);
     mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
     expect(mqtt.published).toEqual([]);
+  });
+});
+
+describe('not wearing itself out', () => {
+  it('sends one write while the device is still acting on the last one', async () => {
+    const { mqtt } = await harness([mirrorRule()]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(mqtt.published).toHaveLength(1);
+
+    // Zigbee2MQTT republishes full state constantly, and with last_seen on it
+    // does so on a timer. The socket has not confirmed yet, but it is already
+    // on its way, so none of these should send anything further.
+    for (let repeat = 0; repeat < 30; repeat++) {
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON', linkquality: 60 + repeat });
+    }
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('survives far more traffic than the runaway guard allows', async () => {
+    const { store, mqtt } = await harness([mirrorRule()]);
+
+    for (let repeat = 0; repeat < RUNAWAY_FIRINGS * 3; repeat++) {
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON', linkquality: repeat });
+      mqtt.deliver(SOCKET.topic, { state: 'ON', power: repeat });
+    }
+
+    // A working mirror must not retire itself just because its devices are
+    // chatty.
+    expect(store.data.rules[0]?.enabled).toBe(true);
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('counts one firing per change, not one per device written', async () => {
+    const rule = mirrorRule({
+      groups: [
+        [
+          { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l1' },
+          { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l2' },
+          { sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state' },
+        ],
+      ],
+    });
+    const { store, mqtt } = await harness([rule]);
+
+    // Alternating, so every change is genuine and nothing is already settled.
+    for (let repeat = 0; repeat < RUNAWAY_FIRINGS - 1; repeat++) {
+      mqtt.deliver(SWITCH.topic, { state_l1: repeat % 2 === 0 ? 'ON' : 'OFF' });
+    }
+    expect(store.data.rules[0]?.enabled).toBe(true);
+  });
+
+  it('writes again once the device has had its chance and did not comply', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([mirrorRule()]);
+
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+      expect(mqtt.published).toHaveLength(1);
+
+      // Long enough that the write is no longer plausibly on its way.
+      vi.advanceTimersByTime(20_000);
+      mqtt.deliver(SWITCH.topic, { state_l1: 'ON', linkquality: 55 });
+      expect(mqtt.published).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops waiting as soon as the device answers', async () => {
+    const { mqtt } = await harness([mirrorRule()]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    // The socket says it went off instead, so the next change is not settled.
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    expect(mqtt.published).toHaveLength(2);
+    expect(mqtt.published.at(-1)?.payload).toBe('{"state_l1":"OFF"}');
   });
 });
 
