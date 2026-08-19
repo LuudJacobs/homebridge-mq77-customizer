@@ -475,11 +475,6 @@ button.primary {
   border-top: 1px solid var(--line);
 }
 
-.log-title {
-  font-size: 0.9rem;
-  margin: 1.75rem 0 0.5rem;
-}
-
 .log {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -497,6 +492,11 @@ button.primary {
 
 .log-line:last-child {
   border-bottom: none;
+}
+
+.log-line .tag {
+  margin: 0;
+  flex: none;
 }
 
 .log-time {
@@ -532,4 +532,10 @@ button.primary {
   flex-wrap: wrap;
   gap: 0.35rem 1.1rem;
   padding: 0.25rem 0 0.5rem;
+}
+
+.kind-filters {
+  display: inline-flex;
+  gap: 0.75rem;
+  align-items: center;
 }

@@ -53,6 +53,14 @@ const trigger = {
 const action = { sourceId: 'zigbee', deviceId: '0xdef', propertyKey: 'state', value: 'ON' };
 
 describe('parseRule', () => {
+  it('reads a rule stored before mirrors existed as an automation', () => {
+    // Rules saved by earlier versions carry no kind at all. They must keep
+    // working and land on the automation tab rather than needing converting.
+    const parsed = parseRule({ name: 'Old rule', trigger, actions: [action] }, 'r1');
+    expect('rule' in parsed && parsed.rule.kind).toBeUndefined();
+    expect('rule' in parsed && 'trigger' in parsed.rule).toBe(true);
+  });
+
   it('accepts a complete rule', () => {
     const parsed = parseRule({ name: 'Lamp', trigger, actions: [action] }, 'r1');
     expect('rule' in parsed && parsed.rule).toMatchObject({

@@ -7,7 +7,14 @@ const state = {
   filter: '',
   /** Hides everything that is not currently published to HomeKit. */
   exposedOnly: false,
-  sort: 'name',
+  /** Hides rules that are switched off. */
+  enabledOnly: false,
+  /** Which kinds the activity list shows. */
+  activityKinds: { standard: true, mirror: true },
+  // Kept per tab, so switching away and back does not lose what was typed and
+  // a device filter never silently applies to a rule list.
+  filters: { devices: '', automation: '', mirror: '', activity: '' },
+  sorts: { devices: 'name', automation: 'name', mirror: 'name' },
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
@@ -26,15 +33,27 @@ const el = {
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
   exposedOnly: document.getElementById('exposed-only'),
+  enabledOnly: document.getElementById('enabled-only'),
+  onlyExposed: document.getElementById('only-exposed'),
+  onlyEnabled: document.getElementById('only-enabled'),
+  kindFilters: document.getElementById('kind-filters'),
+  kindAutomation: document.getElementById('kind-automation'),
+  kindMirror: document.getElementById('kind-mirror'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   tabDevices: document.getElementById('tab-devices'),
-  tabRules: document.getElementById('tab-rules'),
+  tabAutomation: document.getElementById('tab-automation'),
+  tabMirror: document.getElementById('tab-mirror'),
+  tabActivity: document.getElementById('tab-activity'),
   viewDevices: document.getElementById('view-devices'),
-  viewRules: document.getElementById('view-rules'),
-  rules: document.getElementById('rules'),
-  log: document.getElementById('log'),
-  addRule: document.getElementById('add-rule'),
+  viewAutomation: document.getElementById('view-automation'),
+  viewMirror: document.getElementById('view-mirror'),
+  viewActivity: document.getElementById('view-activity'),
+  automation: document.getElementById('automation'),
+  mirror: document.getElementById('mirror'),
+  activityLog: document.getElementById('activity-log'),
+  addAutomation: document.getElementById('add-automation'),
+  addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
 };
 
@@ -103,6 +122,7 @@ async function load() {
     el.zigbee2mqttLink.href = zigbee2mqtt;
   }
   showApp();
+  paintControls();
   safeRender();
 }
 
@@ -141,7 +161,7 @@ function listen() {
       return;
     }
     if (payload.type === 'rules') {
-      if (state.view === 'rules') {
+      if (showsRules()) {
         loadRules().catch(() => {});
       }
       return;
@@ -149,7 +169,7 @@ function listen() {
     if (payload.type === 'log') {
       state.log.unshift(payload.entry);
       state.log = state.log.slice(0, 200);
-      if (state.view === 'rules') {
+      if (showsRules()) {
         renderLog();
       }
       return;
@@ -342,16 +362,74 @@ const SORT_KEYS = {
   device: (device) => [device.manufacturer, device.model].filter(Boolean).join(' '),
 };
 
+/** What each tab offers, and what it says it is filtering. */
+const TAB_CONTROLS = {
+  devices: {
+    sorts: [
+      ['name', 'Name'],
+      ['topic', 'Topic'],
+      ['device', 'Device'],
+      ['seen', 'Last seen'],
+    ],
+    placeholder: 'Filter name, topic or model',
+  },
+  automation: {
+    sorts: [
+      ['name', 'Name'],
+      ['trigger', 'Trigger device'],
+      ['target', 'Target device'],
+    ],
+    placeholder: 'Filter name, topic or model',
+  },
+  mirror: {
+    sorts: [
+      ['name', 'Name'],
+      ['trigger', 'First device'],
+      ['target', 'Second device'],
+    ],
+    placeholder: 'Filter name, topic or model',
+  },
+  activity: { sorts: [], placeholder: 'Filter by name' },
+};
+
+/** Points the header controls at whatever the current tab is about. */
+function paintControls() {
+  const view = state.view;
+  const controls = TAB_CONTROLS[view];
+  const rules = view === 'automation' || view === 'mirror';
+
+  el.onlyExposed.hidden = view !== 'devices';
+  el.onlyEnabled.hidden = !rules;
+  el.kindFilters.hidden = view !== 'activity';
+
+  el.sort.hidden = controls.sorts.length === 0;
+  if (controls.sorts.length > 0) {
+    el.sort.replaceChildren();
+    for (const [value, label] of controls.sorts) {
+      const choice = document.createElement('option');
+      choice.value = value;
+      choice.textContent = label;
+      el.sort.append(choice);
+    }
+    el.sort.value = state.sorts[view] ?? 'name';
+  }
+
+  el.filter.placeholder = controls.placeholder;
+  el.filter.value = state.filters[view] ?? '';
+}
+
+const currentFilter = () => (state.filters[state.view] ?? '').trim().toLowerCase();
+
 function sortDevices(devices) {
   const sorted = [...devices];
 
-  if (state.sort === 'seen') {
+  if (state.sorts.devices === 'seen') {
     // Newest first, and anything that has said nothing yet goes last rather
     // than pretending to be very old.
     return sorted.sort((a, b) => (deviceLastSeen(b) ?? -1) - (deviceLastSeen(a) ?? -1));
   }
 
-  const key = SORT_KEYS[state.sort] ?? SORT_KEYS.name;
+  const key = SORT_KEYS[state.sorts.devices] ?? SORT_KEYS.name;
   return sorted.sort((a, b) => compareNames(key(a), key(b)) || compareNames(displayName(a), displayName(b)));
 }
 
@@ -382,7 +460,7 @@ function matchesFilter(device, term) {
 }
 
 function render() {
-  const term = state.filter.trim().toLowerCase();
+  const term = currentFilter();
   const visible = sortDevices(
     state.devices.filter(
       (device) => matchesFilter(device, term) && (!state.exposedOnly || exposedCount(device) > 0),
@@ -805,18 +883,33 @@ el.logout.addEventListener('click', async () => {
 });
 
 el.filter.addEventListener('input', () => {
-  state.filter = el.filter.value;
-  safeRender();
+  state.filters[state.view] = el.filter.value;
+  repaint();
 });
 
 el.sort.addEventListener('change', () => {
-  state.sort = el.sort.value;
-  safeRender();
+  state.sorts[state.view] = el.sort.value;
+  repaint();
 });
 
 el.exposedOnly.addEventListener('change', () => {
   state.exposedOnly = el.exposedOnly.checked;
   safeRender();
+});
+
+el.enabledOnly.addEventListener('change', () => {
+  state.enabledOnly = el.enabledOnly.checked;
+  renderRules();
+});
+
+el.kindAutomation.addEventListener('change', () => {
+  state.activityKinds.standard = el.kindAutomation.checked;
+  renderLog();
+});
+
+el.kindMirror.addEventListener('change', () => {
+  state.activityKinds.mirror = el.kindMirror.checked;
+  renderLog();
 });
 
 async function start() {
@@ -883,17 +976,84 @@ async function loadRules() {
   renderLog();
 }
 
+/** Whether a stored rule belongs to the mirror tab or the automation one. */
+const kindOf = (rule) => (rule.kind === 'mirror' ? 'mirror' : 'standard');
+
 function renderRules() {
-  el.rules.replaceChildren();
-  if (state.rules.length === 0) {
+  renderRuleList('standard', el.automation, 'No automations yet.');
+  renderRuleList('mirror', el.mirror, 'No mirrored devices yet.');
+}
+
+/** The devices a rule touches, in the order it names them. */
+function ruleRefs(rule) {
+  return rule.kind === 'mirror' ? rule.groups.flat() : [rule.trigger, ...rule.actions];
+}
+
+/** First device on each side, which is what the two orderings compare. */
+function ruleSides(rule) {
+  const refs = ruleRefs(rule);
+  if (rule.kind === 'mirror') {
+    return { trigger: refs[0], target: refs[1] };
+  }
+  return { trigger: rule.trigger, target: rule.actions[0] };
+}
+
+function ruleSortKey(rule, sort) {
+  if (sort === 'trigger' || sort === 'target') {
+    const ref = ruleSides(rule)[sort];
+    const device = ref && findDevice(ref);
+    // A rule pointing at a device that has gone sorts last rather than first.
+    return device ? displayName(device) : '\uffff';
+  }
+  return rule.name;
+}
+
+function matchesRuleFilter(rule, term) {
+  if (!term) {
+    return true;
+  }
+  if (rule.name.toLowerCase().includes(term)) {
+    return true;
+  }
+  // Also by the devices it touches, so a rule can be found from the thing it
+  // acts on rather than only from what it was called.
+  return ruleRefs(rule).some((ref) => {
+    const device = ref && findDevice(ref);
+    return (
+      device &&
+      [displayName(device), device.name, device.topic, device.model, device.manufacturer]
+        .filter(Boolean)
+        .some((field) => field.toLowerCase().includes(term))
+    );
+  });
+}
+
+function renderRuleList(kind, container, emptyText) {
+  container.replaceChildren();
+  const term = currentFilter();
+  const sort = state.sorts[state.view] ?? 'name';
+
+  const rules = state.rules
+    .filter((rule) => kindOf(rule) === kind)
+    .filter((rule) => !state.enabledOnly || rule.enabled)
+    .filter((rule) => matchesRuleFilter(rule, term))
+    .sort(
+      (a, b) =>
+        compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
+        compareNames(a.name, b.name),
+    );
+
+  if (rules.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = 'No rules yet.';
-    el.rules.append(empty);
+    empty.textContent = state.rules.some((rule) => kindOf(rule) === kind)
+      ? 'Nothing matches.'
+      : emptyText;
+    container.append(empty);
     return;
   }
-  for (const rule of state.rules) {
-    el.rules.append(renderRule(rule));
+  for (const rule of rules) {
+    container.append(renderRule(rule));
   }
 }
 
@@ -965,39 +1125,18 @@ function renderRuleBody(rule) {
   enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
   enabled.append(enabledBox, document.createTextNode('Enabled'));
 
-  const mirror = document.createElement('label');
-  mirror.className = 'toggle';
-  mirror.title = 'Keep the same function on several devices in step with each other';
-  const mirrorBox = document.createElement('input');
-  mirrorBox.type = 'checkbox';
-  mirrorBox.checked = draft.kind === 'mirror';
-  mirror.append(mirrorBox, document.createTextNode('Mirror'));
-
-  nameRow.append(enabled, mirror);
+  nameRow.append(enabled);
   body.append(nameRow);
 
-  // A mirror has no trigger and no actions, so the rest of the form is a
-  // different shape entirely rather than a variation on the same one.
+  // The tab a rule lives in settles what it is, so there is nothing to choose
+  // here. Changing a rule from one to the other means making the other one.
   const shape = document.createElement('div');
-  const drawShape = () => {
-    shape.replaceChildren();
-    if (draft.kind === 'mirror') {
-      drawMirror(shape, draft);
-    } else {
-      drawWhenThen(shape, draft);
-    }
-  };
+  if (draft.kind === 'mirror') {
+    drawMirror(shape, draft);
+  } else {
+    drawWhenThen(shape, draft);
+  }
 
-  mirrorBox.addEventListener('change', () => {
-    if (mirrorBox.checked) {
-      draft.kind = 'mirror';
-    } else {
-      delete draft.kind;
-    }
-    drawShape();
-  });
-
-  drawShape();
   body.append(shape);
   body.append(ruleFooter(rule, draft));
   return body;
@@ -1529,51 +1668,81 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
+const KIND_LABELS = { standard: 'automation', mirror: 'mirror' };
+
 function renderLog() {
-  el.log.replaceChildren();
-  if (state.log.length === 0) {
+  const container = el.activityLog;
+  container.replaceChildren();
+  const term = (state.filters.activity ?? '').trim().toLowerCase();
+
+  const entries = state.log
+    .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
+    .filter((entry) => !term || entry.ruleName.toLowerCase().includes(term));
+
+  if (entries.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = 'Nothing has run yet.';
-    el.log.append(empty);
+    empty.textContent = state.log.length === 0 ? 'Nothing has run yet.' : 'Nothing matches.';
+    container.append(empty);
     return;
   }
-  for (const entry of state.log.slice(0, 50)) {
+
+  for (const entry of entries.slice(0, 100)) {
     const line = document.createElement('div');
     line.className = `log-line ${entry.outcome}`;
     const when = document.createElement('span');
     when.className = 'log-time';
     when.textContent = new Date(entry.at).toLocaleTimeString();
+    // Both kinds share this list now, and two rules can share a name, so each
+    // entry says which it came from.
+    const kind = document.createElement('span');
+    kind.className = 'tag';
+    kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+
     const what = document.createElement('span');
     what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
-    line.append(when, what);
-    el.log.append(line);
+    line.append(when, kind, what);
+    container.append(line);
+  }
+}
+
+function repaint() {
+  if (state.view === 'devices') {
+    safeRender();
+  } else if (state.view === 'activity') {
+    renderLog();
+  } else {
+    renderRules();
   }
 }
 
 function showView(view) {
   state.view = view;
   el.viewDevices.hidden = view !== 'devices';
-  el.viewRules.hidden = view !== 'rules';
+  el.viewAutomation.hidden = view !== 'automation';
+  el.viewMirror.hidden = view !== 'mirror';
+  el.viewActivity.hidden = view !== 'activity';
   el.tabDevices.classList.toggle('active', view === 'devices');
-  el.tabRules.classList.toggle('active', view === 'rules');
-  if (view === 'rules') {
+  el.tabAutomation.classList.toggle('active', view === 'automation');
+  el.tabMirror.classList.toggle('active', view === 'mirror');
+  el.tabActivity.classList.toggle('active', view === 'activity');
+  paintControls();
+  if (view === 'devices') {
+    safeRender();
+  } else {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
 }
 
-el.tabDevices.addEventListener('click', () => showView('devices'));
-el.tabRules.addEventListener('click', () => showView('rules'));
+const showsRules = () =>
+  state.view === 'automation' || state.view === 'mirror' || state.view === 'activity';
 
-el.addRule.addEventListener('click', async () => {
-  const trigger = { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } };
-  const draft = {
-    name: 'New rule',
-    enabled: false,
-    trigger,
-    conditions: [],
-    actions: [{ ...blankRef(writable), value: '' }],
-  };
+el.tabDevices.addEventListener('click', () => showView('devices'));
+el.tabAutomation.addEventListener('click', () => showView('automation'));
+el.tabMirror.addEventListener('click', () => showView('mirror'));
+el.tabActivity.addEventListener('click', () => showView('activity'));
+
+async function addRule(draft) {
   try {
     const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
     state.openRules.add(created.rule.id);
@@ -1581,4 +1750,27 @@ el.addRule.addEventListener('click', async () => {
   } catch (problem) {
     setStatus(problem.message, 'lost');
   }
-});
+}
+
+el.addAutomation.addEventListener('click', () =>
+  addRule({
+    name: 'New automation',
+    // Off to begin with, so a half built rule cannot fire while it is being
+    // filled in.
+    enabled: false,
+    trigger: { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } },
+    conditions: [],
+    actions: [{ ...blankRef(writable), value: '' }],
+  }),
+);
+
+el.addMirror.addEventListener('click', () =>
+  // Saved without groups would be refused, so it starts as an automation and
+  // becomes a mirror once devices are chosen. Nothing to store until then.
+  addRule({
+    name: 'New mirror',
+    enabled: false,
+    kind: 'mirror',
+    groups: [],
+  }),
+);

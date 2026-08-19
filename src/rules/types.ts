@@ -86,6 +86,8 @@ export interface LogEntry {
   at: number;
   ruleId: string;
   ruleName: string;
+  /** Which list the rule lives in, so the run log can be split the same way. */
+  ruleKind: 'standard' | 'mirror';
   outcome: LogOutcome;
   /** Why, in a sentence, for the run log in the interface. */
   detail: string;
