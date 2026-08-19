@@ -142,6 +142,34 @@ describe('lights', () => {
 });
 
 describe('renaming', () => {
+  it('corrects a name HomeKit would refuse, without changing the accessory', () => {
+    const plans = planAccessories(device([property()], { name: 'Gang Licht (voordeur)' }), {
+      properties: ['state'],
+    });
+    expect(plans[0]?.name).toBe('Gang Licht voordeur');
+    // The identity comes from the seed, so fixing the name does not make
+    // HomeKit treat it as a different accessory.
+    expect(plans[0]?.seed).toBe('zigbee:0xabc');
+  });
+
+  it('corrects a name the user typed as well', () => {
+    const plans = planAccessories(device([property()]), {
+      properties: ['state'],
+      label: 'Lamp (hal)',
+    });
+    expect(plans[0]?.name).toBe('Lamp hal');
+  });
+
+  it('corrects the service names built from it', () => {
+    const plans = planAccessories(device(dualEndpoint, { name: 'Gang (voor)' }), {
+      properties: ['state_l1', 'state_l2'],
+    });
+    expect(plans[0]?.services.map((service) => service.name)).toEqual([
+      'Gang voor l1',
+      'Gang voor l2',
+    ]);
+  });
+
   it('uses the given name for the accessory', () => {
     const plans = planAccessories(device([property()]), {
       properties: ['state'],

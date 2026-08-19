@@ -1,6 +1,7 @@
 import type { CatalogDevice } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
 import { DEVICE_ENDPOINT, type DeviceExposure, type TileType } from '../store.js';
+import { sanitiseName } from './names.js';
 import { buttonsFrom, roleFor, ROLE_GROUPS, type Role, type ServiceGroup } from './roles.js';
 import type { CharacteristicKind } from './values.js';
 
@@ -133,7 +134,11 @@ function buildPlan(
   const seed = split
     ? `${device.sourceId}:${device.deviceId}:${endpoint}`
     : `${device.sourceId}:${device.deviceId}`;
-  const name = exposure.names?.[endpoint] || defaultName(device, exposure, endpoint, split);
+  // Sanitised once here, so every service name built from it is valid too.
+  const name = sanitiseName(
+    exposure.names?.[endpoint] || defaultName(device, exposure, endpoint, split),
+    device.deviceId,
+  );
 
   const grouped = new Map<ServiceGroup, NormalisedProperty[]>();
   for (const property of properties) {
@@ -326,7 +331,12 @@ function thermostatServices(
   }
 
   return [
-    { kind: 'Thermostat', subtype: mode.key, name: `${accessoryName} Thermostat`, bindings },
+    {
+      kind: 'Thermostat',
+      subtype: mode.key,
+      name: sanitiseName(`${accessoryName} Thermostat`, accessoryName),
+      bindings,
+    },
   ];
 }
 
@@ -340,7 +350,7 @@ function sensorServices(
   return properties.map((property) => ({
     kind,
     subtype: property.key,
-    name: `${accessoryName} ${label}`,
+    name: sanitiseName(`${accessoryName} ${label}`, accessoryName),
     bindings: [
       {
         characteristic,
@@ -412,7 +422,7 @@ function buttonServices(
       services.push({
         kind: 'StatelessProgrammableSwitch',
         subtype: `${property.key}:${button}`,
-        name: `${accessoryName} ${button}`,
+        name: sanitiseName(`${accessoryName} ${button}`, accessoryName),
         constants: [{ characteristic: 'ServiceLabelIndex', value: index }],
         events,
         actionPropertyKey: property.key,
@@ -471,7 +481,8 @@ function defaultName(
 }
 
 function qualifiedName(accessoryName: string, property: NormalisedProperty): string {
-  return property.endpoint
-    ? `${accessoryName} ${property.endpoint}`
-    : `${accessoryName} ${property.label}`;
+  return sanitiseName(
+    property.endpoint ? `${accessoryName} ${property.endpoint}` : `${accessoryName} ${property.label}`,
+    accessoryName,
+  );
 }
