@@ -98,7 +98,7 @@ Button names and gestures are worked out from the action names the device publis
 
 ## Rules
 
-The Rules tab links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+Rules live in two tabs. Automation links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
 A rule is a trigger, any number of conditions that must hold, and one or more actions. Actions can be delayed.
 
@@ -106,9 +106,9 @@ An action either sends a fixed value or matches whatever set the rule off, which
 
 Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
 
-### Mirror rules
+### Mirror devices
 
-Ticking Mirror swaps the trigger and actions for a simpler question: which devices, and which of their functions should stay in step. Every member is both a trigger and a target, so changing any one of them brings the rest into line.
+The Mirror devices tab asks a simpler question than Automation: which devices, and which of their functions should stay in step. Every member is both a trigger and a target, so changing any one of them brings the rest into line.
 
 Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
 

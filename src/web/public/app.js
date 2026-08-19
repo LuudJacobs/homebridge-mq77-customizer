@@ -29,12 +29,17 @@ const el = {
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   tabDevices: document.getElementById('tab-devices'),
-  tabRules: document.getElementById('tab-rules'),
+  tabAutomation: document.getElementById('tab-automation'),
+  tabMirror: document.getElementById('tab-mirror'),
   viewDevices: document.getElementById('view-devices'),
-  viewRules: document.getElementById('view-rules'),
-  rules: document.getElementById('rules'),
-  log: document.getElementById('log'),
-  addRule: document.getElementById('add-rule'),
+  viewAutomation: document.getElementById('view-automation'),
+  viewMirror: document.getElementById('view-mirror'),
+  automation: document.getElementById('automation'),
+  mirror: document.getElementById('mirror'),
+  automationLog: document.getElementById('automation-log'),
+  mirrorLog: document.getElementById('mirror-log'),
+  addAutomation: document.getElementById('add-automation'),
+  addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
 };
 
@@ -141,7 +146,7 @@ function listen() {
       return;
     }
     if (payload.type === 'rules') {
-      if (state.view === 'rules') {
+      if (showsRules()) {
         loadRules().catch(() => {});
       }
       return;
@@ -149,7 +154,7 @@ function listen() {
     if (payload.type === 'log') {
       state.log.unshift(payload.entry);
       state.log = state.log.slice(0, 200);
-      if (state.view === 'rules') {
+      if (showsRules()) {
         renderLog();
       }
       return;
@@ -883,17 +888,27 @@ async function loadRules() {
   renderLog();
 }
 
+/** Whether a stored rule belongs to the mirror tab or the automation one. */
+const kindOf = (rule) => (rule.kind === 'mirror' ? 'mirror' : 'standard');
+
 function renderRules() {
-  el.rules.replaceChildren();
-  if (state.rules.length === 0) {
+  renderRuleList('standard', el.automation, 'No automations yet.');
+  renderRuleList('mirror', el.mirror, 'No mirrored devices yet.');
+}
+
+function renderRuleList(kind, container, emptyText) {
+  container.replaceChildren();
+  const rules = state.rules.filter((rule) => kindOf(rule) === kind);
+
+  if (rules.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = 'No rules yet.';
-    el.rules.append(empty);
+    empty.textContent = emptyText;
+    container.append(empty);
     return;
   }
-  for (const rule of state.rules) {
-    el.rules.append(renderRule(rule));
+  for (const rule of rules) {
+    container.append(renderRule(rule));
   }
 }
 
@@ -965,39 +980,18 @@ function renderRuleBody(rule) {
   enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
   enabled.append(enabledBox, document.createTextNode('Enabled'));
 
-  const mirror = document.createElement('label');
-  mirror.className = 'toggle';
-  mirror.title = 'Keep the same function on several devices in step with each other';
-  const mirrorBox = document.createElement('input');
-  mirrorBox.type = 'checkbox';
-  mirrorBox.checked = draft.kind === 'mirror';
-  mirror.append(mirrorBox, document.createTextNode('Mirror'));
-
-  nameRow.append(enabled, mirror);
+  nameRow.append(enabled);
   body.append(nameRow);
 
-  // A mirror has no trigger and no actions, so the rest of the form is a
-  // different shape entirely rather than a variation on the same one.
+  // The tab a rule lives in settles what it is, so there is nothing to choose
+  // here. Changing a rule from one to the other means making the other one.
   const shape = document.createElement('div');
-  const drawShape = () => {
-    shape.replaceChildren();
-    if (draft.kind === 'mirror') {
-      drawMirror(shape, draft);
-    } else {
-      drawWhenThen(shape, draft);
-    }
-  };
+  if (draft.kind === 'mirror') {
+    drawMirror(shape, draft);
+  } else {
+    drawWhenThen(shape, draft);
+  }
 
-  mirrorBox.addEventListener('change', () => {
-    if (mirrorBox.checked) {
-      draft.kind = 'mirror';
-    } else {
-      delete draft.kind;
-    }
-    drawShape();
-  });
-
-  drawShape();
   body.append(shape);
   body.append(ruleFooter(rule, draft));
   return body;
@@ -1530,15 +1524,24 @@ function valueInput(property, current, onChange, options = {}) {
 }
 
 function renderLog() {
-  el.log.replaceChildren();
-  if (state.log.length === 0) {
+  renderLogInto('standard', el.automationLog);
+  renderLogInto('mirror', el.mirrorLog);
+}
+
+function renderLogInto(kind, container) {
+  container.replaceChildren();
+  // Entries carry their kind, so an old entry still lands on the right tab
+  // after its rule has been deleted.
+  const entries = state.log.filter((entry) => (entry.ruleKind ?? 'standard') === kind);
+
+  if (entries.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = 'Nothing has run yet.';
-    el.log.append(empty);
+    container.append(empty);
     return;
   }
-  for (const entry of state.log.slice(0, 50)) {
+  for (const entry of entries.slice(0, 50)) {
     const line = document.createElement('div');
     line.className = `log-line ${entry.outcome}`;
     const when = document.createElement('span');
@@ -1547,33 +1550,30 @@ function renderLog() {
     const what = document.createElement('span');
     what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
     line.append(when, what);
-    el.log.append(line);
+    container.append(line);
   }
 }
 
 function showView(view) {
   state.view = view;
   el.viewDevices.hidden = view !== 'devices';
-  el.viewRules.hidden = view !== 'rules';
+  el.viewAutomation.hidden = view !== 'automation';
+  el.viewMirror.hidden = view !== 'mirror';
   el.tabDevices.classList.toggle('active', view === 'devices');
-  el.tabRules.classList.toggle('active', view === 'rules');
-  if (view === 'rules') {
+  el.tabAutomation.classList.toggle('active', view === 'automation');
+  el.tabMirror.classList.toggle('active', view === 'mirror');
+  if (view !== 'devices') {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
 }
 
-el.tabDevices.addEventListener('click', () => showView('devices'));
-el.tabRules.addEventListener('click', () => showView('rules'));
+const showsRules = () => state.view === 'automation' || state.view === 'mirror';
 
-el.addRule.addEventListener('click', async () => {
-  const trigger = { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } };
-  const draft = {
-    name: 'New rule',
-    enabled: false,
-    trigger,
-    conditions: [],
-    actions: [{ ...blankRef(writable), value: '' }],
-  };
+el.tabDevices.addEventListener('click', () => showView('devices'));
+el.tabAutomation.addEventListener('click', () => showView('automation'));
+el.tabMirror.addEventListener('click', () => showView('mirror'));
+
+async function addRule(draft) {
   try {
     const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
     state.openRules.add(created.rule.id);
@@ -1581,4 +1581,27 @@ el.addRule.addEventListener('click', async () => {
   } catch (problem) {
     setStatus(problem.message, 'lost');
   }
-});
+}
+
+el.addAutomation.addEventListener('click', () =>
+  addRule({
+    name: 'New automation',
+    // Off to begin with, so a half built rule cannot fire while it is being
+    // filled in.
+    enabled: false,
+    trigger: { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } },
+    conditions: [],
+    actions: [{ ...blankRef(writable), value: '' }],
+  }),
+);
+
+el.addMirror.addEventListener('click', () =>
+  // Saved without groups would be refused, so it starts as an automation and
+  // becomes a mirror once devices are chosen. Nothing to store until then.
+  addRule({
+    name: 'New mirror',
+    enabled: false,
+    kind: 'mirror',
+    groups: [],
+  }),
+);

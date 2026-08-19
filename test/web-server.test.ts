@@ -238,6 +238,39 @@ describe('WebServer', () => {
     expect(((await (await session.fetch('/api/rules')).json()) as { rules: unknown[] }).rules).toEqual([]);
   });
 
+  it('keeps automations and mirrors in one list, told apart by kind', async () => {
+    const session = await signIn(context.base);
+
+    await session.fetch('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: 'An automation',
+        trigger: {
+          sourceId: 'zigbee',
+          deviceId: '0x54ef44100169b28a',
+          propertyKey: 'action',
+          match: { kind: 'equals', value: 'single_left' },
+        },
+        actions: [
+          { sourceId: 'zigbee', deviceId: '0xf044d3fffe024659', propertyKey: 'state_l1', value: 'ON' },
+        ],
+      }),
+    });
+
+    await session.fetch('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({ kind: 'mirror', name: 'A mirror', enabled: false, groups: [] }),
+    });
+
+    const body = (await (await session.fetch('/api/rules')).json()) as {
+      rules: { name: string; kind?: string }[];
+    };
+    expect(body.rules.map((rule) => [rule.name, rule.kind ?? 'standard'])).toEqual([
+      ['An automation', 'standard'],
+      ['A mirror', 'mirror'],
+    ]);
+  });
+
   it('refuses a rule it cannot make sense of, and says why', async () => {
     const session = await signIn(context.base);
     const response = await session.fetch('/api/rules', {

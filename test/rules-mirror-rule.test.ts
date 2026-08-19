@@ -333,10 +333,16 @@ describe('parsing a mirror rule', () => {
     });
   });
 
-  it('needs something to mirror', () => {
-    expect(parseRule({ kind: 'mirror', name: 'x', groups: [] }, 'm1')).toEqual({
+  it('needs something to mirror before it can be turned on', () => {
+    expect(parseRule({ kind: 'mirror', name: 'x', groups: [], enabled: true }, 'm1')).toEqual({
       error: 'Pick at least one function to mirror',
     });
+  });
+
+  it('stores an empty one that is still being built', () => {
+    // Otherwise a new mirror could not be created before it was filled in.
+    const parsed = parseRule({ kind: 'mirror', name: 'New mirror', groups: [], enabled: false }, 'm1');
+    expect('rule' in parsed && parsed.rule).toMatchObject({ kind: 'mirror', groups: [], enabled: false });
   });
 
   it('refuses a function mirrored with itself', () => {

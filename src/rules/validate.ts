@@ -127,7 +127,10 @@ function parseMirror(
     groups.push(refs);
   }
 
-  if (groups.length === 0) {
+  // A rule being drafted has nothing in it yet, and refusing to store that
+  // would leave nowhere to build it. Only a rule that is meant to be running
+  // has to be complete.
+  if (groups.length === 0 && raw.enabled !== false) {
     return { error: 'Pick at least one function to mirror' };
   }
 
