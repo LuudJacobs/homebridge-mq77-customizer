@@ -296,6 +296,11 @@ export class WebServer {
           max: property.max,
           step: property.step,
           values: property.values,
+          // The interface offers these as choices, so it needs the words this
+          // device actually uses rather than a guess at ON and OFF.
+          onValue: property.onValue,
+          offValue: property.offValue,
+          toggleValue: property.toggleValue,
           readable: property.access.readable,
           writable: property.access.writable,
           publishable: isPublishable(property),
