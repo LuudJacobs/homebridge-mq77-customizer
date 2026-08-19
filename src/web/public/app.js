@@ -1300,7 +1300,11 @@ function refRow(ref, options) {
     for (const property of device ? options.pick(device) : []) {
       const choice = document.createElement('option');
       choice.value = property.key;
-      choice.textContent = property.label;
+      // A multi channel device calls every channel "State", so the endpoint is
+      // the only thing telling them apart.
+      choice.textContent = property.endpoint
+        ? `${property.label} ${property.endpoint}`
+        : property.label;
       properties.append(choice);
     }
     properties.value = ref.propertyKey;
@@ -1349,6 +1353,8 @@ function refRow(ref, options) {
       tail.append(kinds);
 
       if (ref.match.kind !== 'changed') {
+        // No toggle here: it is something to send, never something a device
+        // reports, so it could never match.
         tail.append(valueInput(property, ref.match.value, (value) => (ref.match.value = value)));
       }
     }
@@ -1378,7 +1384,9 @@ function refRow(ref, options) {
 
       // Copying the trigger leaves nothing to type, so the value box goes.
       if (mode.value === 'literal') {
-        tail.append(valueInput(property, ref.value, (value) => (ref.value = value)));
+        tail.append(
+          valueInput(property, ref.value, (value) => (ref.value = value), { withToggle: true }),
+        );
       }
     }
 
@@ -1413,7 +1421,7 @@ function refRow(ref, options) {
 }
 
 /** Offers what the property accepts rather than a free text box wherever possible. */
-function valueInput(property, current, onChange) {
+function valueInput(property, current, onChange, options = {}) {
   if (property?.type === 'enum' && property.values?.length) {
     const select = document.createElement('select');
     for (const value of property.values) {
@@ -1430,7 +1438,13 @@ function valueInput(property, current, onChange) {
 
   if (property?.type === 'binary') {
     const select = document.createElement('select');
-    for (const value of [property.onValue ?? 'ON', property.offValue ?? 'OFF']) {
+    const choices = [property.onValue ?? 'ON', property.offValue ?? 'OFF'];
+    // Only when the device says it understands one, and only as something to
+    // send. A device never reports that it is toggling.
+    if (options.withToggle && property.toggleValue !== undefined) {
+      choices.push(property.toggleValue);
+    }
+    for (const value of choices) {
       const choice = document.createElement('option');
       choice.value = String(value);
       choice.textContent = String(value);

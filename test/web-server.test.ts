@@ -139,6 +139,37 @@ describe('WebServer', () => {
     expect(dual?.properties).toHaveLength(7);
   });
 
+  it('sends the words a device uses for on, off and toggle', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: {
+        name: string;
+        properties: { key: string; onValue?: unknown; offValue?: unknown; toggleValue?: unknown }[];
+      }[];
+    };
+    const dual = body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS');
+    const state = dual?.properties.find((property) => property.key === 'state_l1');
+
+    // Without these the interface would offer a guess at ON and OFF, which is
+    // wrong for anything wording it differently, such as a child lock.
+    expect(state).toMatchObject({ onValue: 'ON', offValue: 'OFF', toggleValue: 'TOGGLE' });
+  });
+
+  it('leaves toggle out for a device that does not offer one', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: {
+        name: string;
+        properties: { key: string; onValue?: unknown; toggleValue?: unknown }[];
+      }[];
+    };
+    const socket = body.devices.find((entry) => entry.name === 'woonkamer_bank_lamp-socket');
+    const lock = socket?.properties.find((property) => property.key === 'child_lock');
+
+    expect(lock).toMatchObject({ onValue: 'LOCK', offValue: 'UNLOCK' });
+    expect(lock?.toggleValue).toBeUndefined();
+  });
+
   it('saves a selection and asks HomeKit to reconcile', async () => {
     const session = await signIn(context.base);
     const response = await session.fetch('/api/exposure', {
