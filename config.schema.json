@@ -112,6 +112,12 @@
             "maximum": 65535,
             "x-schema-form": { "type": "number" }
           },
+          "zigbee2mqttUrl": {
+            "title": "Zigbee2MQTT frontend",
+            "type": "string",
+            "placeholder": "http://homebridge.local:8080",
+            "description": "Optional. Adds a link to the Zigbee2MQTT interface in the tab bar."
+          },
           "password": {
             "title": "Password",
             "type": "string",

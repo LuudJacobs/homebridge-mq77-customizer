@@ -80,6 +80,27 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ web: { password: ' hunter2 ' } }, collectingLogger()).web.password).toBe('hunter2');
   });
 
+  it('takes a Zigbee2MQTT address a browser can open', () => {
+    const log = collectingLogger();
+    expect(
+      resolveConfig({ web: { zigbee2mqttUrl: 'http://pi.local:8080' } }, log).web.zigbee2mqttUrl,
+    ).toBe('http://pi.local:8080/');
+    expect(log.errors).toEqual([]);
+  });
+
+  it('refuses one it would only render as a broken link', () => {
+    for (const address of ['pi.local:8080', 'javascript:alert(1)', 'not a url', 'file:///etc']) {
+      expect(
+        resolveConfig({ web: { zigbee2mqttUrl: address } }, collectingLogger()).web.zigbee2mqttUrl,
+      ).toBeUndefined();
+    }
+  });
+
+  it('is happy without one', () => {
+    expect(resolveConfig({}, collectingLogger()).web.zigbee2mqttUrl).toBeUndefined();
+    expect(resolveConfig({ web: { zigbee2mqttUrl: '  ' } }, collectingLogger()).web.zigbee2mqttUrl).toBeUndefined();
+  });
+
   it('reads rulesOnly', () => {
     const config = resolveConfig(
       { sources: [{ id: 'a', adapter: 'zigbee2mqtt', baseTopic: 'one', rulesOnly: true }] },

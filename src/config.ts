@@ -6,6 +6,8 @@ import type { BrokerConfig } from './mqtt/client.js';
 export interface WebConfig {
   port: number;
   password?: string;
+  /** Optional link to the Zigbee2MQTT interface, shown in the tab bar. */
+  zigbee2mqttUrl?: string;
 }
 
 export interface PluginConfig {
@@ -40,6 +42,7 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
     // Trimmed, so a password of spaces counts as no password rather than as a
     // secret nobody could type.
     password: asString(webRaw.password)?.trim() || undefined,
+    zigbee2mqttUrl: asWebUrl(webRaw.zigbee2mqttUrl, log),
   };
 
   if (!web.password) {
@@ -112,6 +115,30 @@ function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
   }
 
   return sources;
+}
+
+/**
+ * Accepts only something a browser can actually open.
+ *
+ * The value ends up as a link in the interface, so anything else, including a
+ * bare host or another scheme, is dropped rather than rendered as a link that
+ * goes nowhere.
+ */
+function asWebUrl(value: unknown, log: Logger): string | undefined {
+  const text = asString(value)?.trim();
+  if (!text) {
+    return undefined;
+  }
+  try {
+    const url = new URL(text);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('not a web address');
+    }
+    return url.toString();
+  } catch {
+    log.warn(`Ignoring "${text}" as the Zigbee2MQTT address, it needs to start with http:// or https://`);
+    return undefined;
+  }
 }
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
