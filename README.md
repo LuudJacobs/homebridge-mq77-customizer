@@ -98,6 +98,8 @@ The Rules tab links devices together: when something happens on one, send someth
 
 A rule is a trigger, any number of conditions that must hold, and one or more actions. Actions can be delayed.
 
+An action either sends a fixed value or matches whatever set the rule off, which is how one device is made to follow another. A copied value is restated in the target's own terms, so a switch that says `ON` can drive one that expects `true`, and a dimmer counting to 254 can drive one counting to 100.
+
 Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
 
 Two things guard against a pair of rules setting each other off:

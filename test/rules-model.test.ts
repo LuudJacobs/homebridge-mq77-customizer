@@ -111,6 +111,35 @@ describe('parseRule', () => {
     expect('rule' in parsed && parsed.rule.rateLimitMs).toBe(0);
   });
 
+  it('accepts an action that copies the trigger instead of naming a value', () => {
+    const parsed = parseRule(
+      {
+        name: 'Follow',
+        trigger,
+        actions: [{ sourceId: 'a', deviceId: 'b', propertyKey: 'c', valueFrom: { kind: 'trigger' } }],
+      },
+      'r1',
+    );
+    expect('rule' in parsed && parsed.rule.actions[0]).toEqual({
+      sourceId: 'a',
+      deviceId: 'b',
+      propertyKey: 'c',
+      valueFrom: { kind: 'trigger' },
+    });
+  });
+
+  it('refuses a value source it does not know', () => {
+    const parsed = parseRule(
+      {
+        name: 'x',
+        trigger,
+        actions: [{ sourceId: 'a', deviceId: 'b', propertyKey: 'c', valueFrom: { kind: 'guess' } }],
+      },
+      'r1',
+    );
+    expect(parsed).toEqual({ error: 'An action needs a value to send' });
+  });
+
   it('refuses an action with nothing to send', () => {
     const parsed = parseRule(
       { name: 'x', trigger, actions: [{ sourceId: 'a', deviceId: 'b', propertyKey: 'c' }] },

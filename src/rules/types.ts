@@ -22,9 +22,18 @@ export interface Condition extends PropertyRef {
   match: Match;
 }
 
+/**
+ * Where an action's value comes from.
+ *
+ * `trigger` copies whatever set the rule off, translated into the target's own
+ * terms, which is how one device is made to follow another.
+ */
+export type ValueSource = { kind: 'literal' } | { kind: 'trigger' };
+
 export interface Action extends PropertyRef {
-  /** Sent as the property's wire value. */
-  value: string | number | boolean;
+  /** Used when the value is a literal, which is the default. */
+  value?: string | number | boolean;
+  valueFrom?: ValueSource;
   /** Wait this long before sending. */
   delayMs?: number;
 }
