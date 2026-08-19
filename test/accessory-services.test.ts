@@ -369,6 +369,37 @@ describe('changing which gestures a button offers', () => {
     expect(again).toBe(first);
   });
 
+  it('stops firing a dropped gesture straight away, without a restart', async () => {
+    const context = await harness();
+    context.store.setExposure(`zigbee:${W100.id}`, { properties: ['action'] });
+    context.manager.sync();
+
+    const watch = () => {
+      const seen: number[] = [];
+      context.hb
+        .registered[0]!.getServiceById(Service.StatelessProgrammableSwitch, 'action:plus')!
+        .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+        .on('change', (change) => seen.push(change.newValue as number));
+      return seen;
+    };
+
+    const before = watch();
+    context.mqtt.deliver(W100.topic, { action: 'hold_plus' });
+    expect(before).toEqual([2]);
+
+    // Narrowed to single press only, exactly as the interface saves it.
+    context.store.setExposure(`zigbee:${W100.id}`, selection([0]));
+    context.manager.sync();
+
+    const after = watch();
+    context.mqtt.deliver(W100.topic, { action: 'hold_plus' });
+    context.mqtt.deliver(W100.topic, { action: 'single_plus' });
+
+    // Long press is ignored from this moment, whatever the Home app is still
+    // showing in its own list of gestures.
+    expect(after).toEqual([0]);
+  });
+
   it('still fires only the gesture that was kept', async () => {
     const context = await harness();
     context.store.setExposure(`zigbee:${W100.id}`, selection([2]));
