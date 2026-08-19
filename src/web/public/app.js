@@ -31,13 +31,14 @@ const el = {
   tabDevices: document.getElementById('tab-devices'),
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
+  tabActivity: document.getElementById('tab-activity'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
+  viewActivity: document.getElementById('view-activity'),
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
-  automationLog: document.getElementById('automation-log'),
-  mirrorLog: document.getElementById('mirror-log'),
+  activityLog: document.getElementById('activity-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
@@ -1523,33 +1524,35 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
+const KIND_LABELS = { standard: 'automation', mirror: 'mirror' };
+
 function renderLog() {
-  renderLogInto('standard', el.automationLog);
-  renderLogInto('mirror', el.mirrorLog);
-}
-
-function renderLogInto(kind, container) {
+  const container = el.activityLog;
   container.replaceChildren();
-  // Entries carry their kind, so an old entry still lands on the right tab
-  // after its rule has been deleted.
-  const entries = state.log.filter((entry) => (entry.ruleKind ?? 'standard') === kind);
 
-  if (entries.length === 0) {
+  if (state.log.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = 'Nothing has run yet.';
     container.append(empty);
     return;
   }
-  for (const entry of entries.slice(0, 50)) {
+
+  for (const entry of state.log.slice(0, 100)) {
     const line = document.createElement('div');
     line.className = `log-line ${entry.outcome}`;
     const when = document.createElement('span');
     when.className = 'log-time';
     when.textContent = new Date(entry.at).toLocaleTimeString();
+    // Both kinds share this list now, and two rules can share a name, so each
+    // entry says which it came from.
+    const kind = document.createElement('span');
+    kind.className = 'tag';
+    kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+
     const what = document.createElement('span');
     what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
-    line.append(when, what);
+    line.append(when, kind, what);
     container.append(line);
   }
 }
@@ -1559,19 +1562,23 @@ function showView(view) {
   el.viewDevices.hidden = view !== 'devices';
   el.viewAutomation.hidden = view !== 'automation';
   el.viewMirror.hidden = view !== 'mirror';
+  el.viewActivity.hidden = view !== 'activity';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
+  el.tabActivity.classList.toggle('active', view === 'activity');
   if (view !== 'devices') {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
 }
 
-const showsRules = () => state.view === 'automation' || state.view === 'mirror';
+const showsRules = () =>
+  state.view === 'automation' || state.view === 'mirror' || state.view === 'activity';
 
 el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
+el.tabActivity.addEventListener('click', () => showView('activity'));
 
 async function addRule(draft) {
   try {
