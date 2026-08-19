@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.0] - 2026-08-19
+
+### Added
+
+- Sort the device list by name, topic, device or when it was last heard from
+
+### Changed
+
+- Device pickers in rules are always ordered by name, whatever the device list is sorted by
+
 ## [0.5.0] - 2026-08-19
 
 ### Added
