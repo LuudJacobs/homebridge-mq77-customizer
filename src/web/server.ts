@@ -9,6 +9,10 @@ import type { Logger } from '../logger.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import { buttonsFrom, isPublishable, roleFor } from '../homekit/roles.js';
 import { DEVICE_ENDPOINT, TILE_TYPES, type DeviceExposure, type Store, type TileType } from '../store.js';
+import { randomUUID } from 'node:crypto';
+
+import type { RulesEngine } from '../rules/engine.js';
+import { parseRule } from '../rules/validate.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
@@ -27,6 +31,7 @@ export interface WebServerDeps {
   config: WebConfig;
   catalog: Catalog;
   store: Store;
+  rules: RulesEngine;
   log: Logger;
   /** Called after an exposure changes so HomeKit can be reconciled. */
   onExposureChanged: () => void;
@@ -75,6 +80,7 @@ export class WebServer {
 
     this.deps.catalog.on('state', (update) => this.broadcastState(update));
     this.deps.catalog.on('devices', () => this.broadcast({ type: 'devices' }));
+    this.deps.rules.on('log', (entry) => this.broadcast({ type: 'log', entry }));
   }
 
   /** The port actually bound, which differs from the configured one when it is 0. */
@@ -119,6 +125,18 @@ export class WebServer {
       }
       if (path === '/api/exposure' && request.method === 'PUT') {
         return this.saveExposure(request, response);
+      }
+      if (path === '/api/rules' && request.method === 'GET') {
+        return send(response, 200, { rules: this.deps.store.data.rules });
+      }
+      if (path === '/api/rules' && request.method === 'PUT') {
+        return this.saveRule(request, response);
+      }
+      if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
+        return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
+      }
+      if (path === '/api/log' && request.method === 'GET') {
+        return send(response, 200, { entries: this.deps.rules.getLog() });
       }
       if (path === '/api/events' && request.method === 'GET') {
         return this.subscribe(response);
@@ -165,6 +183,45 @@ export class WebServer {
     this.deps.onExposureChanged();
 
     return send(response, 200, { ok: true, exposure });
+  }
+
+  private async saveRule(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJson(request);
+    const id = typeof body?.id === 'string' && body.id ? body.id : randomUUID();
+    const parsed = parseRule(body, id);
+
+    if ('error' in parsed) {
+      return send(response, 400, { error: parsed.error });
+    }
+
+    this.deps.store.update((state) => {
+      const existing = state.rules.findIndex((rule) => rule.id === id);
+      if (existing >= 0) {
+        state.rules[existing] = parsed.rule;
+      } else {
+        state.rules.push(parsed.rule);
+      }
+    });
+
+    this.broadcast({ type: 'rules' });
+    return send(response, 200, { rule: parsed.rule });
+  }
+
+  private deleteRule(id: string, response: ServerResponse): void {
+    let removed = false;
+    this.deps.store.update((state) => {
+      const index = state.rules.findIndex((rule) => rule.id === id);
+      if (index >= 0) {
+        state.rules.splice(index, 1);
+        removed = true;
+      }
+    });
+
+    if (!removed) {
+      return send(response, 404, { error: 'No such rule' });
+    }
+    this.broadcast({ type: 'rules' });
+    return send(response, 200, { ok: true });
   }
 
   private subscribe(response: ServerResponse): void {
@@ -239,6 +296,11 @@ export class WebServer {
           max: property.max,
           step: property.step,
           values: property.values,
+          // The interface offers these as choices, so it needs the words this
+          // device actually uses rather than a guess at ON and OFF.
+          onValue: property.onValue,
+          offValue: property.offValue,
+          toggleValue: property.toggleValue,
           readable: property.access.readable,
           writable: property.access.writable,
           publishable: isPublishable(property),

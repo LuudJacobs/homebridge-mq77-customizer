@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Catalog } from '../src/catalog.js';
 import { silentLogger, type Logger } from '../src/logger.js';
+import { RulesEngine } from '../src/rules/engine.js';
 import { Store } from '../src/store.js';
 import { sanitiseExposure, WebServer } from '../src/web/server.js';
 import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
@@ -37,6 +38,7 @@ async function harness(options: { password?: string } = {}): Promise<Harness> {
     config: { port: 0, password: options.password ?? PASSWORD },
     catalog,
     store,
+    rules: new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger),
     log: silentLogger,
     onExposureChanged: () => {
       result.syncs += 1;
@@ -137,6 +139,37 @@ describe('WebServer', () => {
     expect(dual?.properties).toHaveLength(7);
   });
 
+  it('sends the words a device uses for on, off and toggle', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: {
+        name: string;
+        properties: { key: string; onValue?: unknown; offValue?: unknown; toggleValue?: unknown }[];
+      }[];
+    };
+    const dual = body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS');
+    const state = dual?.properties.find((property) => property.key === 'state_l1');
+
+    // Without these the interface would offer a guess at ON and OFF, which is
+    // wrong for anything wording it differently, such as a child lock.
+    expect(state).toMatchObject({ onValue: 'ON', offValue: 'OFF', toggleValue: 'TOGGLE' });
+  });
+
+  it('leaves toggle out for a device that does not offer one', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: {
+        name: string;
+        properties: { key: string; onValue?: unknown; toggleValue?: unknown }[];
+      }[];
+    };
+    const socket = body.devices.find((entry) => entry.name === 'woonkamer_bank_lamp-socket');
+    const lock = socket?.properties.find((property) => property.key === 'child_lock');
+
+    expect(lock).toMatchObject({ onValue: 'LOCK', offValue: 'UNLOCK' });
+    expect(lock?.toggleValue).toBeUndefined();
+  });
+
   it('saves a selection and asks HomeKit to reconcile', async () => {
     const session = await signIn(context.base);
     const response = await session.fetch('/api/exposure', {
@@ -164,6 +197,66 @@ describe('WebServer', () => {
     });
     expect(response.status).toBe(404);
     expect(context.syncs).toBe(0);
+  });
+
+  it('creates, lists, updates and deletes a rule', async () => {
+    const session = await signIn(context.base);
+    const draft = {
+      name: 'Left button',
+      trigger: {
+        sourceId: 'zigbee',
+        deviceId: '0x54ef44100169b28a',
+        propertyKey: 'action',
+        match: { kind: 'equals', value: 'single_left' },
+      },
+      actions: [
+        { sourceId: 'zigbee', deviceId: '0xf044d3fffe024659', propertyKey: 'state_l1', value: 'ON' },
+      ],
+    };
+
+    const created = (await (
+      await session.fetch('/api/rules', { method: 'PUT', body: JSON.stringify(draft) })
+    ).json()) as { rule: { id: string; name: string } };
+    expect(created.rule.id).toBeTruthy();
+
+    const listed = (await (await session.fetch('/api/rules')).json()) as { rules: unknown[] };
+    expect(listed.rules).toHaveLength(1);
+
+    // Sending the same id updates rather than adding a second rule.
+    await session.fetch('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({ ...draft, id: created.rule.id, name: 'Renamed' }),
+    });
+    const afterUpdate = (await (await session.fetch('/api/rules')).json()) as {
+      rules: { name: string }[];
+    };
+    expect(afterUpdate.rules).toHaveLength(1);
+    expect(afterUpdate.rules[0]?.name).toBe('Renamed');
+
+    const removed = await session.fetch(`/api/rules/${created.rule.id}`, { method: 'DELETE' });
+    expect(removed.status).toBe(200);
+    expect(((await (await session.fetch('/api/rules')).json()) as { rules: unknown[] }).rules).toEqual([]);
+  });
+
+  it('refuses a rule it cannot make sense of, and says why', async () => {
+    const session = await signIn(context.base);
+    const response = await session.fetch('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'No actions', trigger: {}, actions: [] }),
+    });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toContain('trigger');
+  });
+
+  it('reports a rule that is not there', async () => {
+    const session = await signIn(context.base);
+    expect((await session.fetch('/api/rules/nope', { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('serves the run log', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/log')).json()) as { entries: unknown[] };
+    expect(Array.isArray(body.entries)).toBe(true);
   });
 
   it('signs out', async () => {
@@ -199,6 +292,7 @@ describe('WebServer without a password', () => {
       config: { port: 0 },
       catalog,
       store,
+      rules: new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger),
       log,
       onExposureChanged: () => {},
     });

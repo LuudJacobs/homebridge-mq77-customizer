@@ -1,11 +1,14 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { Logger } from './logger.js';
+import type { AnyRule } from './rules/types.js';
 
 /** Bumped when the shape changes in a way that needs migrating. */
 export const STORE_VERSION = 1;
+
+export type { AnyRule, MirrorRule, Rule } from './rules/types.js';
 
 /** HomeKit service a binary on/off property is published as. */
 export type TileType = 'Switch' | 'Outlet' | 'Lightbulb' | 'Fan';
@@ -41,18 +44,12 @@ export interface DeviceExposure {
   buttons?: Record<string, Record<string, number[]>>;
 }
 
-/** Placeholder until the rules engine lands in v0.5.0. */
-export interface Rule {
-  id: string;
-  name: string;
-  enabled: boolean;
-}
 
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
-  rules: Rule[];
+  rules: AnyRule[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
@@ -85,7 +82,20 @@ export class Store {
       const contents = await readFile(this.file, 'utf8');
       const parsed: unknown = JSON.parse(contents);
       this.state = migrate(parsed);
-      this.log.debug(`Loaded state from ${this.file}`);
+
+      // Copied once at startup rather than on every write. Backing up each
+      // time is worse than useless: the second write of a session replaces the
+      // good copy with the bad one.
+      await copyFile(this.file, `${this.file}.bak`).catch((error: unknown) => {
+        this.log.warn(`Could not keep a backup of ${this.file}: ${describe(error)}`);
+      });
+
+      // Counted out loud, so state quietly arriving empty is visible in the
+      // log rather than only noticed when something is missing.
+      this.log.info(
+        `Loaded ${Object.keys(this.state.exposures).length} device selection(s) and ` +
+          `${this.state.rules.length} rule(s) from ${this.file}`,
+      );
     } catch (error) {
       if (isNotFound(error)) {
         if (await this.adoptLegacy()) {
@@ -171,7 +181,11 @@ export class Store {
           await writeFile(temporary, snapshot, 'utf8');
           await rename(temporary, this.file);
         } catch (error) {
-          this.log.error(`Could not write ${this.file}: ${describe(error)}`);
+          // Loud, because everything the user configured is in here and the
+          // plugin carries on looking perfectly healthy without it.
+          this.log.error(
+            `Could not write ${this.file}, changes will be lost on restart: ${describe(error)}`,
+          );
         }
       }
     })();

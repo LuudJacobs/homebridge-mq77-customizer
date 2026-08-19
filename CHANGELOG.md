@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.0] - 2026-08-19
+
+### Added
+
+- Rules engine: when something happens on one device, send something to another, across sources
+- Triggers, optional conditions and one or more actions, with optional delays
+- An action can send a fixed value or match whatever triggered the rule, translated into the target's terms
+- Mirror rules: pick devices and the functions to keep in step, every member both trigger and target
+- Rule editor and a run log in the web interface
+- Devices whose source does not name them can be renamed, from a pencil in the card header
+- Show when a device was last heard from, and the local time behind any timestamp value
+- Filter devices by name, topic, model or manufacturer, and hide anything not in HomeKit
+- Toggle offered as an action wherever a device understands one
+
+### Changed
+
+- Rules never run on retained messages, so reconnecting cannot replay an old press
+- Per rule rate limit, a settling window for mirrors, and a rule that runs away is turned off and logged
+- Accessory names are corrected to what HomeKit accepts, rather than warned about on every start
+- Values that have not moved are no longer sent to HomeKit
+- State is copied at startup, and what was loaded is reported in the log
+
+### Fixed
+
+- The interface is sent the words a device uses for on and off, instead of assuming ON and OFF
+- Endpoints are named in rule dropdowns, so a device's channels can be told apart
+- A characteristic with no value yet reports the last known one rather than failing the read
+
 ## [0.4.1] - 2026-08-18
 
 ### Changed

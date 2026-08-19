@@ -386,3 +386,134 @@ header {
   text-align: center;
   padding: 2rem;
 }
+
+/* Rules */
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.5rem 0.9rem;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.rules-actions {
+  margin-bottom: 0.75rem;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.rule-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.rule-tail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.rule-row select,
+.rule-row input {
+  max-width: 14rem;
+}
+
+.rule-row input.delay {
+  max-width: 6.5rem;
+}
+
+.add-row {
+  font-size: 0.82rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--muted);
+}
+
+.rule-footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.log-title {
+  font-size: 0.9rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+.log {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.log-line {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.log-line:last-child {
+  border-bottom: none;
+}
+
+.log-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.log-line.failed,
+.log-line.disabled {
+  color: var(--error);
+}
+
+.log-line.rateLimited,
+.log-line.conditionsFailed {
+  color: var(--muted);
+}
+
+.device-seen {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.value.timestamp {
+  cursor: help;
+  text-decoration: underline dotted var(--line);
+  text-underline-offset: 3px;
+}
+
+.mirror-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  padding: 0.25rem 0 0.5rem;
+}

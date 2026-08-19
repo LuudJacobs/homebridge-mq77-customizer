@@ -9,6 +9,10 @@ const state = {
   exposedOnly: false,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
+  view: 'devices',
+  rules: [],
+  openRules: new Set(),
+  log: [],
 };
 
 const el = {
@@ -22,6 +26,13 @@ const el = {
   status: document.getElementById('status'),
   exposedOnly: document.getElementById('exposed-only'),
   logout: document.getElementById('logout'),
+  tabDevices: document.getElementById('tab-devices'),
+  tabRules: document.getElementById('tab-rules'),
+  viewDevices: document.getElementById('view-devices'),
+  viewRules: document.getElementById('view-rules'),
+  rules: document.getElementById('rules'),
+  log: document.getElementById('log'),
+  addRule: document.getElementById('add-rule'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -119,6 +130,20 @@ function listen() {
       load().catch(() => {});
       return;
     }
+    if (payload.type === 'rules') {
+      if (state.view === 'rules') {
+        loadRules().catch(() => {});
+      }
+      return;
+    }
+    if (payload.type === 'log') {
+      state.log.unshift(payload.entry);
+      state.log = state.log.slice(0, 200);
+      if (state.view === 'rules') {
+        renderLog();
+      }
+      return;
+    }
     if (payload.type === 'state') {
       const device = state.devices.find(
         (candidate) =>
@@ -132,6 +157,10 @@ function listen() {
         device.lastSeen[propertyKey] = payload.at;
         updateValue(device, propertyKey);
       }
+      const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
+      if (seen) {
+        paintLastSeen(seen, device);
+      }
     }
   };
 }
@@ -142,9 +171,91 @@ function updateValue(device, propertyKey) {
     `[data-value="${CSS.escape(key(device))}|${CSS.escape(propertyKey)}"]`,
   );
   if (node) {
-    node.textContent = formatValue(device, propertyKey);
+    paintValue(node, device, propertyKey);
     node.classList.add('set');
   }
+}
+
+/** Writes the value, and explains it on hover when it is a timestamp. */
+function paintValue(node, device, propertyKey) {
+  node.textContent = formatValue(device, propertyKey);
+
+  const property = device.properties.find((candidate) => candidate.key === propertyKey);
+  const moment = asDate(property, device.state[propertyKey]);
+  if (moment) {
+    node.title = moment.toLocaleString();
+    node.classList.add('timestamp');
+  } else {
+    node.removeAttribute('title');
+    node.classList.remove('timestamp');
+  }
+}
+
+/**
+ * Reads a value as a moment in time, or nothing if it is not one.
+ *
+ * Zigbee2MQTT publishes `last_seen` as an ISO string or as an epoch, in
+ * seconds or milliseconds depending on how it is configured, and none of those
+ * is readable at a glance.
+ */
+function asDate(property, value) {
+  if (typeof value === 'string') {
+    // ISO 8601 is distinctive enough to recognise from the value alone.
+    if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value)) {
+      return undefined;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  // A bare number is not: linkquality 200 is not a date. Only trust one when
+  // the property is named like a time.
+  if (typeof value === 'number' && isTimeNamed(property)) {
+    const parsed = new Date(value > 1e11 ? value : value * 1000);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  return undefined;
+}
+
+function isTimeNamed(property) {
+  return /(^|_)(seen|time|timestamp|date|at)(_|$)/.test(property?.semantic ?? property?.key ?? '');
+}
+
+/**
+ * When the device last said anything.
+ *
+ * Taken from the newest reading of any of its functions, so it works the same
+ * for every source rather than relying on one of them publishing a timestamp.
+ * Only known since this plugin started, so a quiet device has none.
+ */
+function deviceLastSeen(device) {
+  const times = Object.values(device.lastSeen ?? {});
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+function formatLastSeen(at) {
+  const seen = new Date(at);
+  const pad = (value) => String(value).padStart(2, '0');
+  const time = `${pad(seen.getHours())}:${pad(seen.getMinutes())}`;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  if (seen >= today) {
+    return `Today ${time}:${pad(seen.getSeconds())}`;
+  }
+  if (seen >= yesterday) {
+    return `Yesterday ${time}`;
+  }
+  return `${pad(seen.getDate())}-${pad(seen.getMonth() + 1)} ${time}`;
+}
+
+function paintLastSeen(node, device) {
+  const at = deviceLastSeen(device);
+  node.textContent = at === undefined ? '' : formatLastSeen(at);
 }
 
 function formatValue(device, propertyKey) {
@@ -271,6 +382,10 @@ function renderDevice(device) {
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
+  const seen = document.createElement('span');
+  seen.className = 'device-seen';
+  seen.dataset.seen = key(device);
+  paintLastSeen(seen, device);
   // Only visible once the card is open, where there is room for it.
   const topic = document.createElement('span');
   topic.className = 'device-topic';
@@ -282,7 +397,7 @@ function renderDevice(device) {
   if (device.renameable) {
     summary.append(renameButton(device, name));
   }
-  summary.append(name, meta, topic, badge);
+  summary.append(name, meta, seen, topic, badge);
   card.append(summary);
 
   const body = document.createElement('div');
@@ -540,7 +655,7 @@ function renderProperty(device, property) {
   const value = document.createElement('span');
   value.className = device.state[property.key] === undefined ? 'value' : 'value set';
   value.dataset.value = `${key(device)}|${property.key}`;
-  value.textContent = formatValue(device, property.key);
+  paintValue(value, device, property.key);
 
   if (selectable) {
     row.append(checkbox, label, value);
@@ -667,4 +782,745 @@ start().catch((error) => {
   }
   console.error('Startup failed', error);
   showLogin(error.message);
+});
+
+/* Rules ------------------------------------------------------------------ */
+
+const MATCH_KINDS = [
+  { kind: 'changedTo', label: 'becomes' },
+  { kind: 'equals', label: 'is' },
+  { kind: 'notEquals', label: 'is not' },
+  { kind: 'changed', label: 'changes' },
+  { kind: 'above', label: 'rises above' },
+  { kind: 'below', label: 'falls below' },
+];
+
+const OUTCOME_LABELS = {
+  fired: 'ran',
+  rateLimited: 'held back',
+  conditionsFailed: 'conditions not met',
+  failed: 'failed',
+  disabled: 'turned off',
+};
+
+/** Properties a rule can watch: anything readable. */
+const watchable = (device) => device.properties.filter((property) => property.readable);
+
+/** Properties a rule can write: anything with a command topic. */
+const writable = (device) => device.properties.filter((property) => property.writable);
+
+function findDevice(ref) {
+  return state.devices.find(
+    (device) => device.sourceId === ref.sourceId && device.deviceId === ref.deviceId,
+  );
+}
+
+function findProperty(ref) {
+  return findDevice(ref)?.properties.find((property) => property.key === ref.propertyKey);
+}
+
+async function loadRules() {
+  const [rules, log] = await Promise.all([api('/api/rules'), api('/api/log')]);
+  state.rules = rules.rules;
+  state.log = log.entries;
+  renderRules();
+  renderLog();
+}
+
+function renderRules() {
+  el.rules.replaceChildren();
+  if (state.rules.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'No rules yet.';
+    el.rules.append(empty);
+    return;
+  }
+  for (const rule of state.rules) {
+    el.rules.append(renderRule(rule));
+  }
+}
+
+function renderRule(rule) {
+  const card = document.createElement('details');
+  card.className = 'device rule';
+  card.open = state.openRules.has(rule.id);
+  card.addEventListener('toggle', () => {
+    if (card.open) {
+      state.openRules.add(rule.id);
+    } else {
+      state.openRules.delete(rule.id);
+    }
+  });
+
+  const summary = document.createElement('summary');
+  const name = document.createElement('span');
+  name.className = 'device-name';
+  name.textContent = rule.name;
+  const detail = document.createElement('span');
+  detail.className = 'device-meta';
+  detail.textContent = summarise(rule);
+  const badge = document.createElement('span');
+  badge.className = rule.enabled ? 'badge' : 'badge none';
+  badge.textContent = rule.enabled ? 'on' : 'off';
+  summary.append(name, detail, badge);
+  card.append(summary);
+
+  card.append(renderRuleBody(rule));
+  return card;
+}
+
+function summarise(rule) {
+  if (rule.kind === 'mirror') {
+    const devices = new Set(
+      rule.groups.flat().map((ref) => findDevice(ref)?.name ?? 'a removed device'),
+    );
+    const fields = rule.groups.length;
+    return `${[...devices].join(' ↔ ')} · ${fields} field${fields === 1 ? '' : 's'}`;
+  }
+  const source = findProperty(rule.trigger);
+  const target = findProperty(rule.actions[0]);
+  const from = source ? `${findDevice(rule.trigger)?.name} ${source.label}` : 'a removed function';
+  const to = target ? `${findDevice(rule.actions[0])?.name} ${target.label}` : 'a removed function';
+  const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
+  return `${from} → ${to}${extra}`;
+}
+function renderRuleBody(rule) {
+  const body = document.createElement('div');
+  body.className = 'device-body';
+  const draft = structuredClone(rule);
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'option';
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Name';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = draft.name;
+  nameInput.maxLength = 80;
+  nameInput.addEventListener('input', () => (draft.name = nameInput.value));
+  nameRow.append(nameLabel, nameInput);
+
+  const enabled = document.createElement('label');
+  enabled.className = 'toggle';
+  const enabledBox = document.createElement('input');
+  enabledBox.type = 'checkbox';
+  enabledBox.checked = draft.enabled;
+  enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
+  enabled.append(enabledBox, document.createTextNode('Enabled'));
+
+  const mirror = document.createElement('label');
+  mirror.className = 'toggle';
+  mirror.title = 'Keep the same function on several devices in step with each other';
+  const mirrorBox = document.createElement('input');
+  mirrorBox.type = 'checkbox';
+  mirrorBox.checked = draft.kind === 'mirror';
+  mirror.append(mirrorBox, document.createTextNode('Mirror'));
+
+  nameRow.append(enabled, mirror);
+  body.append(nameRow);
+
+  // A mirror has no trigger and no actions, so the rest of the form is a
+  // different shape entirely rather than a variation on the same one.
+  const shape = document.createElement('div');
+  const drawShape = () => {
+    shape.replaceChildren();
+    if (draft.kind === 'mirror') {
+      drawMirror(shape, draft);
+    } else {
+      drawWhenThen(shape, draft);
+    }
+  };
+
+  mirrorBox.addEventListener('change', () => {
+    if (mirrorBox.checked) {
+      draft.kind = 'mirror';
+    } else {
+      delete draft.kind;
+    }
+    drawShape();
+  });
+
+  drawShape();
+  body.append(shape);
+  body.append(ruleFooter(rule, draft));
+  return body;
+}
+
+function ruleFooter(rule, draft) {
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      await loadRules();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.textContent = 'Delete';
+  remove.addEventListener('click', async () => {
+    await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
+    state.openRules.delete(rule.id);
+    await loadRules();
+  });
+
+  footer.append(save, remove, error);
+  return footer;
+}
+
+/** The ordinary trigger, conditions and actions form. */
+function drawWhenThen(body, draft) {
+  draft.trigger = draft.trigger ?? {
+    ...blankRef(watchable),
+    match: { kind: 'changedTo', value: '' },
+  };
+  draft.conditions = draft.conditions ?? [];
+  draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
+
+  body.append(sectionTitle('When'));
+  body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
+
+  body.append(sectionTitle('And, optionally'));
+  const conditions = document.createElement('div');
+  const drawConditions = () => {
+    conditions.replaceChildren();
+    draft.conditions.forEach((condition, index) => {
+      conditions.append(
+        refRow(condition, {
+          pick: watchable,
+          withMatch: true,
+          onRemove: () => {
+            draft.conditions.splice(index, 1);
+            drawConditions();
+          },
+        }),
+      );
+    });
+  };
+  drawConditions();
+  body.append(
+    conditions,
+    addButton('Add condition', () => {
+      draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
+      drawConditions();
+    }),
+  );
+
+  body.append(sectionTitle('Then'));
+  const actions = document.createElement('div');
+  const drawActions = () => {
+    actions.replaceChildren();
+    draft.actions.forEach((action, index) => {
+      actions.append(
+        refRow(action, {
+          pick: writable,
+          withValue: true,
+          withDelay: true,
+          onRemove:
+            draft.actions.length > 1
+              ? () => {
+                  draft.actions.splice(index, 1);
+                  drawActions();
+                }
+              : undefined,
+        }),
+      );
+    });
+  };
+  drawActions();
+  body.append(
+    actions,
+    addButton('Add action', () => {
+      draft.actions.push({ ...blankRef(writable), value: '' });
+      drawActions();
+    }),
+  );
+}
+
+/**
+ * Pick the devices, then the functions to keep in step.
+ *
+ * Functions are matched on meaning rather than on name: a socket calls its
+ * on/off `state` and a two channel switch calls the same thing `state_l1`, and
+ * mirroring one onto the other is exactly what this is for.
+ */
+function drawMirror(body, draft) {
+  draft.groups = draft.groups ?? [];
+
+  // The devices already in use, so an existing rule opens with them ticked.
+  const chosen = new Set(
+    draft.groups.flat().map((ref) => `${ref.sourceId}|${ref.deviceId}`),
+  );
+
+  body.append(sectionTitle('Devices'));
+  const devices = document.createElement('div');
+  devices.className = 'mirror-devices';
+
+  const candidates = state.devices.filter((device) => writable(device).length > 0);
+  for (const device of candidates) {
+    const id = `${device.sourceId}|${device.deviceId}`;
+    const label = document.createElement('label');
+    label.className = 'toggle';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = chosen.has(id);
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        chosen.add(id);
+      } else {
+        chosen.delete(id);
+      }
+      pruneGroups();
+      drawFields();
+    });
+    label.append(box, document.createTextNode(displayName(device)));
+    devices.append(label);
+  }
+  body.append(devices);
+
+  const settleRow = document.createElement('div');
+  settleRow.className = 'option';
+  const settleLabel = document.createElement('label');
+  settleLabel.textContent = 'Settle for';
+  const settle = document.createElement('input');
+  settle.type = 'number';
+  settle.className = 'delay';
+  settle.min = 0.25;
+  settle.max = 60;
+  settle.step = 0.25;
+  settle.placeholder = '1.5';
+  settle.value = draft.settleMs ? draft.settleMs / 1000 : '';
+  settle.title =
+    'How long the group ignores reports after being written to. Too short and two devices that disagree can trade places.';
+  settle.addEventListener('input', () => {
+    const seconds = Number(settle.value);
+    draft.settleMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+  });
+  const settleUnit = document.createElement('span');
+  settleUnit.className = 'device-meta';
+  settleUnit.textContent = 'seconds after a change';
+  settleRow.append(settleLabel, settle, settleUnit);
+  body.append(settleRow);
+
+  body.append(sectionTitle('Functions to mirror'));
+  const fields = document.createElement('div');
+  body.append(fields);
+
+  function selected() {
+    return candidates.filter((device) => chosen.has(`${device.sourceId}|${device.deviceId}`));
+  }
+
+  /** Drops members of a device that is no longer ticked. */
+  function pruneGroups() {
+    draft.groups = draft.groups
+      .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
+      .filter((group) => group.length > 0);
+  }
+
+  /** Meanings every selected device has something for. */
+  function sharedSemantics() {
+    const devices = selected();
+    if (devices.length < 2) {
+      return [];
+    }
+    const [first, ...rest] = devices;
+    return [...new Set(writable(first).map((property) => property.semantic).filter(Boolean))].filter(
+      (semantic) =>
+        rest.every((device) =>
+          writable(device).some((property) => property.semantic === semantic),
+        ),
+    );
+  }
+
+  function labelFor(semantic) {
+    const device = selected()[0];
+    return (
+      writable(device ?? { properties: [] }).find((property) => property.semantic === semantic)
+        ?.label ?? semantic
+    );
+  }
+
+  function drawFields() {
+    fields.replaceChildren();
+    const devices = selected();
+
+    if (devices.length < 2) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'Pick at least two devices.';
+      fields.append(hint);
+      return;
+    }
+
+    const semantics = sharedSemantics();
+    if (semantics.length === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'These devices have no function in common that can be written to.';
+      fields.append(hint);
+      return;
+    }
+
+    for (const semantic of semantics) {
+      const row = document.createElement('div');
+      row.className = 'rule-row';
+
+      const existing = draft.groups.find((group) =>
+        group.every((ref) => findProperty(ref)?.semantic === semantic),
+      );
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.id = `mirror-${semantic}`;
+      box.checked = Boolean(existing);
+
+      const label = document.createElement('label');
+      label.htmlFor = box.id;
+      label.textContent = labelFor(semantic);
+      row.append(box, label);
+
+      // One picker per device, because a two channel switch has two functions
+      // with the same meaning and only the user knows which one is wanted.
+      const pickers = document.createElement('span');
+      pickers.className = 'rule-tail';
+
+      const refs = devices.map((device) => {
+        const options = writable(device).filter((property) => property.semantic === semantic);
+        const already = existing?.find(
+          (ref) => ref.sourceId === device.sourceId && ref.deviceId === device.deviceId,
+        );
+        const ref = already ?? {
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          propertyKey: options[0]?.key ?? '',
+        };
+
+        if (options.length > 1) {
+          const select = document.createElement('select');
+          for (const option of options) {
+            const choice = document.createElement('option');
+            choice.value = option.key;
+            choice.textContent = `${displayName(device)} ${option.endpoint || option.label}`;
+            select.append(choice);
+          }
+          select.value = ref.propertyKey;
+          select.addEventListener('change', () => {
+            ref.propertyKey = select.value;
+            commit();
+          });
+          pickers.append(select);
+        }
+
+        return ref;
+      });
+
+      row.append(pickers);
+
+      function commit() {
+        draft.groups = draft.groups.filter((group) => group !== existingGroup());
+        if (box.checked) {
+          draft.groups.push(refs);
+        }
+      }
+
+      function existingGroup() {
+        return draft.groups.find((group) =>
+          group.every((ref) => findProperty(ref)?.semantic === semantic),
+        );
+      }
+
+      box.addEventListener('change', commit);
+      fields.append(row);
+    }
+  }
+
+  drawFields();
+}
+
+function sectionTitle(text) {
+  const title = document.createElement('p');
+  title.className = 'group-title';
+  title.textContent = text;
+  return title;
+}
+
+function addButton(text, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'add-row';
+  button.textContent = text;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function blankRef(pick) {
+  const device = state.devices.find((candidate) => pick(candidate).length > 0);
+  return {
+    sourceId: device?.sourceId ?? '',
+    deviceId: device?.deviceId ?? '',
+    propertyKey: pick(device ?? { properties: [] })[0]?.key ?? '',
+  };
+}
+
+/**
+ * One line of a rule: a device, one of its functions, and what to do with it.
+ *
+ * The same row serves triggers, conditions and actions, since all three are a
+ * reference into the same normalised model.
+ */
+function refRow(ref, options) {
+  const row = document.createElement('div');
+  row.className = 'rule-row';
+
+  const devices = document.createElement('select');
+  for (const device of state.devices.filter((candidate) => options.pick(candidate).length > 0)) {
+    const choice = document.createElement('option');
+    choice.value = `${device.sourceId}|${device.deviceId}`;
+    choice.textContent = displayName(device);
+    devices.append(choice);
+  }
+  devices.value = `${ref.sourceId}|${ref.deviceId}`;
+
+  const properties = document.createElement('select');
+  const fillProperties = () => {
+    properties.replaceChildren();
+    const device = findDevice(ref);
+    for (const property of device ? options.pick(device) : []) {
+      const choice = document.createElement('option');
+      choice.value = property.key;
+      // A multi channel device calls every channel "State", so the endpoint is
+      // the only thing telling them apart.
+      choice.textContent = property.endpoint
+        ? `${property.label} ${property.endpoint}`
+        : property.label;
+      properties.append(choice);
+    }
+    properties.value = ref.propertyKey;
+    if (!properties.value) {
+      ref.propertyKey = properties.options[0]?.value ?? '';
+      properties.value = ref.propertyKey;
+    }
+  };
+
+  devices.addEventListener('change', () => {
+    const [sourceId, deviceId] = devices.value.split('|');
+    ref.sourceId = sourceId;
+    ref.deviceId = deviceId;
+    ref.propertyKey = '';
+    fillProperties();
+    redrawTail();
+  });
+  properties.addEventListener('change', () => {
+    ref.propertyKey = properties.value;
+    redrawTail();
+  });
+
+  row.append(devices, properties);
+
+  const tail = document.createElement('span');
+  tail.className = 'rule-tail';
+  row.append(tail);
+
+  function redrawTail() {
+    tail.replaceChildren();
+    const property = findProperty(ref);
+
+    if (options.withMatch) {
+      const kinds = document.createElement('select');
+      for (const entry of MATCH_KINDS) {
+        const choice = document.createElement('option');
+        choice.value = entry.kind;
+        choice.textContent = entry.label;
+        kinds.append(choice);
+      }
+      kinds.value = ref.match.kind;
+      kinds.addEventListener('change', () => {
+        ref.match = { kind: kinds.value, value: ref.match.value ?? '' };
+        redrawTail();
+      });
+      tail.append(kinds);
+
+      if (ref.match.kind !== 'changed') {
+        // No toggle here: it is something to send, never something a device
+        // reports, so it could never match.
+        tail.append(valueInput(property, ref.match.value, (value) => (ref.match.value = value)));
+      }
+    }
+
+    if (options.withValue) {
+      const mode = document.createElement('select');
+      for (const entry of [
+        { kind: 'literal', label: 'set to' },
+        { kind: 'trigger', label: 'match the trigger' },
+      ]) {
+        const choice = document.createElement('option');
+        choice.value = entry.kind;
+        choice.textContent = entry.label;
+        mode.append(choice);
+      }
+      mode.value = ref.valueFrom?.kind === 'trigger' ? 'trigger' : 'literal';
+      mode.addEventListener('change', () => {
+        if (mode.value === 'trigger') {
+          ref.valueFrom = { kind: 'trigger' };
+          delete ref.value;
+        } else {
+          delete ref.valueFrom;
+        }
+        redrawTail();
+      });
+      tail.append(mode);
+
+      // Copying the trigger leaves nothing to type, so the value box goes.
+      if (mode.value === 'literal') {
+        tail.append(
+          valueInput(property, ref.value, (value) => (ref.value = value), { withToggle: true }),
+        );
+      }
+    }
+
+    if (options.withDelay) {
+      const delay = document.createElement('input');
+      delay.type = 'number';
+      delay.className = 'delay';
+      delay.min = 0;
+      delay.placeholder = 'delay s';
+      delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
+      delay.addEventListener('input', () => {
+        const seconds = Number(delay.value);
+        ref.delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+      });
+      tail.append(delay);
+    }
+
+    if (options.onRemove) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'add-row';
+      remove.textContent = '✕';
+      remove.title = 'Remove';
+      remove.addEventListener('click', options.onRemove);
+      tail.append(remove);
+    }
+  }
+
+  fillProperties();
+  redrawTail();
+  return row;
+}
+
+/** Offers what the property accepts rather than a free text box wherever possible. */
+function valueInput(property, current, onChange, options = {}) {
+  if (property?.type === 'enum' && property.values?.length) {
+    const select = document.createElement('select');
+    for (const value of property.values) {
+      const choice = document.createElement('option');
+      choice.value = value;
+      choice.textContent = value;
+      select.append(choice);
+    }
+    select.value = current ?? property.values[0];
+    onChange(select.value);
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  if (property?.type === 'binary') {
+    const select = document.createElement('select');
+    const choices = [property.onValue ?? 'ON', property.offValue ?? 'OFF'];
+    // Only when the device says it understands one, and only as something to
+    // send. A device never reports that it is toggling.
+    if (options.withToggle && property.toggleValue !== undefined) {
+      choices.push(property.toggleValue);
+    }
+    for (const value of choices) {
+      const choice = document.createElement('option');
+      choice.value = String(value);
+      choice.textContent = String(value);
+      select.append(choice);
+    }
+    select.value = current !== undefined && current !== '' ? String(current) : select.options[0].value;
+    onChange(select.value);
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  const input = document.createElement('input');
+  input.type = property?.type === 'numeric' ? 'number' : 'text';
+  if (property?.min !== undefined) {
+    input.min = property.min;
+  }
+  if (property?.max !== undefined) {
+    input.max = property.max;
+  }
+  input.value = current ?? '';
+  input.addEventListener('input', () => {
+    onChange(input.type === 'number' ? Number(input.value) : input.value);
+  });
+  return input;
+}
+
+function renderLog() {
+  el.log.replaceChildren();
+  if (state.log.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'Nothing has run yet.';
+    el.log.append(empty);
+    return;
+  }
+  for (const entry of state.log.slice(0, 50)) {
+    const line = document.createElement('div');
+    line.className = `log-line ${entry.outcome}`;
+    const when = document.createElement('span');
+    when.className = 'log-time';
+    when.textContent = new Date(entry.at).toLocaleTimeString();
+    const what = document.createElement('span');
+    what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
+    line.append(when, what);
+    el.log.append(line);
+  }
+}
+
+function showView(view) {
+  state.view = view;
+  el.viewDevices.hidden = view !== 'devices';
+  el.viewRules.hidden = view !== 'rules';
+  el.tabDevices.classList.toggle('active', view === 'devices');
+  el.tabRules.classList.toggle('active', view === 'rules');
+  if (view === 'rules') {
+    loadRules().catch((problem) => setStatus(problem.message, 'lost'));
+  }
+}
+
+el.tabDevices.addEventListener('click', () => showView('devices'));
+el.tabRules.addEventListener('click', () => showView('rules'));
+
+el.addRule.addEventListener('click', async () => {
+  const trigger = { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } };
+  const draft = {
+    name: 'New rule',
+    enabled: false,
+    trigger,
+    conditions: [],
+    actions: [{ ...blankRef(writable), value: '' }],
+  };
+  try {
+    const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+    state.openRules.add(created.rule.id);
+    await loadRules();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
 });

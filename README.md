@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.4.1
+# MQ77 Customizer 0.5.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -77,6 +77,8 @@ Per device you can also:
 
 Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
 
+Accessory names are corrected to what HomeKit accepts, which must start and end with a letter or number. A name like `Gang licht (voordeur)` is published as `Gang licht voordeur`. The name shown here is left as you wrote it.
+
 ### What reaches HomeKit
 
 | Function | Becomes |
@@ -92,7 +94,34 @@ Functions with no HomeKit equivalent are still listed and marked, and stay avail
 
 Button names and gestures are worked out from the action names the device publishes, so a double rocker becomes three buttons without anything being typed out. Gestures HomeKit has no equivalent for, such as triple press, stay available to the rules engine.
 
-The rules engine arrives in v0.5.0.
+## Rules
+
+The Rules tab links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+
+A rule is a trigger, any number of conditions that must hold, and one or more actions. Actions can be delayed.
+
+An action either sends a fixed value or matches whatever set the rule off, which is how one device is made to follow another. A copied value is restated in the target's own terms, so a switch that says `ON` can drive one that expects `true`, and a dimmer counting to 254 can drive one counting to 100.
+
+Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
+
+### Mirror rules
+
+Ticking Mirror swaps the trigger and actions for a simpler question: which devices, and which of their functions should stay in step. Every member is both a trigger and a target, so changing any one of them brings the rest into line.
+
+Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
+
+A member that already holds the value is left alone, and after a write the group is left to settle, one and a half seconds by default. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
+
+The cost is that flipping a mirrored device again within the settling window is ignored, and devices that disagree are retried once per window rather than as fast as they can talk. Set it per rule between 0.25 and 60 seconds. Below a quarter of a second two devices that disagree can trade places fast enough to look like the runaway the window exists to prevent.
+
+Two things guard against a pair of rules setting each other off:
+
+- a rule will not run more often than its rate limit, one second by default
+- a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
+
+Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+
+Recent activity is listed under the rules, including rules that declined to run and why.
 
 ## Upgrading from MQTT Customizer
 
