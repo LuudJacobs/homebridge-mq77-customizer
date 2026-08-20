@@ -66,7 +66,7 @@ describe('parseRule', () => {
     const parsed = parseRule({ name: 'Lamp', trigger, actions: [action] }, 'r1');
     expect('rule' in parsed && parsed.rule).toMatchObject({ id: 'r1', name: 'Lamp', enabled: true });
     // No conditions means no expression at all, rather than an empty one.
-    expect('rule' in parsed && parsed.rule.when).toBeUndefined();
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.when).toBeUndefined();
   });
 
   it('fires on any of several triggers', () => {
@@ -128,7 +128,7 @@ describe('parseRule', () => {
       },
       'r1',
     );
-    expect('rule' in parsed && parsed.rule.actions[0]?.delayMs).toBe(3_600_000);
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.actions[0]?.delayMs).toBe(3_600_000);
     expect('rule' in parsed && parsed.rule.rateLimitMs).toBe(0);
   });
 
@@ -141,7 +141,7 @@ describe('parseRule', () => {
       },
       'r1',
     );
-    expect('rule' in parsed && parsed.rule.actions[0]).toEqual({
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.actions[0]).toEqual({
       sourceId: 'a',
       deviceId: 'b',
       propertyKey: 'c',

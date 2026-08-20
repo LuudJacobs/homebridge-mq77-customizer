@@ -1100,13 +1100,15 @@ function summarise(rule) {
   }
   const first = rule.triggers?.[0] ?? rule.trigger;
   const source = first && findProperty(first);
-  const target = findProperty(rule.actions[0]);
+  const firstAction = rule.branches?.[0]?.actions?.[0] ?? rule.actions?.[0];
+  const target = firstAction && findProperty(firstAction);
   const more = (rule.triggers?.length ?? 1) > 1 ? ` and ${rule.triggers.length - 1} more` : '';
   const from = source
     ? `${findDevice(first)?.name} ${source.label}${more}`
     : 'a removed function';
-  const to = target ? `${findDevice(rule.actions[0])?.name} ${target.label}` : 'a removed function';
-  const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
+  const to = target ? `${findDevice(firstAction)?.name} ${target.label}` : 'a removed function';
+  const outcomes = rule.branches?.length ?? 1;
+  const extra = outcomes > 1 ? ` and ${outcomes - 1} more outcome${outcomes > 2 ? 's' : ''}` : '';
   return `${from} → ${to}${extra}`;
 }
 function renderRuleBody(rule) {
@@ -1229,39 +1231,113 @@ function drawWhenThen(body, draft) {
   };
   drawTriggers();
   body.append(triggers);
+  // One outcome or several. The first branch that holds runs, so else if is
+  // exclusive by construction rather than by carefully written conditions.
+  draft.branches = draft.branches?.length
+    ? draft.branches
+    : [{ when: draft.when, conditions: draft.conditions, actions: draft.actions }];
+  delete draft.when;
+  delete draft.conditions;
+  delete draft.actions;
 
-  body.append(sectionTitle('And, optionally'));
-  body.append(conditionEditor(draft));
+  const branches = document.createElement('div');
+  const drawBranches = () => {
+    branches.replaceChildren();
+    draft.branches.forEach((branch, index) => {
+      branches.append(renderBranch(branch, index, draft.branches, drawBranches));
+    });
+    branches.append(
+      addButton(draft.branches.length === 1 ? 'Add otherwise' : 'Add another outcome', () => {
+        draft.branches.push({ actions: [{ ...blankRef(writable), value: '' }] });
+        drawBranches();
+      }),
+    );
+  };
+  drawBranches();
+  body.append(branches);
+}
 
-  body.append(sectionTitle('Then'));
-  const actions = document.createElement('div');
-  const drawActions = () => {
-    actions.replaceChildren();
-    draft.actions.forEach((action, index) => {
-      actions.append(
+/** One outcome: what has to hold, and what to do when it does. */
+function renderBranch(branch, index, branches, redraw) {
+  const box = document.createElement('div');
+  box.className = 'branch';
+
+  const only = branches.length === 1;
+  const last = index === branches.length - 1;
+
+  if (!only) {
+    const head = document.createElement('div');
+    head.className = 'option';
+
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.className = 'branch-label';
+    label.placeholder = index === 0 ? 'First outcome' : 'Otherwise';
+    label.maxLength = 60;
+    label.value = branch.label ?? '';
+    label.addEventListener('input', () => (branch.label = label.value));
+    head.append(label);
+
+    head.append(
+      addButton('Remove outcome', () => {
+        branches.splice(index, 1);
+        redraw();
+      }),
+    );
+    box.append(head);
+  }
+
+  // Only the last may be an otherwise. Anything after a branch that always
+  // holds could never run, so the form does not offer it.
+  const otherwise = last && !only && !branch.when && !branch.conditions?.length;
+  if (otherwise) {
+    const note = document.createElement('p');
+    note.className = 'joiner';
+    note.textContent = 'otherwise';
+    box.append(note);
+  } else {
+    box.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+    box.append(conditionEditor(branch));
+  }
+
+  box.append(sectionTitle('Then'));
+  box.append(actionEditor(branch));
+  return box;
+}
+
+function actionEditor(branch) {
+  const wrap = document.createElement('div');
+  wrap.className = 'actions';
+  branch.actions = branch.actions?.length ? branch.actions : [{ ...blankRef(writable), value: '' }];
+
+  const draw = () => {
+    wrap.replaceChildren();
+    branch.actions.forEach((action, index) => {
+      wrap.append(
         refRow(action, {
           pick: writable,
           withValue: true,
           withDelay: true,
           onRemove:
-            draft.actions.length > 1
+            branch.actions.length > 1
               ? () => {
-                  draft.actions.splice(index, 1);
-                  drawActions();
+                  branch.actions.splice(index, 1);
+                  draw();
                 }
               : undefined,
         }),
       );
     });
+    wrap.append(
+      addButton('Add action', () => {
+        branch.actions.push({ ...blankRef(writable), value: '' });
+        draw();
+      }),
+    );
   };
-  drawActions();
-  body.append(
-    actions,
-    addButton('Add action', () => {
-      draft.actions.push({ ...blankRef(writable), value: '' });
-      drawActions();
-    }),
-  );
+
+  draw();
+  return wrap;
 }
 
 /**
