@@ -22,6 +22,7 @@ import {
   type MirrorRule,
   type PropertyRef,
   type Rule,
+  type Trigger,
 } from './types.js';
 
 const LOG_SIZE = 200;
@@ -74,33 +75,48 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   handleState(update: StateUpdate): void {
     const rules = this.store.data.rules;
 
+    // Captured before anything is overwritten, since a rule asking whether a
+    // value changed needs what it was a moment ago.
+    const previously = new Map<string, unknown>();
     for (const [propertyKey, value] of Object.entries(update.changes)) {
       const cacheKey = `${update.sourceId}:${update.deviceId}:${propertyKey}`;
-      const previous = this.previous.get(cacheKey);
+      previously.set(propertyKey, this.previous.get(cacheKey));
       this.previous.set(cacheKey, value);
+    }
 
+    // A retained message is the broker replaying something that already
+    // happened. Acting on it would fire every rule again on each reconnect.
+    if (update.retained) {
+      return;
+    }
 
-      // A retained message is the broker replaying something that already
-      // happened. Acting on it would fire every rule again on each reconnect.
-      if (update.retained) {
+    for (const rule of rules) {
+      if (!rule.enabled) {
         continue;
       }
 
-      for (const rule of rules) {
-        if (!rule.enabled) {
-          continue;
-        }
-        if (isMirror(rule)) {
+      if (isMirror(rule)) {
+        for (const [propertyKey, value] of Object.entries(update.changes)) {
           this.mirror(rule, update, propertyKey, value);
+        }
+        continue;
+      }
+
+      // Any trigger will do, and one message satisfying two of them is still
+      // one thing happening.
+      for (const trigger of triggersOf(rule)) {
+        if (!(trigger.propertyKey in update.changes)) {
           continue;
         }
-        if (!refersTo(rule.trigger, update, propertyKey)) {
+        if (!refersTo(trigger, update, trigger.propertyKey)) {
           continue;
         }
-        if (!matches(rule.trigger.match, value, previous)) {
+        const value = update.changes[trigger.propertyKey];
+        if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
           continue;
         }
-        this.fire(rule, { property: rule.trigger, value });
+        this.fire(rule, { property: trigger, value });
+        break;
       }
     }
   }
@@ -371,6 +387,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
+}
+
+/** A rule's triggers, reading what earlier versions stored as a list of one. */
+function triggersOf(rule: Rule): Trigger[] {
+  if (rule.triggers?.length) {
+    return rule.triggers;
+  }
+  return rule.trigger ? [rule.trigger] : [];
 }
 
 function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): boolean {
