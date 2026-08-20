@@ -55,6 +55,7 @@ const el = {
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
+  build: document.getElementById('build'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -114,6 +115,9 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+
+  // A released build shows its version, anything else the branch it came from.
+  el.build.textContent = snapshot.build ?? '';
 
   // Only shown when configured, so the tab bar does not carry a dead link.
   const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
@@ -1094,9 +1098,13 @@ function summarise(rule) {
     const fields = rule.groups.length;
     return `${[...devices].join(' ↔ ')} · ${fields} field${fields === 1 ? '' : 's'}`;
   }
-  const source = findProperty(rule.trigger);
+  const first = rule.triggers?.[0] ?? rule.trigger;
+  const source = first && findProperty(first);
   const target = findProperty(rule.actions[0]);
-  const from = source ? `${findDevice(rule.trigger)?.name} ${source.label}` : 'a removed function';
+  const more = (rule.triggers?.length ?? 1) > 1 ? ` and ${rule.triggers.length - 1} more` : '';
+  const from = source
+    ? `${findDevice(first)?.name} ${source.label}${more}`
+    : 'a removed function';
   const to = target ? `${findDevice(rule.actions[0])?.name} ${target.label}` : 'a removed function';
   const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
   return `${from} → ${to}${extra}`;
@@ -1177,41 +1185,53 @@ function ruleFooter(rule, draft) {
 
 /** The ordinary trigger, conditions and actions form. */
 function drawWhenThen(body, draft) {
-  draft.trigger = draft.trigger ?? {
-    ...blankRef(watchable),
-    match: { kind: 'changedTo', value: '' },
-  };
-  draft.conditions = draft.conditions ?? [];
+  // A rule stored before this carries one trigger. Read it as a list of one.
+  draft.triggers = draft.triggers?.length
+    ? draft.triggers
+    : [draft.trigger ?? { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } }];
+  delete draft.trigger;
   draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
 
   body.append(sectionTitle('When'));
-  body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
 
-  body.append(sectionTitle('And, optionally'));
-  const conditions = document.createElement('div');
-  const drawConditions = () => {
-    conditions.replaceChildren();
-    draft.conditions.forEach((condition, index) => {
-      conditions.append(
-        refRow(condition, {
+  const triggers = document.createElement('div');
+  triggers.className = 'triggers';
+  const drawTriggers = () => {
+    triggers.replaceChildren();
+    draft.triggers.forEach((trigger, index) => {
+      if (index > 0) {
+        const or = document.createElement('p');
+        or.className = 'joiner';
+        or.textContent = 'or';
+        triggers.append(or);
+      }
+      triggers.append(
+        refRow(trigger, {
           pick: watchable,
           withMatch: true,
-          onRemove: () => {
-            draft.conditions.splice(index, 1);
-            drawConditions();
-          },
+          // Any of them fires the rule, so the last one cannot be removed.
+          onRemove:
+            draft.triggers.length > 1
+              ? () => {
+                  draft.triggers.splice(index, 1);
+                  drawTriggers();
+                }
+              : undefined,
         }),
       );
     });
+    triggers.append(
+      addButton('Add or', () => {
+        draft.triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
+        drawTriggers();
+      }),
+    );
   };
-  drawConditions();
-  body.append(
-    conditions,
-    addButton('Add condition', () => {
-      draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
-      drawConditions();
-    }),
-  );
+  drawTriggers();
+  body.append(triggers);
+
+  body.append(sectionTitle('And, optionally'));
+  body.append(conditionEditor(draft));
 
   body.append(sectionTitle('Then'));
   const actions = document.createElement('div');
@@ -1444,6 +1464,181 @@ function drawMirror(body, draft) {
   drawFields();
 }
 
+/**
+ * Two levels: any of several groups, each all of several tests.
+ *
+ * Deeper nesting would express nothing new, since every boolean expression can
+ * be written as an or of ands, and it would cost a much heavier editor.
+ */
+function conditionEditor(draft) {
+  const wrap = document.createElement('div');
+  wrap.className = 'conditions';
+
+  // Stored to any depth, so anything hand written that does not fit two levels
+  // is left alone rather than quietly flattened.
+  if (draft.when && !isTwoLevel(draft.when)) {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = `Condition edited by hand: ${draft.when.kind}. Leaving it as it is.`;
+    wrap.append(note);
+    return wrap;
+  }
+
+  // A rule saved before expressions existed still carries a flat list, and the
+  // interface is handed rules exactly as stored. Reading only `when` would
+  // show it as having no conditions and drop them on the next save.
+  const groups = toGroups(draft.when ?? asExpression(draft.conditions));
+
+  const draw = () => {
+    wrap.replaceChildren();
+
+    groups.forEach((group, index) => {
+      if (index > 0) {
+        const or = document.createElement('p');
+        or.className = 'joiner';
+        or.textContent = 'or';
+        wrap.append(or);
+      }
+      wrap.append(renderGroup(group, groups, index, commit, draw));
+    });
+
+    wrap.append(
+      addButton(groups.length === 0 ? 'Add condition' : 'Add or', () => {
+        groups.push({ negated: false, tests: [newTest()] });
+        commit();
+        draw();
+      }),
+    );
+  };
+
+  function commit() {
+    draft.when = fromGroups(groups);
+  }
+
+  draw();
+  return wrap;
+}
+
+function renderGroup(group, groups, index, commit, redraw) {
+  const box = document.createElement('div');
+  box.className = 'condition-group';
+
+  const head = document.createElement('div');
+  head.className = 'option';
+  const negate = document.createElement('label');
+  negate.className = 'toggle';
+  const negateBox = document.createElement('input');
+  negateBox.type = 'checkbox';
+  negateBox.checked = group.negated;
+  negateBox.addEventListener('change', () => {
+    group.negated = negateBox.checked;
+    commit();
+  });
+  negate.append(negateBox, document.createTextNode('Not'));
+  negate.title = 'Holds when this group does not';
+  head.append(negate);
+
+  head.append(
+    addButton('Remove group', () => {
+      groups.splice(index, 1);
+      commit();
+      redraw();
+    }),
+  );
+  box.append(head);
+
+  group.tests.forEach((node, position) => {
+    if (position > 0) {
+      const and = document.createElement('span');
+      and.className = 'joiner inline';
+      and.textContent = 'and';
+      box.append(and);
+    }
+    box.append(
+      refRow(node, {
+        pick: watchable,
+        withMatch: true,
+        onChange: commit,
+        onRemove:
+          group.tests.length > 1
+            ? () => {
+                group.tests.splice(position, 1);
+                commit();
+                redraw();
+              }
+            : undefined,
+      }),
+    );
+  });
+
+  box.append(
+    addButton('Add and', () => {
+      group.tests.push(newTest());
+      commit();
+      redraw();
+    }),
+  );
+
+  return box;
+}
+
+function newTest() {
+  return { kind: 'test', ...blankRef(watchable), match: { kind: 'equals', value: '' } };
+}
+
+/** Reads what earlier versions stored, a flat list meaning all of them. */
+function asExpression(conditions) {
+  if (!conditions?.length) {
+    return undefined;
+  }
+  return { kind: 'all', nodes: conditions.map((condition) => ({ kind: 'test', ...condition })) };
+}
+
+/** True when the stored expression is something this editor can show. */
+function isTwoLevel(when) {
+  const groupish = (node) =>
+    node.kind === 'test' ||
+    (node.kind === 'not' && groupish(node.node)) ||
+    (node.kind === 'all' && node.nodes.every((child) => child.kind === 'test'));
+
+  if (when.kind === 'any') {
+    return when.nodes.every(groupish);
+  }
+  return groupish(when);
+}
+
+/** Reads the stored expression into the rows the editor works with. */
+function toGroups(when) {
+  if (!when) {
+    return [];
+  }
+  const asGroup = (node) => {
+    if (node.kind === 'not') {
+      return { ...asGroup(node.node), negated: true };
+    }
+    if (node.kind === 'all') {
+      return { negated: false, tests: node.nodes.map((child) => structuredClone(child)) };
+    }
+    return { negated: false, tests: [structuredClone(node)] };
+  };
+  return when.kind === 'any' ? when.nodes.map(asGroup) : [asGroup(when)];
+}
+
+/** And back again, in the simplest form that says the same thing. */
+function fromGroups(groups) {
+  const nodes = groups
+    .filter((group) => group.tests.length > 0)
+    .map((group) => {
+      const inner = group.tests.length === 1 ? group.tests[0] : { kind: 'all', nodes: group.tests };
+      return group.negated ? { kind: 'not', node: inner } : inner;
+    });
+
+  if (nodes.length === 0) {
+    return undefined;
+  }
+  return nodes.length === 1 ? nodes[0] : { kind: 'any', nodes };
+}
+
 function sectionTitle(text) {
   const title = document.createElement('p');
   title.className = 'group-title';
@@ -1511,6 +1706,8 @@ function refRow(ref, options) {
     }
   };
 
+  const changed = () => options.onChange?.();
+
   devices.addEventListener('change', () => {
     const [sourceId, deviceId] = devices.value.split('|');
     ref.sourceId = sourceId;
@@ -1518,10 +1715,12 @@ function refRow(ref, options) {
     ref.propertyKey = '';
     fillProperties();
     redrawTail();
+    changed();
   });
   properties.addEventListener('change', () => {
     ref.propertyKey = properties.value;
     redrawTail();
+    changed();
   });
 
   row.append(devices, properties);
@@ -1546,13 +1745,19 @@ function refRow(ref, options) {
       kinds.addEventListener('change', () => {
         ref.match = { kind: kinds.value, value: ref.match.value ?? '' };
         redrawTail();
+        changed();
       });
       tail.append(kinds);
 
       if (ref.match.kind !== 'changed') {
         // No toggle here: it is something to send, never something a device
         // reports, so it could never match.
-        tail.append(valueInput(property, ref.match.value, (value) => (ref.match.value = value)));
+        tail.append(
+          valueInput(property, ref.match.value, (value) => {
+            ref.match.value = value;
+            changed();
+          }),
+        );
       }
     }
 
@@ -1582,7 +1787,15 @@ function refRow(ref, options) {
       // Copying the trigger leaves nothing to type, so the value box goes.
       if (mode.value === 'literal') {
         tail.append(
-          valueInput(property, ref.value, (value) => (ref.value = value), { withToggle: true }),
+          valueInput(
+            property,
+            ref.value,
+            (value) => {
+              ref.value = value;
+              changed();
+            },
+            { withToggle: true },
+          ),
         );
       }
     }

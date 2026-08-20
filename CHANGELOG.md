@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.8.0] - 2026-08-20
+
+### Added
+
+- Conditions are an expression: groups joined by or, tests within a group joined by and, and any group can be negated
+- A rule can have several triggers, any of which fires it
+- The interface header shows the version on a released build, or the branch it was built from on any other
+
+### Changed
+
+- Failing an or reports what every branch had against it, rather than only the first
+
 ## [0.7.0] - 2026-08-20
 
 ### Added

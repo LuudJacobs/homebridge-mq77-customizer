@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.7.0
+# MQ77 Customizer 0.8.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -100,7 +100,9 @@ Button names and gestures are worked out from the action names the device publis
 
 Rules live in two tabs. Automation links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
-A rule is a trigger, any number of conditions that must hold, and one or more actions. Actions can be delayed.
+A rule is one or more triggers, an optional condition, and one or more actions. Any trigger fires the rule, so one rule can answer to several buttons. Actions can be delayed.
+
+Conditions are groups joined by **or**, each group a set of tests joined by **and**, and any group can be negated with **not**. That covers every boolean expression: `(A and B) or (C and (D and E))` is the same as `(A and B) or (C and D and E)`, which is two levels. A deeper expression written by hand into `state.json` still works and is left untouched by the editor.
 
 An action either sends a fixed value or matches whatever set the rule off, which is how one device is made to follow another. A copied value is restated in the target's own terms, so a switch that says `ON` can drive one that expects `true`, and a dimmer counting to 254 can drive one counting to 100.
 

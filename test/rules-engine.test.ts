@@ -110,6 +110,78 @@ describe('firing', () => {
   });
 });
 
+describe('several triggers', () => {
+  const eitherButton = (): Rule => ({
+    ...buttonRule(),
+    trigger: undefined as never,
+    triggers: [
+      {
+        sourceId: 'zigbee',
+        deviceId: ROCKER.id,
+        propertyKey: 'action',
+        match: { kind: 'equals', value: 'single_left' },
+      },
+      {
+        sourceId: 'zigbee',
+        deviceId: SWITCH.id,
+        propertyKey: 'state_l2',
+        match: { kind: 'changedTo', value: 'ON' },
+      },
+    ],
+  });
+
+  it('fires on the first one', async () => {
+    const { mqtt } = await harness([eitherButton()]);
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('fires on the second one just as well', async () => {
+    const { mqtt } = await harness([eitherButton()]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('ignores anything that matches neither', async () => {
+    const { mqtt } = await harness([eitherButton()]);
+    mqtt.deliver(ROCKER.topic, { action: 'single_right' });
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    expect(mqtt.published).toEqual([]);
+  });
+
+  it('runs once when one message satisfies two of them', async () => {
+    const rule = eitherButton();
+    rule.triggers = [
+      { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l1', match: { kind: 'changed' } },
+      { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l2', match: { kind: 'changed' } },
+    ];
+    const { mqtt } = await harness([rule]);
+
+    // Both channels in one message is still one thing happening.
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON', state_l2: 'ON' });
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('still reads a rule stored with a single trigger', async () => {
+    const { mqtt } = await harness([buttonRule()]);
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('copies the value from whichever trigger fired', async () => {
+    const rule: Rule = {
+      ...eitherButton(),
+      actions: [
+        { sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', valueFrom: { kind: 'trigger' } },
+      ],
+    };
+    const { mqtt } = await harness([rule]);
+
+    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    expect(mqtt.published.at(-1)?.payload).toBe('{"state":"ON"}');
+  });
+});
+
 describe('repeats versus changes', () => {
   it('fires again when a button is pressed twice', async () => {
     const { mqtt } = await harness([buttonRule()]);
