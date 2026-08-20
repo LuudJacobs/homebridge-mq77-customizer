@@ -63,12 +63,9 @@ describe('parseRule', () => {
 
   it('accepts a complete rule', () => {
     const parsed = parseRule({ name: 'Lamp', trigger, actions: [action] }, 'r1');
-    expect('rule' in parsed && parsed.rule).toMatchObject({
-      id: 'r1',
-      name: 'Lamp',
-      enabled: true,
-      conditions: [],
-    });
+    expect('rule' in parsed && parsed.rule).toMatchObject({ id: 'r1', name: 'Lamp', enabled: true });
+    // No conditions means no expression at all, rather than an empty one.
+    expect('rule' in parsed && parsed.rule.when).toBeUndefined();
   });
 
   it('refuses a rule that could never do anything', () => {

@@ -1188,30 +1188,7 @@ function drawWhenThen(body, draft) {
   body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
 
   body.append(sectionTitle('And, optionally'));
-  const conditions = document.createElement('div');
-  const drawConditions = () => {
-    conditions.replaceChildren();
-    draft.conditions.forEach((condition, index) => {
-      conditions.append(
-        refRow(condition, {
-          pick: watchable,
-          withMatch: true,
-          onRemove: () => {
-            draft.conditions.splice(index, 1);
-            drawConditions();
-          },
-        }),
-      );
-    });
-  };
-  drawConditions();
-  body.append(
-    conditions,
-    addButton('Add condition', () => {
-      draft.conditions.push({ ...blankRef(watchable), match: { kind: 'equals', value: '' } });
-      drawConditions();
-    }),
-  );
+  body.append(conditionEditor(draft));
 
   body.append(sectionTitle('Then'));
   const actions = document.createElement('div');
@@ -1444,6 +1421,169 @@ function drawMirror(body, draft) {
   drawFields();
 }
 
+/**
+ * Two levels: any of several groups, each all of several tests.
+ *
+ * Deeper nesting would express nothing new, since every boolean expression can
+ * be written as an or of ands, and it would cost a much heavier editor.
+ */
+function conditionEditor(draft) {
+  const wrap = document.createElement('div');
+
+  // Stored to any depth, so anything hand written that does not fit two levels
+  // is left alone rather than quietly flattened.
+  if (draft.when && !isTwoLevel(draft.when)) {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = `Condition edited by hand: ${draft.when.kind}. Leaving it as it is.`;
+    wrap.append(note);
+    return wrap;
+  }
+
+  const groups = toGroups(draft.when);
+
+  const draw = () => {
+    wrap.replaceChildren();
+
+    groups.forEach((group, index) => {
+      if (index > 0) {
+        const or = document.createElement('p');
+        or.className = 'joiner';
+        or.textContent = 'or';
+        wrap.append(or);
+      }
+      wrap.append(renderGroup(group, groups, index, commit, draw));
+    });
+
+    wrap.append(
+      addButton(groups.length === 0 ? 'Add condition' : 'Add or', () => {
+        groups.push({ negated: false, tests: [newTest()] });
+        commit();
+        draw();
+      }),
+    );
+  };
+
+  function commit() {
+    draft.when = fromGroups(groups);
+  }
+
+  draw();
+  return wrap;
+}
+
+function renderGroup(group, groups, index, commit, redraw) {
+  const box = document.createElement('div');
+  box.className = 'condition-group';
+
+  const head = document.createElement('div');
+  head.className = 'option';
+  const negate = document.createElement('label');
+  negate.className = 'toggle';
+  const negateBox = document.createElement('input');
+  negateBox.type = 'checkbox';
+  negateBox.checked = group.negated;
+  negateBox.addEventListener('change', () => {
+    group.negated = negateBox.checked;
+    commit();
+  });
+  negate.append(negateBox, document.createTextNode('Not'));
+  negate.title = 'Holds when this group does not';
+  head.append(negate);
+
+  head.append(
+    addButton('Remove group', () => {
+      groups.splice(index, 1);
+      commit();
+      redraw();
+    }),
+  );
+  box.append(head);
+
+  group.tests.forEach((node, position) => {
+    if (position > 0) {
+      const and = document.createElement('span');
+      and.className = 'joiner inline';
+      and.textContent = 'and';
+      box.append(and);
+    }
+    box.append(
+      refRow(node, {
+        pick: watchable,
+        withMatch: true,
+        onChange: commit,
+        onRemove:
+          group.tests.length > 1
+            ? () => {
+                group.tests.splice(position, 1);
+                commit();
+                redraw();
+              }
+            : undefined,
+      }),
+    );
+  });
+
+  box.append(
+    addButton('Add and', () => {
+      group.tests.push(newTest());
+      commit();
+      redraw();
+    }),
+  );
+
+  return box;
+}
+
+function newTest() {
+  return { kind: 'test', ...blankRef(watchable), match: { kind: 'equals', value: '' } };
+}
+
+/** True when the stored expression is something this editor can show. */
+function isTwoLevel(when) {
+  const groupish = (node) =>
+    node.kind === 'test' ||
+    (node.kind === 'not' && groupish(node.node)) ||
+    (node.kind === 'all' && node.nodes.every((child) => child.kind === 'test'));
+
+  if (when.kind === 'any') {
+    return when.nodes.every(groupish);
+  }
+  return groupish(when);
+}
+
+/** Reads the stored expression into the rows the editor works with. */
+function toGroups(when) {
+  if (!when) {
+    return [];
+  }
+  const asGroup = (node) => {
+    if (node.kind === 'not') {
+      return { ...asGroup(node.node), negated: true };
+    }
+    if (node.kind === 'all') {
+      return { negated: false, tests: node.nodes.map((child) => structuredClone(child)) };
+    }
+    return { negated: false, tests: [structuredClone(node)] };
+  };
+  return when.kind === 'any' ? when.nodes.map(asGroup) : [asGroup(when)];
+}
+
+/** And back again, in the simplest form that says the same thing. */
+function fromGroups(groups) {
+  const nodes = groups
+    .filter((group) => group.tests.length > 0)
+    .map((group) => {
+      const inner = group.tests.length === 1 ? group.tests[0] : { kind: 'all', nodes: group.tests };
+      return group.negated ? { kind: 'not', node: inner } : inner;
+    });
+
+  if (nodes.length === 0) {
+    return undefined;
+  }
+  return nodes.length === 1 ? nodes[0] : { kind: 'any', nodes };
+}
+
 function sectionTitle(text) {
   const title = document.createElement('p');
   title.className = 'group-title';
@@ -1511,6 +1651,8 @@ function refRow(ref, options) {
     }
   };
 
+  const changed = () => options.onChange?.();
+
   devices.addEventListener('change', () => {
     const [sourceId, deviceId] = devices.value.split('|');
     ref.sourceId = sourceId;
@@ -1518,10 +1660,12 @@ function refRow(ref, options) {
     ref.propertyKey = '';
     fillProperties();
     redrawTail();
+    changed();
   });
   properties.addEventListener('change', () => {
     ref.propertyKey = properties.value;
     redrawTail();
+    changed();
   });
 
   row.append(devices, properties);
@@ -1546,13 +1690,19 @@ function refRow(ref, options) {
       kinds.addEventListener('change', () => {
         ref.match = { kind: kinds.value, value: ref.match.value ?? '' };
         redrawTail();
+        changed();
       });
       tail.append(kinds);
 
       if (ref.match.kind !== 'changed') {
         // No toggle here: it is something to send, never something a device
         // reports, so it could never match.
-        tail.append(valueInput(property, ref.match.value, (value) => (ref.match.value = value)));
+        tail.append(
+          valueInput(property, ref.match.value, (value) => {
+            ref.match.value = value;
+            changed();
+          }),
+        );
       }
     }
 
@@ -1582,7 +1732,15 @@ function refRow(ref, options) {
       // Copying the trigger leaves nothing to type, so the value box goes.
       if (mode.value === 'literal') {
         tail.append(
-          valueInput(property, ref.value, (value) => (ref.value = value), { withToggle: true }),
+          valueInput(
+            property,
+            ref.value,
+            (value) => {
+              ref.value = value;
+              changed();
+            },
+            { withToggle: true },
+          ),
         );
       }
     }
