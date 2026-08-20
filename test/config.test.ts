@@ -21,6 +21,43 @@ describe('resolveConfig', () => {
     expect(config.web.port).toBe(8888);
   });
 
+  it('splits the broker address into host and port', () => {
+    const config = resolveConfig({ broker: { address: '192.168.1.5:1884' } }, collectingLogger());
+    expect(config.broker).toMatchObject({ host: '192.168.1.5', port: 1884 });
+  });
+
+  it('still reads a host and port stored separately, so an upgrade keeps working', () => {
+    const config = resolveConfig({ broker: { host: 'pi.local', port: 1884 } }, collectingLogger());
+    expect(config.broker).toMatchObject({ host: 'pi.local', port: 1884 });
+  });
+
+  it('prefers the address over any leftover host and port', () => {
+    const config = resolveConfig(
+      { broker: { address: 'new.local:1885', host: 'old.local', port: 1884 } },
+      collectingLogger(),
+    );
+    expect(config.broker).toMatchObject({ host: 'new.local', port: 1885 });
+  });
+
+  it('falls back to the defaults when the address makes no sense', () => {
+    const config = resolveConfig({ broker: { address: 'pi.local:nope' } }, collectingLogger());
+    expect(config.broker).toMatchObject({ host: 'localhost', port: 1883 });
+  });
+
+  it('sends credentials only when authentication is asked for', () => {
+    const credentials = { address: 'localhost:1883', username: 'mqtt', password: 'secret' };
+
+    const off = resolveConfig({ broker: credentials }, collectingLogger());
+    expect(off.broker.username).toBeUndefined();
+    expect(off.broker.password).toBeUndefined();
+
+    const on = resolveConfig(
+      { broker: { ...credentials, requiresAuth: true } },
+      collectingLogger(),
+    );
+    expect(on.broker).toMatchObject({ username: 'mqtt', password: 'secret' });
+  });
+
   it('defaults to a single Zigbee2MQTT source when none are given', () => {
     const config = resolveConfig({}, collectingLogger());
     expect(config.sources).toEqual([
