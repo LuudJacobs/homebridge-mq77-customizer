@@ -6,8 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Broker host and port are one address field, `localhost:1883`. A host and port stored separately are still read
-- Broker username and password only appear once "Requires authentication" is ticked
+## [0.10.0] - 2026-08-21
+
+### Changed
+
+- The broker is configured as one address, `localhost:1883`, instead of a separate host and port. The port may be left off. A host and port stored separately are still read, so an existing install keeps its broker
+- Broker username and password only appear once "Requires authentication" is ticked, and are ignored when it is not
 
 ## [0.9.1] - 2026-08-20
 
