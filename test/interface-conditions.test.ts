@@ -166,7 +166,7 @@ describe('branches', () => {
     const ui = await openRule(legacyRule);
     // Nothing to number or remove when there is only one.
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
-    expect(ui.byText('button.add-row', 'Remove outcome')).toBeNull();
+    expect(ui.byText('button.add-row', 'Remove outcome 1')).toBeNull();
     expect(ui.byText('button.add-row', 'Add outcome')).not.toBeNull();
   });
 
@@ -183,6 +183,14 @@ describe('branches', () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', 'Add outcome'));
     expect(ui.document.querySelectorAll('.branch .actions')).toHaveLength(2);
+  });
+
+  it('numbers the remove button, beside the heading it belongs to', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+
+    expect(ui.byText('.branch-head button.add-row', 'Remove outcome 1')).not.toBeNull();
+    expect(ui.byText('.branch-head button.add-row', 'Remove outcome 2')).not.toBeNull();
   });
 
   it('sends a list of branches when saved', async () => {
@@ -207,7 +215,8 @@ describe('branches', () => {
   it('removes an outcome again', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', 'Add outcome'));
-    await ui.click(ui.byText('button.add-row', 'Remove outcome'));
+    // Numbered, so it is clear which one is going.
+    await ui.click(ui.byText('button.add-row', 'Remove outcome 2'));
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
   });
 });
