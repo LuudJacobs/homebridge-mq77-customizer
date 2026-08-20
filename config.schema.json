@@ -16,29 +16,28 @@
         "title": "MQTT Broker",
         "type": "object",
         "properties": {
-          "host": {
-            "title": "Host",
+          "address": {
+            "title": "Address",
             "type": "string",
-            "default": "localhost",
-            "required": true
-          },
-          "port": {
-            "title": "Port",
-            "type": "integer",
-            "default": 1883,
-            "minimum": 1,
-            "maximum": 65535,
+            "default": "localhost:1883",
             "required": true,
-            "x-schema-form": { "type": "number" }
+            "description": "Host and port. The port may be left off, in which case 1883 is used."
+          },
+          "requiresAuth": {
+            "title": "Requires authentication",
+            "type": "boolean",
+            "default": false
           },
           "username": {
             "title": "Username",
-            "type": "string"
+            "type": "string",
+            "condition": { "functionBody": "return model.broker && model.broker.requiresAuth;" }
           },
           "password": {
             "title": "Password",
             "type": "string",
-            "x-schema-form": { "type": "password" }
+            "x-schema-form": { "type": "password" },
+            "condition": { "functionBody": "return model.broker && model.broker.requiresAuth;" }
           },
           "clientId": {
             "title": "Client ID",

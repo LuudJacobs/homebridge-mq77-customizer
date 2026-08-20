@@ -59,6 +59,20 @@ describe('config.schema.json', () => {
     }
   });
 
+  it('asks for the credentials only when authentication is ticked', () => {
+    for (const name of ['broker.username', 'broker.password']) {
+      const [, field] = properties(schema.schema).find(([path]) => path === name)!;
+      expect(field.condition?.functionBody).toContain('requiresAuth');
+    }
+  });
+
+  it('asks for the broker as one address rather than a host and a port', () => {
+    const paths = properties(schema.schema).map(([path]) => path);
+    expect(paths).toContain('broker.address');
+    expect(paths).not.toContain('broker.host');
+    expect(paths).not.toContain('broker.port');
+  });
+
   it('masks password fields, since format alone does not do it in this UI', () => {
     const plain = properties(schema.schema)
       .filter(([path, property]) => /password/i.test(path) && property['x-schema-form']?.type !== 'password')

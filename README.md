@@ -25,13 +25,15 @@ Add the platform to your Homebridge config:
 {
   "platform": "Mq77Customizer",
   "name": "MQ77 Customizer",
-  "broker": { "host": "localhost", "port": 1883 },
+  "broker": { "address": "localhost:1883" },
   "sources": [
     { "id": "zigbee", "adapter": "zigbee2mqtt", "baseTopic": "zigbee2mqtt" }
   ],
   "web": { "port": 8888, "password": "choose-one" }
 }
 ```
+
+`broker.address` is a host with an optional port, `localhost:1883` by default. Leave the port off to use 1883. If the broker wants credentials, tick `broker.requiresAuth` and fill in `broker.username` and `broker.password`.
 
 The web interface can switch your devices, so `web.password` is required. Without it the interface does not start.
 

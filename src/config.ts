@@ -18,6 +18,7 @@ export interface PluginConfig {
 }
 
 const DEFAULT_BROKER: BrokerConfig = { host: 'localhost', port: 1883 };
+export const DEFAULT_ADDRESS = 'localhost:1883';
 const DEFAULT_WEB_PORT = 8888;
 
 /**
@@ -28,11 +29,21 @@ const DEFAULT_WEB_PORT = 8888;
  */
 export function resolveConfig(raw: Record<string, unknown>, log: Logger): PluginConfig {
   const brokerRaw = asObject(raw.broker) ?? {};
+
+  // One field now, `host:port`. Earlier versions stored the two separately and
+  // those settings are still read, so an upgrade does not lose the broker.
+  const address = asString(brokerRaw.address);
+  const parsed = address ? parseAddress(address, log) : undefined;
+
+  // Credentials stay stored while the box is unticked, so turning
+  // authentication off and on again does not mean typing them in twice.
+  const authenticated = brokerRaw.requiresAuth === true;
+
   const broker: BrokerConfig = {
-    host: asString(brokerRaw.host) ?? DEFAULT_BROKER.host,
-    port: asNumber(brokerRaw.port) ?? DEFAULT_BROKER.port,
-    username: asString(brokerRaw.username),
-    password: asString(brokerRaw.password),
+    host: parsed?.host ?? asString(brokerRaw.host) ?? DEFAULT_BROKER.host,
+    port: parsed?.port ?? asNumber(brokerRaw.port) ?? DEFAULT_BROKER.port,
+    username: authenticated ? asString(brokerRaw.username) : undefined,
+    password: authenticated ? asString(brokerRaw.password) : undefined,
     clientId: asString(brokerRaw.clientId),
   };
 
@@ -115,6 +126,48 @@ function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
   }
 
   return sources;
+}
+
+/**
+ * Splits `host:port`, and copes with the ways that can be written.
+ *
+ * A bare host keeps the default port. An IPv6 address is full of colons, so
+ * only a bracketed one can carry a port, and the brackets come off since that
+ * is what the client expects.
+ */
+export function parseAddress(
+  address: string,
+  log: Logger,
+): { host: string; port: number } | undefined {
+  const trimmed = address.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const bracketed = /^\[(.+)\](?::(\d+))?$/.exec(trimmed);
+  if (bracketed) {
+    return { host: bracketed[1]!, port: Number(bracketed[2] ?? DEFAULT_BROKER.port) };
+  }
+
+  // No colon means a bare host. Several, without brackets, means a bare IPv6
+  // address, which cannot carry a port since there is no telling where the
+  // address ends. Either way the default port stands.
+  const colons = trimmed.split(':').length - 1;
+  if (colons !== 1) {
+    return { host: trimmed, port: DEFAULT_BROKER.port };
+  }
+
+  const colon = trimmed.lastIndexOf(':');
+
+  const host = trimmed.slice(0, colon);
+  const port = Number(trimmed.slice(colon + 1));
+
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    log.warn(`"${address}" is not a usable broker address, using ${DEFAULT_ADDRESS}`);
+    return undefined;
+  }
+
+  return { host, port };
 }
 
 /**
