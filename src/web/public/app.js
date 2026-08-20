@@ -1440,7 +1440,10 @@ function conditionEditor(draft) {
     return wrap;
   }
 
-  const groups = toGroups(draft.when);
+  // A rule saved before expressions existed still carries a flat list, and the
+  // interface is handed rules exactly as stored. Reading only `when` would
+  // show it as having no conditions and drop them on the next save.
+  const groups = toGroups(draft.when ?? asExpression(draft.conditions));
 
   const draw = () => {
     wrap.replaceChildren();
@@ -1537,6 +1540,14 @@ function renderGroup(group, groups, index, commit, redraw) {
 
 function newTest() {
   return { kind: 'test', ...blankRef(watchable), match: { kind: 'equals', value: '' } };
+}
+
+/** Reads what earlier versions stored, a flat list meaning all of them. */
+function asExpression(conditions) {
+  if (!conditions?.length) {
+    return undefined;
+  }
+  return { kind: 'all', nodes: conditions.map((condition) => ({ kind: 'test', ...condition })) };
 }
 
 /** True when the stored expression is something this editor can show. */
