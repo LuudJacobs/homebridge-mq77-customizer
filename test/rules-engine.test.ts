@@ -242,6 +242,84 @@ describe('retained messages', () => {
   });
 });
 
+describe('branches', () => {
+  /** When the button is pressed: if l2 is on do A, else if it is off do B. */
+  const branching = (): Rule => ({
+    ...buttonRule(),
+    conditions: undefined,
+    actions: undefined as never,
+    branches: [
+      {
+        label: 'while on',
+        when: {
+          kind: 'test',
+          sourceId: 'zigbee',
+          deviceId: SWITCH.id,
+          propertyKey: 'state_l2',
+          match: { kind: 'equals', value: 'ON' },
+        },
+        actions: [{ sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', value: 'ON' }],
+      },
+      {
+        label: 'otherwise',
+        actions: [{ sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', value: 'OFF' }],
+      },
+    ],
+  });
+
+  it('runs the first branch that holds', async () => {
+    const { mqtt } = await harness([branching()]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(mqtt.published.at(-1)?.payload).toBe('{"state":"ON"}');
+  });
+
+  it('falls through to the otherwise', async () => {
+    const { mqtt } = await harness([branching()]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(mqtt.published.at(-1)?.payload).toBe('{"state":"OFF"}');
+  });
+
+  it('runs one branch and no more', async () => {
+    const { mqtt } = await harness([branching()]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    // Exclusivity is structural, not something the conditions have to arrange.
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('says which branch ran', async () => {
+    const { engine, mqtt } = await harness([branching()]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(engine.getLog()[0]?.detail).toContain('while on');
+  });
+
+  it('does nothing, and says why, when no branch holds', async () => {
+    const rule = branching();
+    rule.branches = [rule.branches![0]!];
+    const { engine, mqtt } = await harness([rule]);
+
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(mqtt.published).toEqual([]);
+    expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
+    expect(engine.getLog()[0]?.detail).toContain('while on');
+  });
+
+  it('still runs a rule stored with a single outcome', async () => {
+    const { mqtt } = await harness([buttonRule()]);
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+    expect(mqtt.published).toHaveLength(1);
+  });
+});
+
 describe('conditions', () => {
   it('holds the action back when a condition fails', async () => {
     const rule = buttonRule({

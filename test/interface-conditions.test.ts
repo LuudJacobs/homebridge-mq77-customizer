@@ -108,10 +108,11 @@ describe('the condition editor', () => {
 
     // The first request to that path is the listing, which carries no body.
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
-      when: { kind: string; nodes: unknown[] };
+      branches: { when: { kind: string; nodes: unknown[] } }[];
     };
-    expect(saved.when.kind).toBe('any');
-    expect(saved.when.nodes).toHaveLength(2);
+    // Conditions live on the branch now, not on the rule.
+    expect(saved.branches[0]?.when.kind).toBe('any');
+    expect(saved.branches[0]?.when.nodes).toHaveLength(2);
   });
 
   it('leaves an expression too deep for it alone', async () => {
@@ -157,5 +158,57 @@ describe('the trigger list', () => {
     expect(saved.triggers).toHaveLength(2);
     // The single field is not sent alongside the list.
     expect(saved.trigger).toBeUndefined();
+  });
+});
+
+describe('branches', () => {
+  it('shows a rule with one outcome as one branch, unadorned', async () => {
+    const ui = await openRule(legacyRule);
+    // Nothing to label or remove when there is only one.
+    expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
+    expect(ui.document.querySelector('.branch-label')).toBeNull();
+    expect(ui.byText('button.add-row', 'Add otherwise')).not.toBeNull();
+  });
+
+  it('adds an otherwise with no condition of its own', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add otherwise'));
+
+    expect(ui.document.querySelectorAll('.branch')).toHaveLength(2);
+    expect(ui.byText('p.joiner', 'otherwise')).not.toBeNull();
+    // Both are now nameable, so the run log can tell them apart.
+    expect(ui.document.querySelectorAll('.branch-label')).toHaveLength(2);
+  });
+
+  it('gives every outcome its own actions', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add otherwise'));
+    expect(ui.document.querySelectorAll('.branch .actions')).toHaveLength(2);
+  });
+
+  it('sends a list of branches when saved', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add otherwise'));
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when?: unknown; actions: unknown[] }[];
+      actions?: unknown;
+      when?: unknown;
+    };
+    expect(saved.branches).toHaveLength(2);
+    expect(saved.branches[0]?.when).toBeDefined();
+    // The last one always holds, which is what makes it the otherwise.
+    expect(saved.branches[1]?.when).toBeUndefined();
+    // The single outcome fields are not sent alongside the list.
+    expect(saved.actions).toBeUndefined();
+    expect(saved.when).toBeUndefined();
+  });
+
+  it('removes an outcome again', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add otherwise'));
+    await ui.click(ui.byText('button.add-row', 'Remove outcome'));
+    expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
   });
 });

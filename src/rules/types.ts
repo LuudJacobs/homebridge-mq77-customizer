@@ -51,6 +51,19 @@ export interface Action extends PropertyRef {
   delayMs?: number;
 }
 
+/**
+ * One outcome of a rule, and the condition that chooses it.
+ *
+ * The first branch whose condition holds runs, and the rest are skipped. A
+ * branch with no condition always holds, which is the otherwise.
+ */
+export interface Branch {
+  /** Named so the run log can say which one ran. */
+  label?: string;
+  when?: ConditionNode;
+  actions: Action[];
+}
+
 export interface Rule {
   id: string;
   kind?: 'standard';
@@ -70,9 +83,16 @@ export interface Rule {
    * `conditions` is what earlier versions stored, a flat list meaning all of
    * them. It is read as a single `all` node and rewritten on next save.
    */
+  /**
+   * Tried in order, the first that holds wins.
+   *
+   * `when` and `actions` are what earlier versions stored, a single outcome.
+   * They are read as one branch and rewritten on next save.
+   */
+  branches?: Branch[];
   when?: ConditionNode;
   conditions?: Condition[];
-  actions: Action[];
+  actions?: Action[];
   /**
    * Shortest gap between firings.
    *
