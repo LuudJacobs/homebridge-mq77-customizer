@@ -58,7 +58,8 @@ describe('parseRule', () => {
     // working and land on the automation tab rather than needing converting.
     const parsed = parseRule({ name: 'Old rule', trigger, actions: [action] }, 'r1');
     expect('rule' in parsed && parsed.rule.kind).toBeUndefined();
-    expect('rule' in parsed && 'trigger' in parsed.rule).toBe(true);
+    // Its single trigger is read as a list of one.
+    expect('rule' in parsed && parsed.rule.triggers).toHaveLength(1);
   });
 
   it('accepts a complete rule', () => {
@@ -66,6 +67,21 @@ describe('parseRule', () => {
     expect('rule' in parsed && parsed.rule).toMatchObject({ id: 'r1', name: 'Lamp', enabled: true });
     // No conditions means no expression at all, rather than an empty one.
     expect('rule' in parsed && parsed.rule.when).toBeUndefined();
+  });
+
+  it('fires on any of several triggers', () => {
+    const second = { ...trigger, deviceId: '0xother' };
+    const parsed = parseRule(
+      { name: 'Either button', triggers: [trigger, second], actions: [action] },
+      'r1',
+    );
+    expect('rule' in parsed && parsed.rule.triggers).toHaveLength(2);
+  });
+
+  it('needs at least one trigger', () => {
+    expect(parseRule({ name: 'x', triggers: [], actions: [action] }, 'r1')).toEqual({
+      error: 'A rule needs at least one trigger',
+    });
   });
 
   it('refuses a rule that could never do anything', () => {
@@ -99,7 +115,7 @@ describe('parseRule', () => {
       { name: 'x', trigger: { ...trigger, match: { kind: 'changed', value: 'junk' } }, actions: [action] },
       'r1',
     );
-    expect('rule' in parsed && parsed.rule.trigger.match).toEqual({ kind: 'changed' });
+    expect('rule' in parsed && parsed.rule.triggers?.[0]?.match).toEqual({ kind: 'changed' });
   });
 
   it('keeps delays and rate limits within something sane', () => {

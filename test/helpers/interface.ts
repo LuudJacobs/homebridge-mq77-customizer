@@ -78,10 +78,10 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
       await settle(window);
     },
     /** Buttons and tabs are found by what they say, as a person would. */
-    byText: (selector: string, text: string) =>
-      [...window.document.querySelectorAll(selector)].find(
-        (node) => node.textContent?.trim() === text,
-      ) ?? null,
+    byText: (selector: string, text: string, within?: string) =>
+      [...(within ? window.document.querySelector(within)! : window.document).querySelectorAll(
+        selector,
+      )].find((node) => node.textContent?.trim() === text) ?? null,
   };
 }
 
