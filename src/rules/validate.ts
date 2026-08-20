@@ -1,6 +1,8 @@
 import { MAX_SETTLE_MS, MIN_SETTLE_MS } from './types.js';
+import { fromConditions } from './conditions.js';
 import type {
   Action,
+  ConditionNode,
   AnyRule,
   Condition,
   Match,
@@ -43,17 +45,28 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
     return { error: `Trigger: ${triggerMatch.error}` };
   }
 
-  const conditions: Condition[] = [];
-  for (const entry of asArray(raw.conditions)) {
-    const ref = parseRef(entry);
-    const match = parseMatch(isObject(entry) ? entry.match : undefined);
-    if (!ref) {
-      return { error: 'A condition needs a device and a function' };
+  // Either an expression, or the flat list earlier versions stored.
+  let when: ConditionNode | undefined;
+  if (raw.when !== undefined) {
+    const parsed = parseCondition(raw.when);
+    if ('error' in parsed) {
+      return { error: `Condition: ${parsed.error}` };
     }
-    if ('error' in match) {
-      return { error: `Condition: ${match.error}` };
+    when = parsed.node;
+  } else {
+    const conditions: Condition[] = [];
+    for (const entry of asArray(raw.conditions)) {
+      const ref = parseRef(entry);
+      const match = parseMatch(isObject(entry) ? entry.match : undefined);
+      if (!ref) {
+        return { error: 'A condition needs a device and a function' };
+      }
+      if ('error' in match) {
+        return { error: `Condition: ${match.error}` };
+      }
+      conditions.push({ ...ref, match: match.match });
     }
-    conditions.push({ ...ref, match: match.match });
+    when = fromConditions(conditions);
   }
 
   const actions: Action[] = [];
@@ -94,7 +107,7 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       name,
       enabled: raw.enabled !== false,
       trigger: { ...trigger, match: triggerMatch.match } as Trigger,
-      conditions,
+      ...(when ? { when } : {}),
       actions,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
@@ -158,6 +171,55 @@ function sameRef(a: PropertyRef, b: PropertyRef): boolean {
   return (
     a.sourceId === b.sourceId && a.deviceId === b.deviceId && a.propertyKey === b.propertyKey
   );
+}
+
+/**
+ * Reads an expression, dropping groups that ended up empty.
+ *
+ * An empty group is what a half built condition looks like, and treating it as
+ * a test that always holds would quietly change what a rule does.
+ */
+function parseCondition(raw: unknown): { node?: ConditionNode } | { error: string } {
+  if (!isObject(raw) || typeof raw.kind !== 'string') {
+    return { error: 'unknown condition' };
+  }
+
+  if (raw.kind === 'all' || raw.kind === 'any') {
+    const nodes: ConditionNode[] = [];
+    for (const entry of asArray(raw.nodes)) {
+      const parsed = parseCondition(entry);
+      if ('error' in parsed) {
+        return parsed;
+      }
+      if (parsed.node) {
+        nodes.push(parsed.node);
+      }
+    }
+    return { node: nodes.length > 0 ? { kind: raw.kind, nodes } : undefined };
+  }
+
+  if (raw.kind === 'not') {
+    const parsed = parseCondition(raw.node);
+    if ('error' in parsed) {
+      return parsed;
+    }
+    // Nothing to negate is nothing at all, rather than everything.
+    return { node: parsed.node ? { kind: 'not', node: parsed.node } : undefined };
+  }
+
+  if (raw.kind === 'test') {
+    const ref = parseRef(raw);
+    if (!ref) {
+      return { error: 'a test needs a device and a function' };
+    }
+    const match = parseMatch(raw.match);
+    if ('error' in match) {
+      return { error: match.error };
+    }
+    return { node: { kind: 'test', ...ref, match: match.match } };
+  }
+
+  return { error: `unknown condition "${raw.kind}"` };
 }
 
 function parseMatch(raw: unknown): { match: Match } | { error: string } {

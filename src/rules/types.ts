@@ -23,6 +23,19 @@ export interface Condition extends PropertyRef {
 }
 
 /**
+ * A condition, which may be a whole expression rather than a single test.
+ *
+ * Stored to any depth. The editor offers two levels, an `any` of `all` groups,
+ * which loses nothing: every boolean expression can be written that way, so
+ * `(A and B) or (C and (D and E))` is `(A and B) or (C and D and E)`.
+ */
+export type ConditionNode =
+  | { kind: 'all'; nodes: ConditionNode[] }
+  | { kind: 'any'; nodes: ConditionNode[] }
+  | { kind: 'not'; node: ConditionNode }
+  | ({ kind: 'test' } & Condition);
+
+/**
  * Where an action's value comes from.
  *
  * `trigger` copies whatever set the rule off, translated into the target's own
@@ -44,8 +57,14 @@ export interface Rule {
   name: string;
   enabled: boolean;
   trigger: Trigger;
-  /** All must hold, tested against the values currently known. */
-  conditions: Condition[];
+  /**
+   * Tested against the values currently known, when present.
+   *
+   * `conditions` is what earlier versions stored, a flat list meaning all of
+   * them. It is read as a single `all` node and rewritten on next save.
+   */
+  when?: ConditionNode;
+  conditions?: Condition[];
   actions: Action[];
   /**
    * Shortest gap between firings.
