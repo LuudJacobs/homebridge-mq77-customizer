@@ -29,6 +29,8 @@ export interface CatalogEvents {
 export class Catalog extends EventEmitter<CatalogEvents> {
   private readonly adapters = new Map<string, SourceAdapter>();
   private readonly sources = new Map<string, SourceConfig>();
+  /** Sources that have produced a catalog at least once since starting. */
+  private readonly reported = new Set<string>();
   private devices: CatalogDevice[] = [];
   /** Epoch millis a property last carried a value, keyed `sourceId:deviceId` then property key. */
   private readonly lastSeen = new Map<string, Map<string, number>>();
@@ -56,7 +58,10 @@ export class Catalog extends EventEmitter<CatalogEvents> {
         log: prefixed(this.log, source.id),
       });
 
-      adapter.on('devices', () => this.rebuild());
+      adapter.on('devices', () => {
+        this.reported.add(source.id);
+        this.rebuild();
+      });
       adapter.on('state', (update) => this.handleState(update));
 
       this.adapters.set(source.id, adapter);
@@ -73,8 +78,25 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     }
     this.adapters.clear();
     this.sources.clear();
+    this.reported.clear();
     this.devices = [];
     this.lastSeen.clear();
+  }
+
+  /**
+   * Whether a source has told us what it has.
+   *
+   * Until it has, an empty catalog means "not yet" rather than "nothing", and
+   * the difference matters: acting on the second would remove accessories that
+   * are about to come back.
+   */
+  hasReported(sourceId: string): boolean {
+    return this.reported.has(sourceId);
+  }
+
+  /** True once every configured source has been heard from. */
+  knowsEverything(): boolean {
+    return [...this.adapters.keys()].every((sourceId) => this.reported.has(sourceId));
   }
 
   getDevices(): CatalogDevice[] {
