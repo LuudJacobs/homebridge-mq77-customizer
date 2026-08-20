@@ -2,8 +2,9 @@ import { MAX_SETTLE_MS, MIN_SETTLE_MS } from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
   Action,
-  ConditionNode,
   AnyRule,
+  Branch,
+  ConditionNode,
   Condition,
   Match,
   MirrorRule,
@@ -56,57 +57,35 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
     return { error: 'A rule needs at least one trigger' };
   }
 
-  // Either an expression, or the flat list earlier versions stored.
-  let when: ConditionNode | undefined;
-  if (raw.when !== undefined) {
-    const parsed = parseCondition(raw.when);
-    if ('error' in parsed) {
-      return { error: `Condition: ${parsed.error}` };
+  // Several branches tried in order, or the single outcome earlier versions
+  // stored. Both end up as a list.
+  const branches: Branch[] = [];
+
+  if (Array.isArray(raw.branches)) {
+    for (const entry of raw.branches) {
+      const parsed = parseBranch(entry);
+      if ('error' in parsed) {
+        return parsed;
+      }
+      branches.push(parsed.branch);
     }
-    when = parsed.node;
   } else {
-    const conditions: Condition[] = [];
-    for (const entry of asArray(raw.conditions)) {
-      const ref = parseRef(entry);
-      const match = parseMatch(isObject(entry) ? entry.match : undefined);
-      if (!ref) {
-        return { error: 'A condition needs a device and a function' };
-      }
-      if ('error' in match) {
-        return { error: `Condition: ${match.error}` };
-      }
-      conditions.push({ ...ref, match: match.match });
+    const parsed = parseBranch(raw);
+    if ('error' in parsed) {
+      return parsed;
     }
-    when = fromConditions(conditions);
+    branches.push(parsed.branch);
   }
 
-  const actions: Action[] = [];
-  for (const entry of asArray(raw.actions)) {
-    const ref = parseRef(entry);
-    if (!ref || !isObject(entry)) {
-      return { error: 'An action needs a device and a function' };
-    }
-    const copies =
-      isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
-
-    const value = entry.value;
-    const literal =
-      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
-
-    if (!copies && !literal) {
-      return { error: 'An action needs a value to send' };
-    }
-
-    const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
-    actions.push({
-      ...ref,
-      ...(copies ? { valueFrom: { kind: 'trigger' } as const } : { value: value as string | number | boolean }),
-      ...(delay ? { delayMs: delay } : {}),
-    });
+  if (branches.length === 0) {
+    return { error: 'A rule needs something to do' };
   }
 
-  if (actions.length === 0) {
-    return { error: 'A rule needs at least one action' };
+  // A branch that always holds makes everything after it unreachable, which
+  // reads as a rule that quietly ignores half of itself.
+  const catchAll = branches.findIndex((branch) => !branch.when);
+  if (catchAll >= 0 && catchAll < branches.length - 1) {
+    return { error: 'Only the last branch can be an otherwise' };
   }
 
   const rateLimitMs =
@@ -118,8 +97,7 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       name,
       enabled: raw.enabled !== false,
       triggers,
-      ...(when ? { when } : {}),
-      actions,
+      branches,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
   };
@@ -182,6 +160,70 @@ function sameRef(a: PropertyRef, b: PropertyRef): boolean {
   return (
     a.sourceId === b.sourceId && a.deviceId === b.deviceId && a.propertyKey === b.propertyKey
   );
+}
+
+/** One outcome and the condition that chooses it. */
+function parseBranch(raw: unknown): { branch: Branch } | { error: string } {
+  if (!isObject(raw)) {
+    return { error: 'A branch must be an object' };
+  }
+
+  let when: ConditionNode | undefined;
+  if (raw.when !== undefined) {
+    const parsed = parseCondition(raw.when);
+    if ('error' in parsed) {
+      return { error: `Condition: ${parsed.error}` };
+    }
+    when = parsed.node;
+  } else {
+    const conditions: Condition[] = [];
+    for (const entry of asArray(raw.conditions)) {
+      const ref = parseRef(entry);
+      const match = parseMatch(isObject(entry) ? entry.match : undefined);
+      if (!ref) {
+        return { error: 'A condition needs a device and a function' };
+      }
+      if ('error' in match) {
+        return { error: `Condition: ${match.error}` };
+      }
+      conditions.push({ ...ref, match: match.match });
+    }
+    when = fromConditions(conditions);
+  }
+
+  const actions: Action[] = [];
+  for (const entry of asArray(raw.actions)) {
+    const ref = parseRef(entry);
+    if (!ref || !isObject(entry)) {
+      return { error: 'An action needs a device and a function' };
+    }
+
+    const copies = isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
+    const value = entry.value;
+    const literal =
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+
+    if (!copies && !literal) {
+      return { error: 'An action needs a value to send' };
+    }
+
+    const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
+    actions.push({
+      ...ref,
+      ...(copies
+        ? { valueFrom: { kind: 'trigger' } as const }
+        : { value: value as string | number | boolean }),
+      ...(delay ? { delayMs: delay } : {}),
+    });
+  }
+
+  if (actions.length === 0) {
+    return { error: 'A rule needs at least one action' };
+  }
+
+  const label = typeof raw.label === 'string' ? raw.label.trim().slice(0, 60) : '';
+
+  return { branch: { ...(label ? { label } : {}), ...(when ? { when } : {}), actions } };
 }
 
 /**
