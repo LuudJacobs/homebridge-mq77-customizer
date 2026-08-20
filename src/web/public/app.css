@@ -57,6 +57,15 @@ h1 {
   gap: 0.5rem;
 }
 
+.build {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+  align-self: flex-start;
+  padding-top: 0.15rem;
+}
+
 .logo {
   border-radius: 6px;
   flex: none;

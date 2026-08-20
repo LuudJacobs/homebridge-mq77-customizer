@@ -55,6 +55,7 @@ const el = {
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
+  build: document.getElementById('build'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -114,6 +115,9 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+
+  // A released build shows its version, anything else the branch it came from.
+  el.build.textContent = snapshot.build ?? '';
 
   // Only shown when configured, so the tab bar does not carry a dead link.
   const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
