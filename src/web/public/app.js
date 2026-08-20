@@ -1264,26 +1264,24 @@ function renderBranch(branch, index, branches, redraw) {
 
   const only = branches.length === 1;
 
-  // Every outcome can be given a condition, including the last. Leaving one
-  // without means it always holds, so nothing after it can run, which is the
-  // author's business rather than something to be prevented.
-  box.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
-  box.append(conditionEditor(branch));
+  const head = document.createElement('div');
+  head.className = 'branch-head';
+  head.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
 
-  box.append(sectionTitle('Then'));
-  box.append(actionEditor(branch));
-
-  // At the end, where it reads as finishing with this outcome rather than as
-  // something to do before setting it up.
   if (!only) {
-    box.append(
-      addButton('Remove outcome', () => {
+    head.append(
+      addButton(`Remove outcome ${index + 1}`, () => {
         branches.splice(index, 1);
         redraw();
       }),
     );
   }
 
+  box.append(head);
+  box.append(conditionEditor(branch));
+
+  box.append(sectionTitle('Then'));
+  box.append(actionEditor(branch));
   return box;
 }
 
