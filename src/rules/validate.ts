@@ -36,13 +36,24 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
     return parseMirror(raw, id, name);
   }
 
-  const trigger = parseRef(raw.trigger);
-  if (!trigger) {
-    return { error: 'The trigger needs a device and a function' };
+  // Several triggers, any of which fires the rule. Earlier versions stored one.
+  const given = Array.isArray(raw.triggers) ? raw.triggers : [raw.trigger];
+  const triggers: Trigger[] = [];
+
+  for (const entry of given) {
+    const ref = parseRef(entry);
+    if (!ref) {
+      return { error: 'The trigger needs a device and a function' };
+    }
+    const match = parseMatch(isObject(entry) ? entry.match : undefined);
+    if ('error' in match) {
+      return { error: `Trigger: ${match.error}` };
+    }
+    triggers.push({ ...ref, match: match.match });
   }
-  const triggerMatch = parseMatch(isObject(raw.trigger) ? raw.trigger.match : undefined);
-  if ('error' in triggerMatch) {
-    return { error: `Trigger: ${triggerMatch.error}` };
+
+  if (triggers.length === 0) {
+    return { error: 'A rule needs at least one trigger' };
   }
 
   // Either an expression, or the flat list earlier versions stored.
@@ -106,7 +117,7 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       id,
       name,
       enabled: raw.enabled !== false,
-      trigger: { ...trigger, match: triggerMatch.match } as Trigger,
+      triggers,
       ...(when ? { when } : {}),
       actions,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),

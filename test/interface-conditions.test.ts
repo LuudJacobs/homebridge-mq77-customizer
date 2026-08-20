@@ -69,9 +69,9 @@ describe('the condition editor', () => {
 
   it('offers a second group once there is one, and joins them with or', async () => {
     const ui = await openRule(legacyRule);
-    expect(ui.byText('button.add-row', 'Add or')).not.toBeNull();
+    expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
 
-    await ui.click(ui.byText('button.add-row', 'Add or'));
+    await ui.click(ui.byText('button.add-row', 'Add or', '.conditions'));
 
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(2);
     expect(ui.byText('p.joiner', 'or')).not.toBeNull();
@@ -79,7 +79,7 @@ describe('the condition editor', () => {
 
   it('adds a test inside a group, joined with and', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add and'));
+    await ui.click(ui.byText('button.add-row', 'Add and', '.conditions'));
 
     expect(ui.document.querySelectorAll('.condition-group .rule-row')).toHaveLength(2);
     expect(ui.byText('span.joiner', 'and')).not.toBeNull();
@@ -89,10 +89,10 @@ describe('the condition editor', () => {
     const ui = await openRule({ ...legacyRule, conditions: [] });
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(0);
 
-    await ui.click(ui.byText('button.add-row', 'Add condition'));
+    await ui.click(ui.byText('button.add-row', 'Add condition', '.conditions'));
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(1);
     // Only now is a second group worth offering.
-    expect(ui.byText('button.add-row', 'Add or')).not.toBeNull();
+    expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
   });
 
   it('offers a not toggle per group', async () => {
@@ -103,7 +103,7 @@ describe('the condition editor', () => {
 
   it('sends an expression when saved, not a flat list', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add or'));
+    await ui.click(ui.byText('button.add-row', 'Add or', '.conditions'));
     await ui.click(ui.byText('button.primary', 'Save'));
 
     // The first request to that path is the listing, which carries no body.
@@ -124,5 +124,38 @@ describe('the condition editor', () => {
 
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(0);
     expect(ui.document.body.textContent).toContain('edited by hand');
+  });
+});
+
+describe('the trigger list', () => {
+  it('shows a rule stored with one trigger as one row', async () => {
+    const ui = await openRule(legacyRule);
+    const rows = ui.document.querySelectorAll('#view-automation .rule-row');
+    // One trigger, one condition, one action.
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(ui.byText('button.add-row', 'Add or', '.triggers')).not.toBeNull();
+  });
+
+  it('adds a second trigger joined with or', async () => {
+    const ui = await openRule(legacyRule);
+    const before = ui.document.querySelectorAll('#view-automation .rule-row').length;
+
+    await ui.click(ui.byText('button.add-row', 'Add or', '.triggers'));
+
+    expect(ui.document.querySelectorAll('#view-automation .rule-row')).toHaveLength(before + 1);
+  });
+
+  it('sends a list of triggers when saved', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Add or', '.triggers'));
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      triggers: unknown[];
+      trigger?: unknown;
+    };
+    expect(saved.triggers).toHaveLength(2);
+    // The single field is not sent alongside the list.
+    expect(saved.trigger).toBeUndefined();
   });
 });

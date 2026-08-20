@@ -56,7 +56,14 @@ export interface Rule {
   kind?: 'standard';
   name: string;
   enabled: boolean;
-  trigger: Trigger;
+  /**
+   * Any of these fires the rule.
+   *
+   * `trigger` is what earlier versions stored, a single one. It is read as a
+   * list of one and rewritten on next save.
+   */
+  triggers?: Trigger[];
+  trigger?: Trigger;
   /**
    * Tested against the values currently known, when present.
    *

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,7 @@ import { parseRule } from '../rules/validate.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
+const BUILD_INFO = fileURLToPath(new URL('../build-info.json', import.meta.url));
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -317,6 +319,7 @@ export class WebServer {
       devices,
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
+      build: buildLabel(),
     };
   }
 
@@ -411,6 +414,31 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
 
 /** Single, double and long press. HomeKit has no others. */
 const HOMEKIT_EVENTS = [0, 1, 2];
+
+/**
+ * What the header says after the title.
+ *
+ * A released build says its version. Anything else says which branch it came
+ * from, so a page open on a laptop cannot be mistaken for the one running the
+ * house.
+ */
+let cachedLabel: string | undefined;
+function buildLabel(): string {
+  if (cachedLabel === undefined) {
+    try {
+      const info = JSON.parse(readFileSync(BUILD_INFO, 'utf8')) as {
+        branch: string | null;
+        version: string;
+        released: boolean;
+      };
+      cachedLabel = info.released ? info.version : `#${info.branch}`;
+    } catch {
+      // Built without the labeller, which is not worth failing over.
+      cachedLabel = '';
+    }
+  }
+  return cachedLabel;
+}
 
 function send(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);

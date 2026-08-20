@@ -37,7 +37,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && node scripts/copy-assets.mjs",
+    "build": "tsc && node scripts/copy-assets.mjs && node scripts/build-info.mjs",
     "watch": "tsc --watch",
     "clean": "rm -rf dist",
     "prepare": "npm run build",

@@ -100,7 +100,7 @@ Button names and gestures are worked out from the action names the device publis
 
 Rules live in two tabs. Automation links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
-A rule is a trigger, an optional condition, and one or more actions. Actions can be delayed.
+A rule is one or more triggers, an optional condition, and one or more actions. Any trigger fires the rule, so one rule can answer to several buttons. Actions can be delayed.
 
 Conditions are groups joined by **or**, each group a set of tests joined by **and**, and any group can be negated with **not**. That covers every boolean expression: `(A and B) or (C and (D and E))` is the same as `(A and B) or (C and D and E)`, which is two levels. A deeper expression written by hand into `state.json` still works and is left untouched by the editor.
 

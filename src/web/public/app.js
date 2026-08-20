@@ -55,6 +55,7 @@ const el = {
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
+  build: document.getElementById('build'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
@@ -114,6 +115,9 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+
+  // A released build shows its version, anything else the branch it came from.
+  el.build.textContent = snapshot.build ?? '';
 
   // Only shown when configured, so the tab bar does not carry a dead link.
   const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
@@ -1094,9 +1098,13 @@ function summarise(rule) {
     const fields = rule.groups.length;
     return `${[...devices].join(' ↔ ')} · ${fields} field${fields === 1 ? '' : 's'}`;
   }
-  const source = findProperty(rule.trigger);
+  const first = rule.triggers?.[0] ?? rule.trigger;
+  const source = first && findProperty(first);
   const target = findProperty(rule.actions[0]);
-  const from = source ? `${findDevice(rule.trigger)?.name} ${source.label}` : 'a removed function';
+  const more = (rule.triggers?.length ?? 1) > 1 ? ` and ${rule.triggers.length - 1} more` : '';
+  const from = source
+    ? `${findDevice(first)?.name} ${source.label}${more}`
+    : 'a removed function';
   const to = target ? `${findDevice(rule.actions[0])?.name} ${target.label}` : 'a removed function';
   const extra = rule.actions.length > 1 ? ` and ${rule.actions.length - 1} more` : '';
   return `${from} → ${to}${extra}`;
@@ -1177,15 +1185,50 @@ function ruleFooter(rule, draft) {
 
 /** The ordinary trigger, conditions and actions form. */
 function drawWhenThen(body, draft) {
-  draft.trigger = draft.trigger ?? {
-    ...blankRef(watchable),
-    match: { kind: 'changedTo', value: '' },
-  };
-  draft.conditions = draft.conditions ?? [];
+  // A rule stored before this carries one trigger. Read it as a list of one.
+  draft.triggers = draft.triggers?.length
+    ? draft.triggers
+    : [draft.trigger ?? { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } }];
+  delete draft.trigger;
   draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
 
   body.append(sectionTitle('When'));
-  body.append(refRow(draft.trigger, { pick: watchable, withMatch: true }));
+
+  const triggers = document.createElement('div');
+  triggers.className = 'triggers';
+  const drawTriggers = () => {
+    triggers.replaceChildren();
+    draft.triggers.forEach((trigger, index) => {
+      if (index > 0) {
+        const or = document.createElement('p');
+        or.className = 'joiner';
+        or.textContent = 'or';
+        triggers.append(or);
+      }
+      triggers.append(
+        refRow(trigger, {
+          pick: watchable,
+          withMatch: true,
+          // Any of them fires the rule, so the last one cannot be removed.
+          onRemove:
+            draft.triggers.length > 1
+              ? () => {
+                  draft.triggers.splice(index, 1);
+                  drawTriggers();
+                }
+              : undefined,
+        }),
+      );
+    });
+    triggers.append(
+      addButton('Add or', () => {
+        draft.triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
+        drawTriggers();
+      }),
+    );
+  };
+  drawTriggers();
+  body.append(triggers);
 
   body.append(sectionTitle('And, optionally'));
   body.append(conditionEditor(draft));
@@ -1429,6 +1472,7 @@ function drawMirror(body, draft) {
  */
 function conditionEditor(draft) {
   const wrap = document.createElement('div');
+  wrap.className = 'conditions';
 
   // Stored to any depth, so anything hand written that does not fit two levels
   // is left alone rather than quietly flattened.
