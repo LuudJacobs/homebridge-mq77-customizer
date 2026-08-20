@@ -1264,13 +1264,6 @@ function renderBranch(branch, index, branches, redraw) {
 
   const only = branches.length === 1;
 
-  if (!only) {
-    const which = document.createElement('p');
-    which.className = 'joiner';
-    which.textContent = `Outcome ${index + 1}`;
-    box.append(which);
-  }
-
   // Every outcome can be given a condition, including the last. Leaving one
   // without means it always holds, so nothing after it can run, which is the
   // author's business rather than something to be prevented.
