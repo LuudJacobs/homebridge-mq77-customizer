@@ -250,7 +250,6 @@ describe('branches', () => {
     actions: undefined as never,
     branches: [
       {
-        label: 'while on',
         when: {
           kind: 'test',
           sourceId: 'zigbee',
@@ -261,7 +260,6 @@ describe('branches', () => {
         actions: [{ sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', value: 'ON' }],
       },
       {
-        label: 'otherwise',
         actions: [{ sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', value: 'OFF' }],
       },
     ],
@@ -292,12 +290,13 @@ describe('branches', () => {
     expect(mqtt.published).toHaveLength(1);
   });
 
-  it('says which branch ran', async () => {
+  it('says which outcome ran', async () => {
     const { engine, mqtt } = await harness([branching()]);
-    mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
     mqtt.deliver(ROCKER.topic, { action: 'single_left' });
 
-    expect(engine.getLog()[0]?.detail).toContain('while on');
+    // The second one, since the first did not hold.
+    expect(engine.getLog()[0]?.detail).toContain('outcome 2');
   });
 
   it('does nothing, and says why, when no branch holds', async () => {
@@ -310,7 +309,9 @@ describe('branches', () => {
 
     expect(mqtt.published).toEqual([]);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
-    expect(engine.getLog()[0]?.detail).toContain('while on');
+    // It says which outcome declined and what it wanted.
+    expect(engine.getLog()[0]?.detail).toContain('outcome 1');
+    expect(engine.getLog()[0]?.detail).toContain('did not hold');
   });
 
   it('still runs a rule stored with a single outcome', async () => {

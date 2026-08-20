@@ -419,9 +419,9 @@ function branchesOf(rule: Rule): Branch[] {
   ];
 }
 
-/** What to call a branch in the run log. */
-function nameOf(branch: Branch, index: number): string {
-  return branch.label?.trim() || (branch.when ? `branch ${index + 1}` : 'otherwise');
+/** What to call an outcome in the activity list. */
+function nameOf(_branch: Branch, index: number): string {
+  return `outcome ${index + 1}`;
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
