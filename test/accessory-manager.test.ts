@@ -204,3 +204,65 @@ describe('AccessoryManager', () => {
     expect(context.mqtt.published).toHaveLength(1);
   });
 });
+
+describe('starting up before the broker answers', () => {
+  /** A harness where nothing has arrived on bridge/devices yet. */
+  async function coldStart() {
+    const directory = await mkdtemp(join(tmpdir(), 'mqtt-customizer-cold-'));
+    const store = new Store(join(directory, 'state.json'), silentLogger);
+    await store.load();
+    store.setExposure(`zigbee:${DUAL}`, { properties: ['state_l1'] });
+
+    const mqtt = new FakeMqtt();
+    const catalog = new Catalog(mqtt.asConnection(), silentLogger);
+    await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
+
+    const hb = fakeApi();
+    const manager = new AccessoryManager(hb.api, silentLogger, catalog, store, mqtt.asConnection());
+    return { manager, mqtt, hb };
+  }
+
+  it('keeps cached accessories until the source has said what it has', async () => {
+    const context = await coldStart();
+    context.manager.restore(cachedAccessory('woonkamer_lampen-ZB2GS', `zigbee:${DUAL}`));
+
+    // Homebridge calls this before anything has come back from the broker.
+    // Removing an accessory here tells HomeKit to forget which room it is in,
+    // and adding it back a moment later does not undo that.
+    context.manager.sync();
+    expect(context.hb.unregistered).toEqual([]);
+  });
+
+  it('adopts them once the catalog arrives, without registering anew', async () => {
+    const context = await coldStart();
+    context.manager.restore(cachedAccessory('woonkamer_lampen-ZB2GS', `zigbee:${DUAL}`));
+    context.manager.sync();
+
+    context.mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
+    context.manager.sync();
+
+    expect(context.hb.unregistered).toEqual([]);
+    expect(context.hb.registered).toEqual([]);
+  });
+
+  it('still clears one whose device is genuinely gone', async () => {
+    const context = await coldStart();
+    context.manager.restore(cachedAccessory('Long gone', 'zigbee:0xdeadbeef'));
+
+    context.mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
+    context.manager.sync();
+
+    // The source has spoken now, and it does not have that device.
+    expect(context.hb.unregistered).toHaveLength(1);
+    expect(context.hb.unregistered[0]?.displayName).toBe('Long gone');
+  });
+
+  it('waits for every source when an accessory does not say where it came from', async () => {
+    const context = await coldStart();
+    // Cached by a version that stored no plan, so there is nothing to check
+    // against and guessing would be destructive.
+    context.manager.restore(cachedAccessory('From who knows where', 'zigbee:0xold'));
+    context.manager.sync();
+    expect(context.hb.unregistered).toEqual([]);
+  });
+});

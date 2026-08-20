@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.1] - 2026-08-20
+
+### Fixed
+
+- Accessories are no longer dropped and re-added on every start. The catalog is empty before the broker answers because nothing has arrived, not because there is nothing, and removing an accessory makes HomeKit forget which room it is in
+
 ## [0.9.0] - 2026-08-20
 
 ### Added
