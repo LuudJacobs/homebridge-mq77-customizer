@@ -149,18 +149,18 @@ describe('parsing an expression', () => {
 
   it('accepts a nested one', () => {
     const parsed = parse(any(all(test('a'), test('b')), test('c')));
-    expect('rule' in parsed && parsed.rule.when?.kind).toBe('any');
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.when?.kind).toBe('any');
   });
 
   it('drops a group with nothing in it', () => {
     // A half built group would otherwise read as a test that always holds.
     const parsed = parse(any(all(), test('c')));
-    expect('rule' in parsed && (parsed.rule.when as { nodes: unknown[] }).nodes).toHaveLength(1);
+    expect('rule' in parsed && (parsed.rule.branches![0]!.when as { nodes: unknown[] }).nodes).toHaveLength(1);
   });
 
   it('drops the expression entirely when nothing is left', () => {
     const parsed = parse(any(all(), all()));
-    expect('rule' in parsed && parsed.rule.when).toBeUndefined();
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.when).toBeUndefined();
   });
 
   it('refuses a test it cannot make sense of', () => {
@@ -175,6 +175,6 @@ describe('parsing an expression', () => {
       { name: 'x', trigger, conditions: [{ ...test('a'), kind: undefined }], actions: [action] },
       'r1',
     );
-    expect('rule' in parsed && parsed.rule.when?.kind).toBe('all');
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.when?.kind).toBe('all');
   });
 });

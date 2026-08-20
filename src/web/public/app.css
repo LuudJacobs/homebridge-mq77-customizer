@@ -568,3 +568,21 @@ button.primary {
   display: block;
   padding-left: 0.1rem;
 }
+
+.branch {
+  border-left: 3px solid var(--line);
+  padding-left: 0.75rem;
+  margin: 0.6rem 0;
+}
+
+.branch-label {
+  font-weight: 600;
+  min-width: 12rem;
+}
+
+.branch-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}

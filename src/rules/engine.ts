@@ -19,6 +19,7 @@ import {
   type LogEntry,
   type LogOutcome,
   type AnyRule,
+  type Branch,
   type MirrorRule,
   type PropertyRef,
   type Rule,
@@ -266,36 +267,52 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
-    const failed = this.checkConditions(rule);
-    if (failed) {
-      this.record(rule, 'conditionsFailed', failed);
+    // The first branch that holds wins, the rest are skipped. That is what
+    // makes else if exclusive by construction rather than by hand.
+    const lookup = catalogLookup(this.catalog);
+    const branches = branchesOf(rule);
+    const declined: string[] = [];
+    let chosen: { branch: Branch; index: number } | undefined;
+
+    for (const [index, branch] of branches.entries()) {
+      const failed = evaluate(branch.when, lookup);
+      if (!failed) {
+        chosen = { branch, index };
+        break;
+      }
+      declined.push(`${nameOf(branch, index)}: ${failed.detail}`);
+    }
+
+    if (!chosen) {
+      // Not a failure. A rule whose every branch declined has done its job.
+      this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched');
       return;
     }
 
     this.lastFired.set(rule.id, now);
 
     const problems: string[] = [];
-    for (const action of rule.actions) {
+    for (const action of chosen.branch.actions) {
       const problem = this.run(action, trigger);
       if (problem) {
         problems.push(problem);
       }
     }
 
+    const what = nameOf(chosen.branch, chosen.index);
     if (problems.length > 0) {
-      this.record(rule, 'failed', problems.join('; '));
+      this.record(rule, 'failed', `${what}: ${problems.join('; ')}`);
       return;
     }
 
-    this.record(rule, 'fired', `${rule.actions.length} action${rule.actions.length === 1 ? '' : 's'} sent`);
-  }
-
-  /** Returns why the conditions did not hold, or undefined when they did. */
-  private checkConditions(rule: Rule): string | undefined {
-    // A rule stored before expressions existed carries a flat list meaning all
-    // of them, which is one `all` node.
-    const when = rule.when ?? fromConditions(rule.conditions);
-    return evaluate(when, catalogLookup(this.catalog))?.detail;
+    const count = chosen.branch.actions.length;
+    this.record(
+      rule,
+      'fired',
+      branches.length === 1
+        ? `${count} action${count === 1 ? '' : 's'} sent`
+        : `${what}, ${count} action${count === 1 ? '' : 's'} sent`,
+    );
   }
 
   /** Returns a problem, or undefined when the action was sent. */
@@ -387,6 +404,24 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
+}
+
+/** A rule's branches, reading what earlier versions stored as a single one. */
+function branchesOf(rule: Rule): Branch[] {
+  if (rule.branches?.length) {
+    return rule.branches;
+  }
+  return [
+    {
+      when: rule.when ?? fromConditions(rule.conditions),
+      actions: rule.actions ?? [],
+    },
+  ];
+}
+
+/** What to call an outcome in the activity list. */
+function nameOf(_branch: Branch, index: number): string {
+  return `outcome ${index + 1}`;
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
