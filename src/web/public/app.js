@@ -1247,7 +1247,7 @@ function drawWhenThen(body, draft) {
       branches.append(renderBranch(branch, index, draft.branches, drawBranches));
     });
     branches.append(
-      addButton(draft.branches.length === 1 ? 'Add otherwise' : 'Add another outcome', () => {
+      addButton('Add outcome', () => {
         draft.branches.push({ actions: [{ ...blankRef(writable), value: '' }] });
         drawBranches();
       }),
@@ -1263,45 +1263,34 @@ function renderBranch(branch, index, branches, redraw) {
   box.className = 'branch';
 
   const only = branches.length === 1;
-  const last = index === branches.length - 1;
 
   if (!only) {
-    const head = document.createElement('div');
-    head.className = 'option';
+    const which = document.createElement('p');
+    which.className = 'joiner';
+    which.textContent = `Outcome ${index + 1}`;
+    box.append(which);
+  }
 
-    const label = document.createElement('input');
-    label.type = 'text';
-    label.className = 'branch-label';
-    label.placeholder = index === 0 ? 'First outcome' : 'Otherwise';
-    label.maxLength = 60;
-    label.value = branch.label ?? '';
-    label.addEventListener('input', () => (branch.label = label.value));
-    head.append(label);
+  // Every outcome can be given a condition, including the last. Leaving one
+  // without means it always holds, so nothing after it can run, which is the
+  // author's business rather than something to be prevented.
+  box.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+  box.append(conditionEditor(branch));
 
-    head.append(
+  box.append(sectionTitle('Then'));
+  box.append(actionEditor(branch));
+
+  // At the end, where it reads as finishing with this outcome rather than as
+  // something to do before setting it up.
+  if (!only) {
+    box.append(
       addButton('Remove outcome', () => {
         branches.splice(index, 1);
         redraw();
       }),
     );
-    box.append(head);
   }
 
-  // Only the last may be an otherwise. Anything after a branch that always
-  // holds could never run, so the form does not offer it.
-  const otherwise = last && !only && !branch.when && !branch.conditions?.length;
-  if (otherwise) {
-    const note = document.createElement('p');
-    note.className = 'joiner';
-    note.textContent = 'otherwise';
-    box.append(note);
-  } else {
-    box.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
-    box.append(conditionEditor(branch));
-  }
-
-  box.append(sectionTitle('Then'));
-  box.append(actionEditor(branch));
   return box;
 }
 

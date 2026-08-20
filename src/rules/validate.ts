@@ -81,13 +81,6 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
     return { error: 'A rule needs something to do' };
   }
 
-  // A branch that always holds makes everything after it unreachable, which
-  // reads as a rule that quietly ignores half of itself.
-  const catchAll = branches.findIndex((branch) => !branch.when);
-  if (catchAll >= 0 && catchAll < branches.length - 1) {
-    return { error: 'Only the last branch can be an otherwise' };
-  }
-
   const rateLimitMs =
     typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
 
@@ -221,9 +214,7 @@ function parseBranch(raw: unknown): { branch: Branch } | { error: string } {
     return { error: 'A rule needs at least one action' };
   }
 
-  const label = typeof raw.label === 'string' ? raw.label.trim().slice(0, 60) : '';
-
-  return { branch: { ...(label ? { label } : {}), ...(when ? { when } : {}), actions } };
+  return { branch: { ...(when ? { when } : {}), actions } };
 }
 
 /**
