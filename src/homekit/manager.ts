@@ -83,7 +83,7 @@ export class AccessoryManager {
 
     const removed: PlatformAccessory[] = [];
     for (const [uuid, managed] of this.active) {
-      if (!desired.has(uuid)) {
+      if (!desired.has(uuid) && this.knows(managed.plan.sourceId)) {
         removed.push(managed.accessory);
         this.active.delete(uuid);
         this.log.info(`Removing ${managed.plan.name} from HomeKit`);
@@ -92,7 +92,17 @@ export class AccessoryManager {
 
     // Anything still in the cache belongs to a device or selection that no
     // longer exists, so it would otherwise linger in the Home app forever.
+    //
+    // Only once its source has said what it has, though. At startup the
+    // catalog is empty because nothing has arrived yet, not because there is
+    // nothing, and removing an accessory tells HomeKit to forget where it
+    // lives. Putting it back a moment later under the same identity does not
+    // bring the room assignment with it.
     for (const [uuid, accessory] of this.restored) {
+      const plan = accessory.context.plan as AccessoryPlan | undefined;
+      if (!this.knows(plan?.sourceId)) {
+        continue;
+      }
       removed.push(accessory);
       this.restored.delete(uuid);
       this.log.info(`Removing stale cached accessory ${accessory.displayName}`);
@@ -104,6 +114,16 @@ export class AccessoryManager {
     if (removed.length > 0) {
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, removed);
     }
+  }
+
+  /**
+   * Whether the source behind an accessory has reported yet.
+   *
+   * An accessory cached by an older version carries no source, so it waits for
+   * every source rather than being removed on a guess.
+   */
+  private knows(sourceId: string | undefined): boolean {
+    return sourceId ? this.catalog.hasReported(sourceId) : this.catalog.knowsEverything();
   }
 
   /** Pushes new values from MQTT into the matching characteristics. */
