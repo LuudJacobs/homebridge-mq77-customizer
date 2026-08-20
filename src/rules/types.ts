@@ -55,11 +55,11 @@ export interface Action extends PropertyRef {
  * One outcome of a rule, and the condition that chooses it.
  *
  * The first branch whose condition holds runs, and the rest are skipped. A
- * branch with no condition always holds, which is the otherwise.
+ * branch with no condition always holds, so anything after it is unreachable.
+ * That is allowed: it is the author's business, and a rule that does nothing
+ * is a legitimate thing to have half built.
  */
 export interface Branch {
-  /** Named so the run log can say which one ran. */
-  label?: string;
   when?: ConditionNode;
   actions: Action[];
 }
