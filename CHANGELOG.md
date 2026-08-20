@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.0] - 2026-08-20
+
+### Added
+
+- A rule can have several outcomes, each a condition and its own actions. The first that holds runs and the rest are skipped, which is if, else if and else
+- Any outcome may be left without a condition, meaning it always holds
+- The activity list says which outcome ran, and what each wanted when none did
+
 ## [0.8.0] - 2026-08-20
 
 ### Added
