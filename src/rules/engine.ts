@@ -6,6 +6,7 @@ import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
+import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
 import { describeMatch, matches } from './match.js';
 import {
@@ -275,21 +276,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
   /** Returns why the conditions did not hold, or undefined when they did. */
   private checkConditions(rule: Rule): string | undefined {
-    for (const condition of rule.conditions) {
-      const property = this.property(condition);
-      if (!property) {
-        return `${condition.propertyKey} is not on that device any more`;
-      }
-      const state = this.catalog.getState(condition.sourceId, condition.deviceId);
-      const value = state?.[condition.propertyKey];
-      if (value === undefined) {
-        return `no value known yet for ${condition.propertyKey}`;
-      }
-      if (!matches(condition.match, value)) {
-        return `${property.label} ${describeMatch(condition.match)} did not hold`;
-      }
-    }
-    return undefined;
+    // A rule stored before expressions existed carries a flat list meaning all
+    // of them, which is one `all` node.
+    const when = rule.when ?? fromConditions(rule.conditions);
+    return evaluate(when, catalogLookup(this.catalog))?.detail;
   }
 
   /** Returns a problem, or undefined when the action was sent. */

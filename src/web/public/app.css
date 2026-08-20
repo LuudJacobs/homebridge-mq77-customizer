@@ -539,3 +539,23 @@ button.primary {
   gap: 0.75rem;
   align-items: center;
 }
+
+.condition-group {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.25rem 0;
+}
+
+.joiner {
+  margin: 0.2rem 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.joiner.inline {
+  display: block;
+  padding-left: 0.1rem;
+}
