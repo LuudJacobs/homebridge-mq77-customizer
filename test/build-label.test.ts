@@ -14,7 +14,7 @@ const script = fileURLToPath(new URL('../scripts/build-info.mjs', import.meta.ur
  * It reads git and rewrites package.json, so it is worth running for real
  * rather than trusting a description of what it does.
  */
-function label(branch: string | null): { info: Record<string, unknown>; displayName: string } {
+function label(branch: string | null): { info: Record<string, unknown>; packageJson: string } {
   const directory = mkdtempSync(join(tmpdir(), 'mq77-label-'));
   mkdirSync(join(directory, 'dist'));
   mkdirSync(join(directory, 'scripts'));
@@ -37,32 +37,33 @@ function label(branch: string | null): { info: Record<string, unknown>; displayN
 
   return {
     info: JSON.parse(readFileSync(join(directory, 'dist/build-info.json'), 'utf8')),
-    displayName: JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).displayName,
+    packageJson: readFileSync(join(directory, 'package.json'), 'utf8'),
   };
 }
 
 describe('the build label', () => {
   it('shows the version on main', () => {
-    const { info, displayName } = label('main');
-    expect(info).toMatchObject({ branch: 'main', version: '1.2.3', released: true });
-    expect(displayName).toBe('MQ77 Customizer');
+    expect(label('main').info).toMatchObject({ branch: 'main', version: '1.2.3', released: true });
   });
 
   it('names the branch anywhere else', () => {
-    const { info, displayName } = label('develop');
-    expect(info).toMatchObject({ branch: 'develop', released: false });
-    expect(displayName).toBe('MQ77 Customizer #develop');
+    expect(label('develop').info).toMatchObject({ branch: 'develop', released: false });
   });
 
   it('names a feature branch in full', () => {
-    expect(label('feature/claude-something').displayName).toBe(
-      'MQ77 Customizer #feature/claude-something',
-    );
+    expect(label('feature/claude-something').info).toMatchObject({
+      branch: 'feature/claude-something',
+    });
   });
 
   it('treats no git as released, which is what an npm install looks like', () => {
-    const { info, displayName } = label(null);
-    expect(info).toMatchObject({ branch: null, released: true });
-    expect(displayName).toBe('MQ77 Customizer');
+    expect(label(null).info).toMatchObject({ branch: null, released: true });
+  });
+
+  it('leaves the working tree alone', () => {
+    // Writing into a tracked file would mean every build showed as a change,
+    // and sooner or later one would be committed.
+    const before = JSON.stringify({ name: 'x', version: '1.2.3', displayName: 'MQ77 Customizer' }, null, 2);
+    expect(label('develop').packageJson).toBe(before);
   });
 });
