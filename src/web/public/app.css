@@ -463,18 +463,21 @@ button.primary {
   align-items: center;
 }
 
-.rule-row select,
+.rule-row select {
+  width: 8rem;
+}
+
 .rule-row input {
   max-width: 14rem;
 }
 
-/*
- * Only ever a few seconds, so it is sized to its placeholder rather than to
- * the row. `ch` is the width of a nought, which the letters here come in
- * under, and the rest covers the padding, the borders and the spinner.
- */
+.rule-row select.device {
+  width: 15rem;
+}
+
+/* Only ever a few seconds. */
 .rule-row input.delay {
-  width: calc(9ch + 2.4rem);
+  width: 6rem;
   min-width: 0;
 }
 
