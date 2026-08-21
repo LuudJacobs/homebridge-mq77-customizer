@@ -51,6 +51,7 @@ Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigb
 | `topics` | Flat JSON sources only. Subscription filter, defaulting to everything under the base topic. |
 | `setTopicSuffix` | Flat JSON sources only. Usually `set`. Without it the source is read only. |
 | `rulesOnly` | Keep the devices out of HomeKit and use them only as rule triggers and targets. |
+| `devices` | Flat JSON sources only. Functions a device has that it may never report. |
 
 ### Flat JSON sources
 
@@ -66,6 +67,18 @@ Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigb
 Recognised keys are `state`, `level`, `speed`, `swing`, `temperature`, `humidity` and `co2_levels`. Anything else still becomes a property, typed from its value, and stays available to the rules engine.
 
 Set `rulesOnly` when another plugin already publishes those devices to HomeKit, so they can be used as triggers and targets without appearing twice.
+
+#### Describing a device
+
+A flat JSON topic carries no schema, so a function is only known once it has turned up in a payload. A fan that reports nothing but `state` until someone changes its speed has no speed to tick. Name the missing functions and they are there from the moment the device first reports:
+
+```json
+{ "id": "broadlink", "adapter": "json-topic", "baseTopic": "broadlinkrm",
+  "setTopicSuffix": "set",
+  "devices": [{ "topic": "fan_office", "properties": ["speed", "swing"] }] }
+```
+
+`topic` is the part after the base topic, so `broadlinkrm/fan_office` is written as `fan_office`. Only recognised keys can be named, since a name on its own says nothing about the kind of value it carries. A function the device does report is left exactly as reported.
 
 ## Usage
 

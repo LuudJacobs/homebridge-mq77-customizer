@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Outcomes are spaced apart and faintly shaded
 - Number inputs are styled like every other input instead of unstyled, which is what made the delay box look out of place
 - Rule rows have fixed widths, so the columns line up from one row to the next
+- A flat JSON source can name functions a device has but never reports, such as the speed and swing of a fan
+- Fixed: the device picker in a rule was styled as a device card, since it shared its class
 - Fixed: sorting and filtering on the Automation and Mirror tabs, which threw on any rule saved since outcomes arrived and emptied both tabs without saying why
 
 ## [0.10.0] - 2026-08-21
