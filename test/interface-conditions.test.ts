@@ -79,20 +79,62 @@ describe('the condition editor', () => {
 
   it('adds a test inside a group, joined with and', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add and', '.conditions'));
+    await ui.click(ui.byText('button.add-row', '+ condition', '.conditions'));
 
     expect(ui.document.querySelectorAll('.condition-group .rule-row')).toHaveLength(2);
     expect(ui.byText('span.joiner', 'and')).not.toBeNull();
+  });
+
+  it('keeps the and and the add button on the row rather than under it', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ condition', '.conditions'));
+
+    const rows = [...ui.document.querySelectorAll('.condition-group .rule-row')];
+    // The word joining two tests belongs to the row it follows...
+    const first = rows[0]!.querySelector('.rule-tail')!;
+    expect(first.lastElementChild?.textContent).toBe('and');
+    // ...and the button that adds another sits at the end of the last row.
+    const last = rows[1]!.querySelector('.rule-tail')!;
+    expect(last.lastElementChild?.textContent).toBe('+ condition');
   });
 
   it('starts a rule with no conditions at one button, and builds from it', async () => {
     const ui = await openRule({ ...legacyRule, conditions: [] });
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(0);
 
-    await ui.click(ui.byText('button.add-row', 'Add condition', '.conditions'));
+    // With no rows yet the button has nowhere to sit but beside the heading.
+    expect(ui.byText('button.add-row', '+ condition', '.branch-head')).not.toBeNull();
+
+    await ui.click(ui.byText('button.add-row', '+ condition', '.branch-head'));
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(1);
+    // Once there is a row to hang it off, it is no longer up in the heading.
+    expect(ui.byText('button.add-row', '+ condition', '.branch-head')).toBeNull();
     // Only now is a second group worth offering.
     expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
+  });
+
+  it('names a condition, and sends the name when saved', async () => {
+    const ui = await openRule(legacyRule);
+    const name = ui.document.querySelector('.condition-group input.row-name') as HTMLInputElement;
+    expect(name).not.toBeNull();
+
+    name.value = 'lamp b is already on';
+    name.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when: { label?: string } }[];
+    };
+    // One group of one test is stored as the test itself.
+    expect(saved.branches[0]?.when.label).toBe('lamp b is already on');
+  });
+
+  it('shows a name that was stored', async () => {
+    const named = { ...legacyRule, conditions: undefined, when: { ...test_('0xb'), label: 'dusk' } };
+    const ui = await openRule(named);
+    const name = ui.document.querySelector('.condition-group input.row-name') as HTMLInputElement;
+    expect(name.value).toBe('dusk');
   });
 
   it('offers a not toggle per group', async () => {
@@ -134,21 +176,30 @@ describe('the trigger list', () => {
     const rows = ui.document.querySelectorAll('#view-automation .rule-row');
     // One trigger, one condition, one action.
     expect(rows.length).toBeGreaterThanOrEqual(3);
-    expect(ui.byText('button.add-row', 'Add or', '.triggers')).not.toBeNull();
+    expect(ui.byText('button.add-row', '+ trigger', '.triggers')).not.toBeNull();
   });
 
   it('adds a second trigger joined with or', async () => {
     const ui = await openRule(legacyRule);
     const before = ui.document.querySelectorAll('#view-automation .rule-row').length;
 
-    await ui.click(ui.byText('button.add-row', 'Add or', '.triggers'));
+    await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
 
     expect(ui.document.querySelectorAll('#view-automation .rule-row')).toHaveLength(before + 1);
   });
 
+  it('puts the or after the remove button of the row it follows', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
+
+    const tail = ui.document.querySelector('.triggers .rule-row .rule-tail')!;
+    const parts = [...tail.children].map((node) => node.textContent);
+    expect(parts.slice(-2)).toEqual(['✕', 'or']);
+  });
+
   it('sends a list of triggers when saved', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add or', '.triggers'));
+    await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
     await ui.click(ui.byText('button.primary', 'Save'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
