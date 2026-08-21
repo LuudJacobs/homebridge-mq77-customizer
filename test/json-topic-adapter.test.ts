@@ -222,6 +222,95 @@ describe('unknown keys', () => {
   });
 });
 
+describe('functions described in the config', () => {
+  /** A fan that reports nothing but its state until someone changes the rest. */
+  const FAN: SourceConfig = {
+    ...BROADLINK,
+    devices: [{ topic: 'fan_office', properties: ['speed', 'swing'] }],
+  };
+
+  it('gives a device the functions it has not mentioned yet', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    expect(propertyKeys(adapter, 'fan_office')).toEqual(['speed', 'swing', 'state']);
+  });
+
+  it('describes them the way the adapter always would', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    expect(propertyOf(adapter, 'fan_office', 'speed')).toMatchObject({ min: 0, max: 100 });
+    expect(propertyOf(adapter, 'fan_office', 'swing')).toMatchObject({
+      type: 'binary',
+      onValue: 'ON',
+      offValue: 'OFF',
+    });
+  });
+
+  it('makes them settable, since that is the point of describing them', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    expect(propertyOf(adapter, 'fan_office', 'speed').setTopic).toBe('broadlinkrm/fan_office/set');
+  });
+
+  it('leaves them read only when the source has no command topic', async () => {
+    const { adapter, mqtt } = await makeAdapter({ ...FAN, setTopicSuffix: undefined });
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    expect(propertyOf(adapter, 'fan_office', 'speed').access.writable).toBe(false);
+  });
+
+  it('corrects the guess once a real value turns up', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/fan_office', { state: true });
+    // Described without a sample, so it assumed the strings this family uses.
+    expect(propertyOf(adapter, 'fan_office', 'swing').onValue).toBe('ON');
+
+    // This publisher speaks booleans, and sending it "ON" would do nothing.
+    mqtt.deliver('broadlinkrm/fan_office', { swing: false });
+    expect(propertyOf(adapter, 'fan_office', 'swing')).toMatchObject({
+      onValue: true,
+      offValue: false,
+    });
+  });
+
+  it('leaves a reported function alone rather than describing over it', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON', speed: 40 });
+
+    expect(adapter.getState('fan_office')).toMatchObject({ speed: 40 });
+    expect(propertyOf(adapter, 'fan_office', 'speed').access.writable).toBe(true);
+  });
+
+  it('refuses a name it has no meaning for, and says what it knows', async () => {
+    const warnings: string[] = [];
+    const mqtt = new FakeMqtt();
+    const adapter = new JsonTopicAdapter({
+      source: { ...BROADLINK, devices: [{ topic: 'fan_office', properties: ['wobble'] }] },
+      mqtt: mqtt.asConnection(),
+      log: { ...silentLogger, warn: (message: string) => warnings.push(message) },
+    });
+    await adapter.start();
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    // Guessing a type from a name alone would be worse than saying no.
+    expect(propertyKeys(adapter, 'fan_office')).toEqual(['state']);
+    expect(warnings[0]).toContain('wobble');
+    expect(warnings[0]).toContain('speed');
+  });
+
+  it('says nothing about a device that is described but never speaks', async () => {
+    const { adapter, mqtt } = await makeAdapter(FAN);
+    mqtt.deliver('broadlinkrm/other', { state: 'ON' });
+
+    // The catalog is built from what the broker has said, and an accessory
+    // conjured from the config alone would be one nothing can answer for.
+    expect(adapter.getDevices().map((device) => device.deviceId)).toEqual(['other']);
+  });
+});
+
 describe('a read only source', () => {
   it('leaves everything read only when there is no command topic', async () => {
     const { adapter, mqtt } = await makeAdapter(WITHINGS);
