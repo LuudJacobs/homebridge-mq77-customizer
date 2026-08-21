@@ -52,6 +52,21 @@ const trigger = {
 };
 const action = { sourceId: 'zigbee', deviceId: '0xdef', propertyKey: 'state', value: 'ON' };
 
+describe('naming an outcome', () => {
+  const withLabel = (label: unknown) =>
+    parseRule({ name: 'x', trigger, branches: [{ label, actions: [action] }] }, 'r1');
+
+  it('keeps the name, since a branch is rebuilt rather than copied', () => {
+    const parsed = withLabel('  nobody home  ');
+    expect('rule' in parsed && parsed.rule.branches?.[0]?.label).toBe('nobody home');
+  });
+
+  it('leaves out a name that is only spaces', () => {
+    const parsed = withLabel('   ');
+    expect('rule' in parsed && 'label' in parsed.rule.branches![0]!).toBe(false);
+  });
+});
+
 describe('parseRule', () => {
   it('reads a rule stored before mirrors existed as an automation', () => {
     // Rules saved by earlier versions carry no kind at all. They must keep

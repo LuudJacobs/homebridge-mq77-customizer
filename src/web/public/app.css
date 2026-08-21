@@ -106,6 +106,7 @@ label {
   color: var(--muted);
 }
 
+input[type="number"],
 input[type="password"],
 input[type="search"],
 input[type="text"],
@@ -467,10 +468,6 @@ button.primary {
   max-width: 14rem;
 }
 
-/* Slightly narrower than the rest, since it is an aside rather than a setting. */
-.rule-row input.row-name {
-  max-width: 9rem;
-}
 
 .add-row {
   font-size: 0.82rem;
@@ -592,10 +589,18 @@ button.primary {
   gap: 1rem;
 }
 
-.branch-head-left {
+.branch-head-left,
+.branch-head-right {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
+}
+
+/* An aside rather than a setting, so narrower than a row of inputs. */
+.branch-head-right input.outcome-name {
+  max-width: 11rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.87rem;
 }
 
 /* Not on the left, remove on the right, as on an outcome. */
