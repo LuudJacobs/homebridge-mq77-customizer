@@ -260,7 +260,12 @@ function parseCondition(raw: unknown): { node?: ConditionNode } | { error: strin
     if ('error' in match) {
       return { error: match.error };
     }
-    return { node: { kind: 'test', ...ref, match: match.match } };
+    // A test is rebuilt rather than copied, so the name has to be carried
+    // across by hand or saving the rule would quietly drop it.
+    const label = typeof raw.label === 'string' ? raw.label.trim() : '';
+    return {
+      node: { kind: 'test', ...ref, match: match.match, ...(label ? { label } : {}) },
+    };
   }
 
   return { error: `unknown condition "${raw.kind}"` };

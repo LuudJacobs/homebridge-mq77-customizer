@@ -170,6 +170,18 @@ describe('parsing an expression', () => {
     expect(parse({ kind: 'sometimes' })).toEqual({ error: 'Condition: unknown condition "sometimes"' });
   });
 
+  it('keeps the name on a test, which is rebuilt rather than copied', () => {
+    const parsed = parse({ ...test('a'), label: '  dusk  ' });
+    expect('rule' in parsed && (parsed.rule.branches![0]!.when as { label?: string }).label).toBe(
+      'dusk',
+    );
+  });
+
+  it('leaves out a name that is only spaces', () => {
+    const parsed = parse({ ...test('a'), label: '   ' });
+    expect('rule' in parsed && 'label' in (parsed.rule.branches![0]!.when as object)).toBe(false);
+  });
+
   it('still reads a stored flat list', () => {
     const parsed = parseRule(
       { name: 'x', trigger, conditions: [{ ...test('a'), kind: undefined }], actions: [action] },

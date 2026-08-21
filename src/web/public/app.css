@@ -9,6 +9,7 @@
   --rules: #7a5c00;
   --rules-soft: #f6ecc8;
   --error: #b91c1c;
+  --sunken: #eef0f4;
   --radius: 10px;
 }
 
@@ -24,6 +25,7 @@
     --rules: #d9b44a;
     --rules-soft: #342d16;
     --error: #f27272;
+    --sunken: #21252c;
   }
 }
 
@@ -465,8 +467,9 @@ button.primary {
   max-width: 14rem;
 }
 
-.rule-row input.delay {
-  max-width: 6.5rem;
+/* Slightly narrower than the rest, since it is an aside rather than a setting. */
+.rule-row input.row-name {
+  max-width: 9rem;
 }
 
 .add-row {
@@ -565,14 +568,16 @@ button.primary {
 }
 
 .joiner.inline {
-  display: block;
-  padding-left: 0.1rem;
+  margin: 0;
+  padding: 0 0.15rem;
 }
 
 .branch {
   border-left: 3px solid var(--line);
-  padding-left: 0.75rem;
-  margin: 0.6rem 0;
+  border-radius: 0 7px 7px 0;
+  background: var(--sunken);
+  padding: 0.35rem 0.75rem 0.6rem;
+  margin: 1.4rem 0;
 }
 
 .branch-label {
@@ -585,4 +590,19 @@ button.primary {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.branch-head-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+/* Not on the left, remove on the right, as on an outcome. */
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.87rem;
 }

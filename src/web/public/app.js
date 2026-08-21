@@ -1201,12 +1201,7 @@ function drawWhenThen(body, draft) {
   const drawTriggers = () => {
     triggers.replaceChildren();
     draft.triggers.forEach((trigger, index) => {
-      if (index > 0) {
-        const or = document.createElement('p');
-        or.className = 'joiner';
-        or.textContent = 'or';
-        triggers.append(or);
-      }
+      const last = index === draft.triggers.length - 1;
       triggers.append(
         refRow(trigger, {
           pick: watchable,
@@ -1219,15 +1214,19 @@ function drawWhenThen(body, draft) {
                   drawTriggers();
                 }
               : undefined,
+          joiner: last ? undefined : 'or',
+          trailing: last
+            ? addButton('+ trigger', () => {
+                draft.triggers.push({
+                  ...blankRef(watchable),
+                  match: { kind: 'changedTo', value: '' },
+                });
+                drawTriggers();
+              })
+            : undefined,
         }),
       );
     });
-    triggers.append(
-      addButton('Add or', () => {
-        draft.triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
-        drawTriggers();
-      }),
-    );
   };
   drawTriggers();
   body.append(triggers);
@@ -1266,7 +1265,15 @@ function renderBranch(branch, index, branches, redraw) {
 
   const head = document.createElement('div');
   head.className = 'branch-head';
-  head.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+  // Where the condition editor puts its add button while there is nothing to
+  // show, since there is no row for it to sit on yet.
+  const slot = document.createElement('span');
+  left.append(slot);
+  head.append(left);
 
   if (!only) {
     head.append(
@@ -1278,7 +1285,7 @@ function renderBranch(branch, index, branches, redraw) {
   }
 
   box.append(head);
-  box.append(conditionEditor(branch));
+  box.append(conditionEditor(branch, slot));
 
   box.append(sectionTitle('Then'));
   box.append(actionEditor(branch));
@@ -1526,7 +1533,7 @@ function drawMirror(body, draft) {
  * Deeper nesting would express nothing new, since every boolean expression can
  * be written as an or of ands, and it would cost a much heavier editor.
  */
-function conditionEditor(draft) {
+function conditionEditor(draft, slot) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
@@ -1558,13 +1565,20 @@ function conditionEditor(draft) {
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
 
-    wrap.append(
-      addButton(groups.length === 0 ? 'Add condition' : 'Add or', () => {
-        groups.push({ negated: false, tests: [newTest()] });
-        commit();
-        draw();
-      }),
-    );
+    const add = addButton(groups.length === 0 ? '+ condition' : 'Add or', () => {
+      groups.push({ negated: false, tests: [newTest()] });
+      commit();
+      draw();
+    });
+
+    // With no conditions set there is no row to hang the button off, so it
+    // goes up beside the heading instead of alone on a line of its own.
+    slot?.replaceChildren();
+    if (groups.length === 0 && slot) {
+      slot.append(add);
+    } else {
+      wrap.append(add);
+    }
   };
 
   function commit() {
@@ -1580,7 +1594,7 @@ function renderGroup(group, groups, index, commit, redraw) {
   box.className = 'condition-group';
 
   const head = document.createElement('div');
-  head.className = 'option';
+  head.className = 'group-head';
   const negate = document.createElement('label');
   negate.className = 'toggle';
   const negateBox = document.createElement('input');
@@ -1604,16 +1618,12 @@ function renderGroup(group, groups, index, commit, redraw) {
   box.append(head);
 
   group.tests.forEach((node, position) => {
-    if (position > 0) {
-      const and = document.createElement('span');
-      and.className = 'joiner inline';
-      and.textContent = 'and';
-      box.append(and);
-    }
+    const last = position === group.tests.length - 1;
     box.append(
       refRow(node, {
         pick: watchable,
         withMatch: true,
+        withName: true,
         onChange: commit,
         onRemove:
           group.tests.length > 1
@@ -1623,17 +1633,17 @@ function renderGroup(group, groups, index, commit, redraw) {
                 redraw();
               }
             : undefined,
+        joiner: last ? undefined : 'and',
+        trailing: last
+          ? addButton('+ condition', () => {
+              group.tests.push(newTest());
+              commit();
+              redraw();
+            })
+          : undefined,
       }),
     );
   });
-
-  box.append(
-    addButton('Add and', () => {
-      group.tests.push(newTest());
-      commit();
-      redraw();
-    }),
-  );
 
   return box;
 }
@@ -1870,6 +1880,21 @@ function refRow(ref, options) {
       tail.append(delay);
     }
 
+    if (options.withName) {
+      // Says what the condition is for. Nothing reads it, it is there so a
+      // rule with five tests in it can still be understood next year.
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.className = 'row-name';
+      name.placeholder = 'name';
+      name.value = ref.label ?? '';
+      name.addEventListener('input', () => {
+        ref.label = name.value.trim() || undefined;
+        changed();
+      });
+      tail.append(name);
+    }
+
     if (options.onRemove) {
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -1878,6 +1903,19 @@ function refRow(ref, options) {
       remove.title = 'Remove';
       remove.addEventListener('click', options.onRemove);
       tail.append(remove);
+    }
+
+    // The word joining this row to the next one, and the button that adds
+    // another, both belong on this line rather than on one of their own.
+    if (options.joiner) {
+      const joiner = document.createElement('span');
+      joiner.className = 'joiner inline';
+      joiner.textContent = options.joiner;
+      tail.append(joiner);
+    }
+
+    if (options.trailing) {
+      tail.append(options.trailing);
     }
   }
 
