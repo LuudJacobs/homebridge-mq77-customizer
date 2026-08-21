@@ -1275,14 +1275,35 @@ function renderBranch(branch, index, branches, redraw) {
   left.append(slot);
   head.append(left);
 
+  const right = document.createElement('div');
+  right.className = 'branch-head-right';
+
+  // Says what this outcome is for. Nothing reads it, it is there so a rule
+  // with three outcomes can still be understood next year.
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.className = 'outcome-name';
+  name.placeholder = 'name';
+  name.value = branch.label ?? '';
+  name.addEventListener('input', () => {
+    branch.label = name.value.trim() || undefined;
+  });
+  right.append(name);
+
   if (!only) {
-    head.append(
-      addButton(`Remove outcome ${index + 1}`, () => {
-        branches.splice(index, 1);
-        redraw();
-      }),
-    );
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'add-row';
+    remove.textContent = '✕';
+    remove.title = `Remove outcome ${index + 1}`;
+    remove.addEventListener('click', () => {
+      branches.splice(index, 1);
+      redraw();
+    });
+    right.append(remove);
   }
+
+  head.append(right);
 
   box.append(head);
   box.append(conditionEditor(branch, slot));
@@ -1300,6 +1321,7 @@ function actionEditor(branch) {
   const draw = () => {
     wrap.replaceChildren();
     branch.actions.forEach((action, index) => {
+      const last = index === branch.actions.length - 1;
       wrap.append(
         refRow(action, {
           pick: writable,
@@ -1312,15 +1334,15 @@ function actionEditor(branch) {
                   draw();
                 }
               : undefined,
+          trailing: last
+            ? addButton('+ action', () => {
+                branch.actions.push({ ...blankRef(writable), value: '' });
+                draw();
+              })
+            : undefined,
         }),
       );
     });
-    wrap.append(
-      addButton('Add action', () => {
-        branch.actions.push({ ...blankRef(writable), value: '' });
-        draw();
-      }),
-    );
   };
 
   draw();
@@ -1623,7 +1645,6 @@ function renderGroup(group, groups, index, commit, redraw) {
       refRow(node, {
         pick: watchable,
         withMatch: true,
-        withName: true,
         onChange: commit,
         onRemove:
           group.tests.length > 1
@@ -1878,21 +1899,6 @@ function refRow(ref, options) {
         ref.delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
       });
       tail.append(delay);
-    }
-
-    if (options.withName) {
-      // Says what the condition is for. Nothing reads it, it is there so a
-      // rule with five tests in it can still be understood next year.
-      const name = document.createElement('input');
-      name.type = 'text';
-      name.className = 'row-name';
-      name.placeholder = 'name';
-      name.value = ref.label ?? '';
-      name.addEventListener('input', () => {
-        ref.label = name.value.trim() || undefined;
-        changed();
-      });
-      tail.append(name);
     }
 
     if (options.onRemove) {

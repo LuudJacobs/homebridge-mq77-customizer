@@ -113,30 +113,6 @@ describe('the condition editor', () => {
     expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
   });
 
-  it('names a condition, and sends the name when saved', async () => {
-    const ui = await openRule(legacyRule);
-    const name = ui.document.querySelector('.condition-group input.row-name') as HTMLInputElement;
-    expect(name).not.toBeNull();
-
-    name.value = 'lamp b is already on';
-    name.dispatchEvent(new ui.window.Event('input'));
-    await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save'));
-
-    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
-      branches: { when: { label?: string } }[];
-    };
-    // One group of one test is stored as the test itself.
-    expect(saved.branches[0]?.when.label).toBe('lamp b is already on');
-  });
-
-  it('shows a name that was stored', async () => {
-    const named = { ...legacyRule, conditions: undefined, when: { ...test_('0xb'), label: 'dusk' } };
-    const ui = await openRule(named);
-    const name = ui.document.querySelector('.condition-group input.row-name') as HTMLInputElement;
-    expect(name.value).toBe('dusk');
-  });
-
   it('offers a not toggle per group', async () => {
     const ui = await openRule(legacyRule);
     const negate = ui.byText('.condition-group label.toggle', 'Not');
@@ -217,7 +193,7 @@ describe('branches', () => {
     const ui = await openRule(legacyRule);
     // Nothing to number or remove when there is only one.
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
-    expect(ui.byText('button.add-row', 'Remove outcome 1')).toBeNull();
+    expect(ui.document.querySelector('.branch-head button[title^="Remove outcome"]')).toBeNull();
     expect(ui.byText('button.add-row', 'Add outcome')).not.toBeNull();
   });
 
@@ -236,12 +212,66 @@ describe('branches', () => {
     expect(ui.document.querySelectorAll('.branch .actions')).toHaveLength(2);
   });
 
-  it('numbers the remove button, beside the heading it belongs to', async () => {
+  it('says which outcome the remove button removes, without spelling it out', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', 'Add outcome'));
 
-    expect(ui.byText('.branch-head button.add-row', 'Remove outcome 1')).not.toBeNull();
-    expect(ui.byText('.branch-head button.add-row', 'Remove outcome 2')).not.toBeNull();
+    const buttons = [...ui.document.querySelectorAll('.branch-head-right button.add-row')];
+    // A plain cross, with the number kept in the tooltip.
+    expect(buttons.map((button) => button.textContent)).toEqual(['✕', '✕']);
+    expect(buttons.map((button) => button.getAttribute('title'))).toEqual([
+      'Remove outcome 1',
+      'Remove outcome 2',
+    ]);
+  });
+
+  it('names an outcome, and sends the name when saved', async () => {
+    const ui = await openRule(legacyRule);
+    const name = ui.document.querySelector('input.outcome-name') as HTMLInputElement;
+    expect(name).not.toBeNull();
+
+    name.value = 'nobody home';
+    name.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { label?: string }[];
+    };
+    expect(saved.branches[0]?.label).toBe('nobody home');
+  });
+
+  it('shows a name that was stored', async () => {
+    const named = {
+      ...legacyRule,
+      conditions: undefined,
+      branches: [{ label: 'dusk', when: test_('0xb'), actions: [{ ...ref('0xc'), value: 'ON' }] }],
+    };
+    const ui = await openRule(named);
+    const name = ui.document.querySelector('input.outcome-name') as HTMLInputElement;
+    expect(name.value).toBe('dusk');
+  });
+
+  it('has no name box on a condition', async () => {
+    const ui = await openRule(legacyRule);
+    expect(ui.document.querySelector('.condition-group input.row-name')).toBeNull();
+  });
+
+  it('adds an action from the end of the last action row', async () => {
+    const ui = await openRule(legacyRule);
+    const rows = () => ui.document.querySelectorAll('.actions .rule-row');
+    const before = rows().length;
+
+    const add = ui.byText('button.add-row', '+ action', '.actions');
+    // On the row rather than under it, like the trigger and condition buttons.
+    expect(add!.closest('.rule-tail')).not.toBeNull();
+
+    await ui.click(add);
+    expect(rows()).toHaveLength(before + 1);
+    // It follows the list down rather than staying on the first row.
+    expect(
+      ui.byText('button.add-row', '+ action', '.actions')!.closest('.rule-row'),
+    ).toBe(rows()[before]);
   });
 
   it('sends a list of branches when saved', async () => {
@@ -266,8 +296,8 @@ describe('branches', () => {
   it('removes an outcome again', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', 'Add outcome'));
-    // Numbered, so it is clear which one is going.
-    await ui.click(ui.byText('button.add-row', 'Remove outcome 2'));
+    // The tooltip says which one is going.
+    await ui.click(ui.document.querySelector('.branch-head button[title="Remove outcome 2"]'));
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
   });
 });
