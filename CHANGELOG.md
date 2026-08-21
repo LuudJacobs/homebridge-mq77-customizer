@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove group sits at the top right of its box
 - Outcomes are spaced apart and faintly shaded
 - Number inputs are styled like every other input instead of unstyled, which is what made the delay box look out of place
+- Rule rows have fixed widths, so the columns line up from one row to the next
+- Fixed: sorting and filtering on the Automation and Mirror tabs, which threw on any rule saved since outcomes arrived and emptied both tabs without saying why
 
 ## [0.10.0] - 2026-08-21
 
