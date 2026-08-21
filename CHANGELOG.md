@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - Automation editor keeps "or", "and" and the buttons that add another on the row they belong to, instead of each on a line of its own
-- Conditions can be named again
+- Outcomes can be named, beside a remove button that is now a plain cross
 - Remove group sits at the top right of its box
 - Outcomes are spaced apart and faintly shaded
+- Number inputs are styled like every other input instead of unstyled, which is what made the delay box look out of place
 
 ## [0.10.0] - 2026-08-21
 
