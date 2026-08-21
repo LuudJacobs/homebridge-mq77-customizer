@@ -14,6 +14,13 @@ interface Tracked {
   /** Built up over time, since one message rarely carries every key. */
   properties: Map<string, NormalisedProperty>;
   state: Record<string, unknown>;
+  /**
+   * Declared functions this device has not yet reported.
+   *
+   * A declaration has to guess how a value is written, since there is no
+   * sample to look at. The first real one settles it.
+   */
+  unconfirmed: Set<string>;
 }
 
 /**
@@ -33,6 +40,8 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
   private readonly log: Logger;
   private readonly base: string;
   private readonly setSuffix?: string;
+  /** Functions named in the config, by device topic. */
+  private readonly declared = new Map<string, string[]>();
 
   private readonly tracked = new Map<string, Tracked>();
   private readonly unsubscribes: (() => void)[] = [];
@@ -45,6 +54,10 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     this.log = context.log;
     this.base = context.source.baseTopic.replace(/\/+$/, '');
     this.setSuffix = context.source.setTopicSuffix?.replace(/^\/+/, '') || undefined;
+
+    for (const device of context.source.devices ?? []) {
+      this.declared.set(device.topic.replace(/^\/+|\/+$/g, ''), device.properties);
+    }
   }
 
   async start(): Promise<void> {
@@ -121,14 +134,29 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       topic,
       properties: new Map<string, NormalisedProperty>(),
       state: {},
+      unconfirmed: new Set<string>(),
     };
     const isNew = !this.tracked.has(relative);
     this.tracked.set(relative, entry);
+
+    if (isNew) {
+      this.addDeclared(entry);
+    }
 
     let discovered = false;
     const changes: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(parsed)) {
+      // A declared function was described without a sample to go on, so the
+      // first real value replaces the guess: a publisher using true and false
+      // must not be sent "ON".
+      if (entry.unconfirmed.delete(key)) {
+        const observed = this.describe(key, value, topic);
+        if (observed) {
+          entry.properties.set(key, observed);
+        }
+      }
+
       const property = entry.properties.get(key) ?? this.describe(key, value, topic);
       if (!property) {
         continue;
@@ -157,6 +185,34 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
         retained,
       };
       this.emit('state', update);
+    }
+  }
+
+  /**
+   * Adds the functions the config says this device has.
+   *
+   * Only keys the adapter already understands, since a name on its own says
+   * nothing about what kind of value it carries.
+   */
+  private addDeclared(entry: Tracked): void {
+    for (const key of this.declared.get(entry.deviceId) ?? []) {
+      if (entry.properties.has(key)) {
+        continue;
+      }
+      if (!KNOWN_KEYS[key]) {
+        this.log.warn(
+          `${entry.deviceId}: cannot declare "${key}", no known meaning for it. ` +
+            `Known: ${Object.keys(KNOWN_KEYS).join(', ')}`,
+        );
+        continue;
+      }
+      // No sample to read the on and off values from, so assume the strings
+      // this publisher family uses and correct it when one arrives.
+      const property = this.describe(key, KNOWN_KEYS[key]!.type === 'binary' ? 'ON' : 0, entry.topic);
+      if (property) {
+        entry.properties.set(key, property);
+        entry.unconfirmed.add(key);
+      }
     }
   }
 

@@ -82,7 +82,29 @@
                 "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
               }
             },
-            "setTopicSuffix": {
+            "devices": {
+            "title": "Described devices",
+            "type": "array",
+            "condition": { "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';" },
+            "description": "Functions a device has that it may never report on its own, such as the speed of a fan nobody has changed yet.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "topic": {
+                  "title": "Device topic",
+                  "type": "string",
+                  "description": "The topic under the base topic, without it. For broadlinkrm/fan_office that is fan_office."
+                },
+                "properties": {
+                  "title": "Functions",
+                  "type": "array",
+                  "items": { "type": "string", "title": "Function" },
+                  "description": "One name per line: state, level, speed, swing, temperature, humidity, co2_levels."
+                }
+              }
+            }
+          },
+          "setTopicSuffix": {
               "title": "Command topic suffix",
               "type": "string",
               "description": "Usually \"set\". Leave empty to make the source read only.",

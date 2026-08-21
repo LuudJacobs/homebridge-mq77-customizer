@@ -1,5 +1,5 @@
 import { adapterNames, getAdapterFactory } from './adapters/index.js';
-import type { SourceConfig } from './adapters/types.js';
+import type { DeclaredDevice, SourceConfig } from './adapters/types.js';
 import type { Logger } from './logger.js';
 import type { BrokerConfig } from './mqtt/client.js';
 
@@ -72,6 +72,43 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
   };
 }
 
+/**
+ * Devices described by hand, for a source that cannot describe itself.
+ *
+ * Whether a named function means anything is the adapter's business, since it
+ * is the one that knows what a key is worth. Here it is only read.
+ */
+function resolveDeclared(raw: unknown, id: string, log: Logger): DeclaredDevice[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    log.error(`Source "${id}" has a "devices" that is not a list, ignoring it`);
+    return undefined;
+  }
+
+  const devices: DeclaredDevice[] = [];
+  for (const [index, entry] of raw.entries()) {
+    const object = asObject(entry);
+    const topic = object && asString(object.topic);
+    if (!topic) {
+      log.error(`Source "${id}" device ${index} needs a topic, skipping it`);
+      continue;
+    }
+
+    const properties = (Array.isArray(object.properties) ? object.properties : [])
+      .filter((property): property is string => typeof property === 'string' && property !== '');
+
+    if (properties.length === 0) {
+      log.error(`Source "${id}" device "${topic}" lists no functions, skipping it`);
+      continue;
+    }
+    devices.push({ topic, properties });
+  }
+
+  return devices.length > 0 ? devices : undefined;
+}
+
 function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
   if (raw === undefined) {
     log.info('No sources configured, defaulting to Zigbee2MQTT on base topic "zigbee2mqtt"');
@@ -122,6 +159,7 @@ function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
       rulesOnly: object.rulesOnly === true,
       topics: asString(object.topics),
       setTopicSuffix: asString(object.setTopicSuffix),
+      devices: resolveDeclared(object.devices, id, log),
     });
   }
 
