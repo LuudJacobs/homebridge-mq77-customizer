@@ -137,12 +137,7 @@ async function load() {
  * user back to the login form with a misleading message.
  */
 function safeRender() {
-  try {
-    render();
-  } catch (error) {
-    console.error('Rendering failed', error);
-    setStatus(`display error: ${error.message}`, 'lost');
-  }
+  safely(render);
 }
 
 function setStatus(text, kind) {
@@ -984,22 +979,62 @@ async function loadRules() {
 const kindOf = (rule) => (rule.kind === 'mirror' ? 'mirror' : 'standard');
 
 function renderRules() {
-  renderRuleList('standard', el.automation, 'No automations yet.');
-  renderRuleList('mirror', el.mirror, 'No mirrored devices yet.');
+  safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
+  safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
+}
+
+/**
+ * Keeps one rule the interface cannot read from blanking the tab.
+ *
+ * Sorting and filtering both walk every rule, so a single rule in a shape
+ * this build does not understand used to take the whole list down with it,
+ * and silently: an empty tab looks exactly like having no rules.
+ */
+function safely(render) {
+  try {
+    render();
+  } catch (error) {
+    console.error('Rendering failed', error);
+    setStatus(`display error: ${error.message}`, 'lost');
+  }
 }
 
 /** The devices a rule touches, in the order it names them. */
+/**
+ * Every trigger of a rule, whatever shape it was saved in.
+ *
+ * `trigger` is what versions before outcomes stored, a single one, and rules
+ * written back then are still on disk unchanged.
+ */
+function ruleTriggers(rule) {
+  if (rule.triggers?.length) {
+    return rule.triggers;
+  }
+  return rule.trigger ? [rule.trigger] : [];
+}
+
+/** Every action of a rule, across all of its outcomes. */
+function ruleActions(rule) {
+  if (rule.branches?.length) {
+    return rule.branches.flatMap((branch) => branch.actions ?? []);
+  }
+  return rule.actions ?? [];
+}
+
 function ruleRefs(rule) {
-  return rule.kind === 'mirror' ? rule.groups.flat() : [rule.trigger, ...rule.actions];
+  if (rule.kind === 'mirror') {
+    return (rule.groups ?? []).flat();
+  }
+  return [...ruleTriggers(rule), ...ruleActions(rule)];
 }
 
 /** First device on each side, which is what the two orderings compare. */
 function ruleSides(rule) {
-  const refs = ruleRefs(rule);
   if (rule.kind === 'mirror') {
+    const refs = ruleRefs(rule);
     return { trigger: refs[0], target: refs[1] };
   }
-  return { trigger: rule.trigger, target: rule.actions[0] };
+  return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
 
 function ruleSortKey(rule, sort) {
