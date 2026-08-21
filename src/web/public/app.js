@@ -1892,7 +1892,7 @@ function refRow(ref, options) {
       delay.type = 'number';
       delay.className = 'delay';
       delay.min = 0;
-      delay.placeholder = 'delay s';
+      delay.placeholder = 'delay (s)';
       delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
       delay.addEventListener('input', () => {
         const seconds = Number(delay.value);
