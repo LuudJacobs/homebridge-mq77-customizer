@@ -117,7 +117,9 @@ describe('the condition editor', () => {
     const ui = await openRule(legacyRule);
     // The width lives in the stylesheet, the class is what hangs it there.
     const first = ui.document.querySelector('.condition-group .rule-row')!;
-    expect(first.querySelector('select')!.classList.contains('device')).toBe(true);
+    expect(first.querySelector('select')!.classList.contains('device-picker')).toBe(true);
+    // Never `device`, which is the card class and would paint it like one.
+    expect(first.querySelector('select')!.classList.contains('device')).toBe(false);
   });
 
   it('offers a not toggle per group', async () => {
