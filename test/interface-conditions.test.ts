@@ -113,6 +113,13 @@ describe('the condition editor', () => {
     expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
   });
 
+  it('marks the device picker, which is wider than the rest of the row', async () => {
+    const ui = await openRule(legacyRule);
+    // The width lives in the stylesheet, the class is what hangs it there.
+    const first = ui.document.querySelector('.condition-group .rule-row')!;
+    expect(first.querySelector('select')!.classList.contains('device')).toBe(true);
+  });
+
   it('offers a not toggle per group', async () => {
     const ui = await openRule(legacyRule);
     const negate = ui.byText('.condition-group label.toggle', 'Not');

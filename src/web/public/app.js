@@ -1762,6 +1762,9 @@ function refRow(ref, options) {
   row.className = 'rule-row';
 
   const devices = document.createElement('select');
+  // Wider than the rest of the row, since a device name is the longest thing
+  // on it and the one worth reading at a glance.
+  devices.className = 'device';
   // Always by name here, whatever the device list is sorted by. A rule is
   // written by looking for a device by name, not by when it last reported.
   for (const device of byName(state.devices.filter((candidate) => options.pick(candidate).length > 0))) {
