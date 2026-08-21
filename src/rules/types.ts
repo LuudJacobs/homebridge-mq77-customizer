@@ -33,7 +33,8 @@ export type ConditionNode =
   | { kind: 'all'; nodes: ConditionNode[] }
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
-  | ({ kind: 'test' } & Condition);
+  /** `label` is a note from whoever wrote the rule. Nothing evaluates it. */
+  | ({ kind: 'test'; label?: string } & Condition);
 
 /**
  * Where an action's value comes from.

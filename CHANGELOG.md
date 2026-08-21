@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Automation editor keeps "or", "and" and the buttons that add another on the row they belong to, instead of each on a line of its own
+- Conditions can be named again
+- Remove group sits at the top right of its box
+- Outcomes are spaced apart and faintly shaded
+
 ## [0.10.0] - 2026-08-21
 
 ### Changed
