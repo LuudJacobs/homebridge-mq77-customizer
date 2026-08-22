@@ -22,6 +22,9 @@ const state = {
    * somewhere down the page under the name it has not been given yet.
    */
   pinned: undefined,
+  /** The last network scan, and whether one is running. */
+  map: undefined,
+  scanning: false,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
@@ -52,10 +55,15 @@ const el = {
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
   tabActivity: document.getElementById('tab-activity'),
+  tabMap: document.getElementById('tab-map'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
   viewActivity: document.getElementById('view-activity'),
+  viewMap: document.getElementById('view-map'),
+  map: document.getElementById('map'),
+  mapStatus: document.getElementById('map-status'),
+  scanMap: document.getElementById('scan-map'),
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
   activityLog: document.getElementById('activity-log'),
@@ -395,6 +403,7 @@ const TAB_CONTROLS = {
     placeholder: 'Filter name, topic or model',
   },
   activity: { sorts: [], placeholder: 'Filter by name' },
+  map: { sorts: [], placeholder: 'Filter by name' },
 };
 
 /** Points the header controls at whatever the current tab is about. */
@@ -419,6 +428,8 @@ function paintControls() {
     el.sort.value = state.sorts[view] ?? 'name';
   }
 
+  // Nothing on the map is filtered or sorted from up here.
+  el.filter.hidden = view === 'map';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
 }
@@ -2159,19 +2170,197 @@ function repaint() {
   }
 }
 
+const SVG = 'http://www.w3.org/2000/svg';
+/** Room for one device box, and the gap between one row and the next. */
+const NODE_WIDTH = 132;
+const NODE_HEIGHT = 34;
+const ROW_HEIGHT = 96;
+
+/**
+ * Works out how far each device sits from the hub.
+ *
+ * A walk out from the coordinator, taking the strongest link first, so a
+ * device hangs off the route it most likely uses rather than the first one
+ * the scan happened to mention. Anything the walk never reaches is put on a
+ * row of its own at the bottom: it answered the scan but nothing connects it.
+ */
+function layoutMap(map) {
+  const neighbours = new Map(map.nodes.map((node) => [node.address, []]));
+  for (const link of map.links) {
+    neighbours.get(link.from)?.push({ to: link.to, quality: link.quality });
+    neighbours.get(link.to)?.push({ to: link.from, quality: link.quality });
+  }
+
+  const root = map.nodes.find((node) => node.kind === 'coordinator') ?? map.nodes[0];
+  const depth = new Map();
+  const parents = new Map();
+
+  if (root) {
+    depth.set(root.address, 0);
+    const queue = [root.address];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const edges = [...(neighbours.get(current) ?? [])].sort((a, b) => b.quality - a.quality);
+      for (const edge of edges) {
+        if (depth.has(edge.to)) {
+          continue;
+        }
+        depth.set(edge.to, depth.get(current) + 1);
+        parents.set(edge.to, current);
+        queue.push(edge.to);
+      }
+    }
+  }
+
+  const rows = new Map();
+  for (const node of map.nodes) {
+    const level = depth.has(node.address) ? depth.get(node.address) : Infinity;
+    if (!rows.has(level)) {
+      rows.set(level, []);
+    }
+    rows.get(level).push(node);
+  }
+
+  const levels = [...rows.keys()].sort((a, b) => a - b);
+  const widest = Math.max(1, ...levels.map((level) => rows.get(level).length));
+  const width = widest * (NODE_WIDTH + 24);
+  const placed = new Map();
+
+  levels.forEach((level, row) => {
+    const nodes = rows.get(level).sort((a, b) => compareNames(a.name, b.name));
+    const step = width / (nodes.length + 1);
+    nodes.forEach((node, index) => {
+      placed.set(node.address, {
+        node,
+        x: step * (index + 1),
+        y: row * ROW_HEIGHT + NODE_HEIGHT,
+        reached: level !== Infinity,
+      });
+    });
+  });
+
+  return { placed, parents, width, height: levels.length * ROW_HEIGHT + NODE_HEIGHT * 2 };
+}
+
+function drawMap() {
+  el.map.replaceChildren();
+  el.scanMap.disabled = state.scanning;
+  el.scanMap.textContent = state.scanning ? 'Scanning…' : 'Scan the network';
+
+  if (!state.map) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = state.scanning
+      ? 'Asking every device in turn. This takes a few minutes.'
+      : 'Nothing scanned yet.';
+    el.map.append(empty);
+    return;
+  }
+
+  const { placed, parents, width, height } = layoutMap(state.map);
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'map-svg');
+  svg.setAttribute('role', 'img');
+
+  // Every link faintly, so alternatives are visible, and the route back to
+  // the hub solid on top of it.
+  for (const link of state.map.links) {
+    const from = placed.get(link.from);
+    const to = placed.get(link.to);
+    if (!from || !to) {
+      continue;
+    }
+    const tree = parents.get(link.to) === link.from || parents.get(link.from) === link.to;
+    const line = document.createElementNS(SVG, 'line');
+    line.setAttribute('x1', from.x);
+    line.setAttribute('y1', from.y);
+    line.setAttribute('x2', to.x);
+    line.setAttribute('y2', to.y);
+    line.setAttribute('class', tree ? 'map-link route' : 'map-link');
+    const title = document.createElementNS(SVG, 'title');
+    title.textContent = `${from.node.name} ↔ ${to.node.name}, quality ${link.quality}`;
+    line.append(title);
+    svg.append(line);
+  }
+
+  for (const spot of placed.values()) {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('class', `map-node ${spot.node.kind.replace(' ', '-')}`);
+    if (!spot.reached) {
+      group.classList.add('adrift');
+    }
+    if (spot.node.failed) {
+      group.classList.add('failed');
+    }
+
+    const box = document.createElementNS(SVG, 'rect');
+    box.setAttribute('x', spot.x - NODE_WIDTH / 2);
+    box.setAttribute('y', spot.y - NODE_HEIGHT / 2);
+    box.setAttribute('width', NODE_WIDTH);
+    box.setAttribute('height', NODE_HEIGHT);
+    box.setAttribute('rx', 7);
+
+    const text = document.createElementNS(SVG, 'text');
+    text.setAttribute('x', spot.x);
+    text.setAttribute('y', spot.y + 4);
+    text.setAttribute('text-anchor', 'middle');
+    text.textContent = spot.node.name;
+
+    const title = document.createElementNS(SVG, 'title');
+    title.textContent = [
+      spot.node.name,
+      spot.node.kind,
+      spot.node.address,
+      spot.reached ? '' : 'nothing links this to the hub',
+      spot.node.failed ? 'did not answer the scan' : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    group.append(box, text, title);
+    svg.append(group);
+  }
+
+  el.map.append(svg);
+}
+
+async function scanNetwork() {
+  state.scanning = true;
+  el.mapStatus.textContent = 'Scanning. Every device is questioned in turn.';
+  drawMap();
+
+  try {
+    state.map = await api('/api/map', { method: 'POST' });
+    el.mapStatus.textContent = `${state.map.nodes.length} devices, scanned ${formatLastSeen(
+      state.map.at,
+    )}`;
+  } catch (problem) {
+    el.mapStatus.textContent = problem.message;
+  } finally {
+    state.scanning = false;
+    drawMap();
+  }
+}
+
 function showView(view) {
   state.view = view;
   el.viewDevices.hidden = view !== 'devices';
   el.viewAutomation.hidden = view !== 'automation';
   el.viewMirror.hidden = view !== 'mirror';
   el.viewActivity.hidden = view !== 'activity';
+  el.viewMap.hidden = view !== 'map';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
   el.tabActivity.classList.toggle('active', view === 'activity');
+  el.tabMap.classList.toggle('active', view === 'map');
   paintControls();
   if (view === 'devices') {
     safeRender();
+  } else if (view === 'map') {
+    // Nothing to fetch: a scan is slow enough that it only happens on asking.
+    drawMap();
   } else {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
@@ -2184,6 +2373,8 @@ el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
+el.tabMap.addEventListener('click', () => showView('map'));
+el.scanMap.addEventListener('click', () => scanNetwork());
 
 async function addRule(draft) {
   try {
