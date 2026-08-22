@@ -31,13 +31,19 @@
           "username": {
             "title": "Username",
             "type": "string",
-            "condition": { "functionBody": "return model.broker && model.broker.requiresAuth;" }
+            "condition": {
+              "functionBody": "return model.broker && model.broker.requiresAuth;"
+            }
           },
           "password": {
             "title": "Password",
             "type": "string",
-            "x-schema-form": { "type": "password" },
-            "condition": { "functionBody": "return model.broker && model.broker.requiresAuth;" }
+            "x-schema-form": {
+              "type": "password"
+            },
+            "condition": {
+              "functionBody": "return model.broker && model.broker.requiresAuth;"
+            }
           },
           "clientId": {
             "title": "Client ID",
@@ -58,14 +64,30 @@
               "required": true,
               "description": "Stable identifier. Changing it orphans everything configured against this source."
             },
+            "rulesOnly": {
+              "title": "Rules only",
+              "type": "boolean",
+              "default": false,
+              "description": "Do not publish accessories to HomeKit. Devices stay usable as rule triggers and targets."
+            },
             "adapter": {
               "title": "Adapter",
               "type": "string",
               "required": true,
               "default": "zigbee2mqtt",
               "oneOf": [
-                { "title": "Zigbee2MQTT", "enum": ["zigbee2mqtt"] },
-                { "title": "Flat JSON topics", "enum": ["json-topic"] }
+                {
+                  "title": "Zigbee2MQTT",
+                  "enum": [
+                    "zigbee2mqtt"
+                  ]
+                },
+                {
+                  "title": "Flat JSON topics",
+                  "enum": [
+                    "json-topic"
+                  ]
+                }
               ]
             },
             "baseTopic": {
@@ -82,29 +104,7 @@
                 "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
               }
             },
-            "devices": {
-            "title": "Described devices",
-            "type": "array",
-            "condition": { "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';" },
-            "description": "Functions a device has that it may never report on its own, such as the speed of a fan nobody has changed yet.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "topic": {
-                  "title": "Device topic",
-                  "type": "string",
-                  "description": "The topic under the base topic, without it. For broadlinkrm/fan_office that is fan_office."
-                },
-                "properties": {
-                  "title": "Functions",
-                  "type": "array",
-                  "items": { "type": "string", "title": "Function" },
-                  "description": "One name per line: state, level, speed, swing, temperature, humidity, co2_levels."
-                }
-              }
-            }
-          },
-          "setTopicSuffix": {
+            "setTopicSuffix": {
               "title": "Command topic suffix",
               "type": "string",
               "description": "Usually \"set\". Leave empty to make the source read only.",
@@ -112,11 +112,31 @@
                 "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
               }
             },
-            "rulesOnly": {
-              "title": "Rules only",
-              "type": "boolean",
-              "default": false,
-              "description": "Do not publish accessories to HomeKit. Devices stay usable as rule triggers and targets."
+            "devices": {
+              "type": "array",
+              "condition": {
+                "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+              },
+              "description": "Functions a device has that it may never report on its own, such as the speed of a fan nobody has changed yet.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "title": "Device topic",
+                    "type": "string",
+                    "description": "The topic under the base topic, without it. For broadlinkrm/fan_office that is fan_office."
+                  },
+                  "properties": {
+                    "title": "Functions",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "title": "Function"
+                    },
+                    "description": "One name per line: state, level, speed, swing, temperature, humidity, co2_levels."
+                  }
+                }
+              }
             }
           }
         }
@@ -131,7 +151,9 @@
             "default": 8888,
             "minimum": 1,
             "maximum": 65535,
-            "x-schema-form": { "type": "number" }
+            "x-schema-form": {
+              "type": "number"
+            }
           },
           "zigbee2mqttUrl": {
             "title": "Zigbee2MQTT frontend",
@@ -143,11 +165,84 @@
             "title": "Password",
             "type": "string",
             "required": true,
-            "x-schema-form": { "type": "password" },
+            "x-schema-form": {
+              "type": "password"
+            },
             "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
           }
         }
       }
     }
-  }
+  },
+  "layout": [
+    "name",
+    {
+      "type": "fieldset",
+      "title": "MQTT Broker",
+      "items": [
+        "broker.address",
+        "broker.requiresAuth",
+        {
+          "key": "broker.username",
+          "condition": {
+            "functionBody": "return model.broker && model.broker.requiresAuth;"
+          }
+        },
+        {
+          "key": "broker.password",
+          "condition": {
+            "functionBody": "return model.broker && model.broker.requiresAuth;"
+          }
+        },
+        "broker.clientId"
+      ]
+    },
+    {
+      "key": "sources",
+      "type": "array",
+      "title": "Sources",
+      "items": [
+        "sources[].id",
+        "sources[].rulesOnly",
+        "sources[].adapter",
+        "sources[].baseTopic",
+        {
+          "key": "sources[].topics",
+          "condition": {
+            "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+          }
+        },
+        {
+          "key": "sources[].setTopicSuffix",
+          "condition": {
+            "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+          }
+        },
+        {
+          "type": "fieldset",
+          "title": "Described devices",
+          "expandable": true,
+          "expanded": false,
+          "condition": {
+            "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
+          },
+          "items": [
+            {
+              "key": "sources[].devices",
+              "notitle": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Web Interface",
+      "items": [
+        "web.port",
+        "web.zigbee2mqttUrl",
+        "web.password"
+      ]
+    }
+  ]
 }
