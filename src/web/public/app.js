@@ -2249,6 +2249,17 @@ function layoutMap(map) {
   return { placed, parents, width: levels.length * COLUMN_STEP + 20, height };
 }
 
+/** Anything at or above this is a good link, at or below the other a poor one. */
+const QUALITY_GOOD = 200;
+const QUALITY_POOR = 100;
+
+function qualityClass(quality) {
+  if (quality >= QUALITY_GOOD) {
+    return 'good';
+  }
+  return quality <= QUALITY_POOR ? 'poor' : '';
+}
+
 /**
  * What a device is, and what it can hear.
  *
@@ -2303,16 +2314,29 @@ function openMapTip(spot, map, event) {
     for (const entry of heard) {
       const item = document.createElement('li');
       const other = map.nodes.find((node) => node.address === entry.other);
-      item.textContent = `${other?.name ?? entry.other} · quality ${entry.quality}`;
+      const strength = document.createElement('strong');
+      strength.textContent = String(entry.quality);
+      strength.className = qualityClass(entry.quality);
+      item.append(document.createTextNode(`${other?.name ?? entry.other} · `), strength);
       list.append(item);
     }
     el.mapTip.append(list);
   }
 
-  const bounds = el.map.getBoundingClientRect();
-  el.mapTip.style.left = `${event.clientX - bounds.left + 12}px`;
-  el.mapTip.style.top = `${event.clientY - bounds.top + 12}px`;
+  // Shown before it is placed, since where it fits depends on how big it is.
   el.mapTip.hidden = false;
+
+  const bounds = el.map.getBoundingClientRect();
+  const room = {
+    x: el.map.clientWidth - el.mapTip.offsetWidth - 8,
+    y: el.map.clientHeight - el.mapTip.offsetHeight - 8,
+  };
+  // Kept inside the map, so a device near an edge does not open a panel half
+  // of which needs scrolling to.
+  const left = event.clientX - bounds.left + el.map.scrollLeft + 12;
+  const top = event.clientY - bounds.top + el.map.scrollTop + 12;
+  el.mapTip.style.left = `${Math.max(8, Math.min(left, room.x + el.map.scrollLeft))}px`;
+  el.mapTip.style.top = `${Math.max(8, Math.min(top, room.y + el.map.scrollTop))}px`;
 }
 
 function drawMap() {
@@ -2350,7 +2374,12 @@ function drawMap() {
     line.setAttribute('y1', from.y);
     line.setAttribute('x2', to.x);
     line.setAttribute('y2', to.y);
-    line.setAttribute('class', tree ? 'map-link route' : 'map-link');
+    // Colour says how good the link is, weight says whether it is the route
+    // this device actually uses to reach the hub.
+    line.setAttribute(
+      'class',
+      ['map-link', tree ? 'route' : '', qualityClass(link.quality)].filter(Boolean).join(' '),
+    );
     svg.append(line);
   }
 
