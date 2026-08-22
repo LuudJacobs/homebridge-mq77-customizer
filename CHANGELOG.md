@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed: a tick box in the mirror editor was stretched to the width of a value box
+- Mirror device selection is laid out in columns
+
 ## [0.11.0] - 2026-08-22
 
 ### Added
