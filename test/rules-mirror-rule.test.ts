@@ -52,8 +52,85 @@ async function harness(rules: MirrorRule[]) {
 
   const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
   catalog.on('state', (update) => engine.handleState(update));
+
+  // What every device has done before anything happens: said where it stands.
+  // Retained, so it primes the values without being read as a change, which
+  // is what a restart looks like.
+  mqtt.deliver(SWITCH.topic, { state_l1: 'OFF', state_l2: 'OFF' }, { retained: true });
+  mqtt.deliver(SOCKET.topic, { state: 'OFF', child_lock: 'UNLOCK' }, { retained: true });
+
   return { engine, store, mqtt };
 }
+
+describe('starting up', () => {
+  /** A restart: the engine knows nothing, then every device reports in. */
+  async function afterRestart(states: Record<string, unknown>[]) {
+    const directory = await mkdtemp(join(tmpdir(), 'mq77-mirrorstart-'));
+    const store = new Store(join(directory, 'state.json'), silentLogger);
+    await store.load();
+    store.update((state) => {
+      state.rules = [mirrorRule()];
+    });
+
+    const mqtt = new FakeMqtt();
+    const catalog = new Catalog(mqtt.asConnection(), silentLogger);
+    await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
+    mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
+
+    const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
+    catalog.on('state', (update) => engine.handleState(update));
+
+    // Zigbee2MQTT does not retain device state, so these arrive as ordinary
+    // reports, indistinguishable from somebody flipping a switch.
+    mqtt.deliver(SWITCH.topic, states[0]!);
+    mqtt.deliver(SOCKET.topic, states[1]!);
+    return mqtt;
+  }
+
+  it('writes nothing when the devices report the same thing', async () => {
+    const mqtt = await afterRestart([{ state_l1: 'ON' }, { state: 'ON' }]);
+    expect(mqtt.published).toEqual([]);
+  });
+
+  it('writes nothing on a first report even when they disagree', async () => {
+    // Two devices saying where they stand is not somebody changing one, and
+    // acting on it switched things nobody had touched on every restart.
+    const mqtt = await afterRestart([{ state_l1: 'ON' }, { state: 'OFF' }]);
+    expect(mqtt.published).toEqual([]);
+  });
+
+  it('acts once a device is heard from a second time and they still disagree', async () => {
+    const mqtt = await afterRestart([{ state_l1: 'ON' }, { state: 'OFF' }]);
+
+    // Now both are known, so a report is evidence rather than a guess.
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(mqtt.published).toEqual([
+      { topic: `${SOCKET.topic}/set`, payload: '{"state":"ON"}', retain: false },
+    ]);
+  });
+
+  it('leaves a device alone while nothing is known about it', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mq77-mirrorquiet-'));
+    const store = new Store(join(directory, 'state.json'), silentLogger);
+    await store.load();
+    store.update((state) => {
+      state.rules = [mirrorRule()];
+    });
+
+    const mqtt = new FakeMqtt();
+    const catalog = new Catalog(mqtt.asConnection(), silentLogger);
+    await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
+    mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
+    const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
+    catalog.on('state', (update) => engine.handleState(update));
+
+    // Only the switch ever speaks. The socket has never said anything.
+    mqtt.deliver(SWITCH.topic, { state_l1: 'OFF' });
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+
+    expect(mqtt.published).toEqual([]);
+  });
+});
 
 describe('mirroring', () => {
   it('copies in either direction', async () => {

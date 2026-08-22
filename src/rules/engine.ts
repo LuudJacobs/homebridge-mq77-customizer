@@ -98,7 +98,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       if (isMirror(rule)) {
         for (const [propertyKey, value] of Object.entries(update.changes)) {
-          this.mirror(rule, update, propertyKey, value);
+          this.mirror(rule, update, propertyKey, value, previously.get(propertyKey));
         }
         continue;
       }
@@ -135,7 +135,17 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     update: StateUpdate,
     propertyKey: string,
     value: unknown,
+    before: unknown,
   ): void {
+    // The first thing heard from a device after a restart is it saying where
+    // it stands, not somebody changing it. Nothing is known then, so acting
+    // on it means writing to the rest of the group on no evidence at all.
+    // Once it has been heard from, a repeat is worth acting on: that is how a
+    // group that failed to come into line gets another go.
+    if (before === undefined) {
+      return;
+    }
+
     for (const [index, group] of rule.groups.entries()) {
       const from = group.find((member) => refersTo(member, update, propertyKey));
       if (!from) {
@@ -180,10 +190,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         const current = this.catalog.getState(member.sourceId, member.deviceId)?.[
           member.propertyKey
         ];
-        if (
-          current !== undefined &&
-          matches({ kind: 'equals', value: wanted as string | number | boolean }, current)
-        ) {
+        // Not knowing what a device is set to is not the same as knowing it
+        // disagrees. Writing on that guess is what made a restart switch
+        // things nobody had touched.
+        if (current === undefined) {
+          continue;
+        }
+        if (matches({ kind: 'equals', value: wanted as string | number | boolean }, current)) {
           continue;
         }
 
