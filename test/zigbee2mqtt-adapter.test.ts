@@ -32,6 +32,7 @@ describe('Zigbee2mqttAdapter', () => {
       'zigbee2mqtt/bridge/devices',
       'zigbee2mqtt/bridge/state',
       'zigbee2mqtt/#',
+      'zigbee2mqtt/bridge/response/networkmap',
     ]);
   });
 
