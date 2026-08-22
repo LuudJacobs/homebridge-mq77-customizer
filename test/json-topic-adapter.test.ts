@@ -301,6 +301,49 @@ describe('functions described in the config', () => {
     expect(warnings[0]).toContain('speed');
   });
 
+  it('takes the topic however it is written', async () => {
+    // The whole topic is the obvious thing to paste, and a config editor is
+    // as likely to leave a space behind as not.
+    for (const topic of ['fan_office', 'broadlinkrm/fan_office', '/fan_office/', '  fan_office ']) {
+      const { adapter, mqtt } = await makeAdapter({
+        ...BROADLINK,
+        devices: [{ topic, properties: ['speed'] }],
+      });
+      mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+      expect(propertyKeys(adapter, 'fan_office'), `written as "${topic}"`).toContain('speed');
+    }
+  });
+
+  it('takes a function name in any case, with spaces around it', async () => {
+    const { adapter, mqtt } = await makeAdapter({
+      ...BROADLINK,
+      devices: [{ topic: 'fan_office', properties: [' Speed ', 'SWING'] }],
+    });
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+    // Matched against the key the publisher actually sends, which is lower case.
+    expect(propertyKeys(adapter, 'fan_office')).toEqual(['speed', 'swing', 'state']);
+  });
+
+  it('says in the log what it was told to describe', async () => {
+    const lines: string[] = [];
+    const mqtt = new FakeMqtt();
+    const adapter = new JsonTopicAdapter({
+      source: { ...BROADLINK, devices: [{ topic: 'fan_office', properties: ['speed'] }] },
+      mqtt: mqtt.asConnection(),
+      log: { ...silentLogger, info: (message: string) => lines.push(message) },
+    });
+    await adapter.start();
+
+    // A topic matching nothing is otherwise indistinguishable from the
+    // feature not working at all.
+    expect(lines.some((line) => line.includes('broadlinkrm/fan_office') && line.includes('speed')))
+      .toBe(true);
+
+    mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+    expect(lines.some((line) => line.includes('added speed from the config'))).toBe(true);
+  });
+
   it('says nothing about a device that is described but never speaks', async () => {
     const { adapter, mqtt } = await makeAdapter(FAN);
     mqtt.deliver('broadlinkrm/other', { state: 'ON' });
