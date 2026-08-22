@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A Map tab draws the Zigbee network: what reaches the hub directly, what goes through something else, and what nothing connects to
+- Automations sorted by trigger are listed under the device that sets them off, one line per trigger
+- Sorting automations by target device is gone
+- An outcome is called what it was named in the activity log
+- A rule just added stays at the top of its list until it is saved
 - Fixed: a tick box in the mirror editor was stretched to the width of a value box
 - Mirror device selection is laid out in columns
 
