@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.12.0] - 2026-08-22
+
+### Added
+
+- A Map tab draws the Zigbee network: the hub on the left and a column per hop out from it, so what reaches it directly and what goes through something else can be read down the page. Every link found is drawn, with the route each device uses picked out, and clicking a device says what it can hear and how well. A device the scan found but nothing connects to is drawn dashed rather than left out
+- Automations sorted by trigger are listed under the device that sets them off, one line per trigger, so a remote with six buttons reads as six lines. A rule with several triggers appears under each of them
+
+### Changed
+
+- An outcome is called what it was named in the activity log, falling back to its number
+- A rule just added stays at the top of its list until it is saved, rather than sorting under a name nobody has chosen yet
+- Sorting automations by target device is gone
+- Mirror device selection runs down three columns instead of wrapping across the page
+- Described devices sit behind a collapsed panel in the config form, with Rules only moved up under ID
+
+### Fixed
+
+- A child lock ticked on a socket showed nothing in the Home app. HomeKit allows a physical lock on its air services only, so on anything but a fan the lock now gets a switch of its own
+- Every healthy router was reported as having failed the network scan, since an empty list of unanswered requests reads as true
+- A tick box in the mirror editor was stretched to the width of a value box
+
 ## [0.11.0] - 2026-08-22
 
 ### Added

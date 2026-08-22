@@ -3,14 +3,29 @@ import { EventEmitter } from 'node:events';
 import type { Logger } from '../../logger.js';
 import type { MqttConnection } from '../../mqtt/client.js';
 import { joinTopic } from '../../mqtt/topics.js';
-import { isMissing, readPath } from '../../model/payload.js';
+import { isMissing, isPlainObject, readPath } from '../../model/payload.js';
 import type { NormalisedDevice, StateUpdate } from '../../model/types.js';
-import type { AdapterContext, AdapterEvents, SourceAdapter, SourceConfig } from '../types.js';
+import type {
+  AdapterContext,
+  AdapterEvents,
+  NetworkLink,
+  NetworkMap,
+  NetworkNode,
+  SourceAdapter,
+  SourceConfig,
+} from '../types.js';
 import { flattenExposes } from './exposes.js';
 import type { Z2mDevice } from './protocol.js';
 
 /** Topics under `<base>/` that carry bridge traffic rather than device state. */
 const BRIDGE_PREFIX = 'bridge';
+/**
+ * How long to wait for a network scan.
+ *
+ * Every device is questioned in turn and a sleepy one holds things up, so
+ * minutes is normal on a mesh of any size.
+ */
+const MAP_TIMEOUT_MS = 180_000;
 /** Device topic suffixes that are commands or metadata, not state. */
 const NON_STATE_SUFFIXES = ['set', 'get'];
 
@@ -28,6 +43,13 @@ export class Zigbee2mqttAdapter
   private readonly base: string;
 
   private devices: NormalisedDevice[] = [];
+  /** The scan in flight, so two askers wait on one answer. */
+  private mapPending?: {
+    promise: Promise<NetworkMap>;
+    resolve: (map: NetworkMap) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  };
   /** friendly_name to deviceId, rebuilt on every catalog update. */
   private topicIndex = new Map<string, string>();
   private readonly states = new Map<string, Record<string, unknown>>();
@@ -65,7 +87,104 @@ export class Zigbee2mqttAdapter
       }),
     );
 
+    this.unsubscribes.push(
+      this.mqtt.subscribe(
+        joinTopic(this.base, BRIDGE_PREFIX, 'response', 'networkmap'),
+        (message) => {
+          this.handleNetworkMap(message.payload);
+        },
+      ),
+    );
+
     this.log.info(`Watching ${this.base}/bridge/devices`);
+  }
+
+  /**
+   * Asks Zigbee2MQTT to walk the mesh and report what it found.
+   *
+   * The bridge answers on its own topic rather than to the asker, so the
+   * request and the reply are tied together here and not by the protocol.
+   */
+  async getNetworkMap(): Promise<NetworkMap> {
+    if (this.mapPending) {
+      return this.mapPending.promise;
+    }
+
+    let resolve!: (map: NetworkMap) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<NetworkMap>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+
+    const timer = setTimeout(() => {
+      this.mapPending = undefined;
+      reject(
+        new Error(
+          `Zigbee2MQTT did not answer within ${MAP_TIMEOUT_MS / 1000} seconds. ` +
+            'A scan questions every device in turn, so a sleeping one can hold it up.',
+        ),
+      );
+    }, MAP_TIMEOUT_MS);
+    timer.unref?.();
+
+    this.mapPending = { promise, resolve, reject, timer };
+
+    this.log.info('Asking for the network map, which takes a while');
+    this.mqtt.publish(
+      joinTopic(this.base, BRIDGE_PREFIX, 'request', 'networkmap'),
+      JSON.stringify({ type: 'raw', routes: false }),
+    );
+
+    return promise;
+  }
+
+  private handleNetworkMap(payload: Buffer): void {
+    const pending = this.mapPending;
+    if (!pending) {
+      // Somebody else asked, or ours already timed out. Either way it is not
+      // an answer to a question we are still waiting on.
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload.toString());
+    } catch (error) {
+      return this.failMap(`the network map was not valid JSON: ${describe(error)}`);
+    }
+
+    if (!isPlainObject(parsed)) {
+      return this.failMap('the network map was not an object');
+    }
+    if (parsed.status !== undefined && parsed.status !== 'ok') {
+      const why = isPlainObject(parsed.error) ? '' : String(parsed.error ?? 'no reason given');
+      return this.failMap(`Zigbee2MQTT refused the scan: ${why}`);
+    }
+
+    const data = isPlainObject(parsed.data) ? parsed.data : undefined;
+    const value = data && isPlainObject(data.value) ? data.value : undefined;
+    if (!value || !Array.isArray(value.nodes)) {
+      return this.failMap('the network map had no nodes in it');
+    }
+
+    const map = readNetworkMap(value.nodes, Array.isArray(value.links) ? value.links : []);
+
+    clearTimeout(pending.timer);
+    this.mapPending = undefined;
+    this.log.info(`Network map: ${map.nodes.length} devices, ${map.links.length} links`);
+    pending.resolve(map);
+  }
+
+  private failMap(why: string): void {
+    const pending = this.mapPending;
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.mapPending = undefined;
+    this.log.error(why);
+    pending.reject(new Error(why));
   }
 
   async stop(): Promise<void> {
@@ -242,6 +361,84 @@ export class Zigbee2mqttAdapter
     };
     this.emit('state', update);
   }
+}
+
+/**
+ * Reads the raw scan into the shape the interface draws.
+ *
+ * A link is only kept when both ends are devices the scan reported, since a
+ * line to nothing cannot be drawn and usually means a device that has left.
+ */
+export function readNetworkMap(rawNodes: unknown[], rawLinks: unknown[]): NetworkMap {
+  const nodes: NetworkNode[] = [];
+  const known = new Set<string>();
+
+  for (const raw of rawNodes) {
+    if (!isPlainObject(raw)) {
+      continue;
+    }
+    const address = typeof raw.ieeeAddr === 'string' ? raw.ieeeAddr : undefined;
+    if (!address || known.has(address)) {
+      continue;
+    }
+    known.add(address);
+    // `failed` lists the requests that went unanswered, and an empty list is
+    // a device that answered everything. An empty array is true in a boolean,
+    // so testing it directly marks every healthy router as broken.
+    const failed = Array.isArray(raw.failed) ? raw.failed.length > 0 : Boolean(raw.failed);
+    nodes.push({
+      address,
+      name: typeof raw.friendlyName === 'string' ? raw.friendlyName : address,
+      kind: kindOf(raw.type),
+      ...(failed ? { failed: true } : {}),
+    });
+  }
+
+  const links: NetworkLink[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rawLinks) {
+    if (!isPlainObject(raw)) {
+      continue;
+    }
+    const from = endOf(raw.source, raw.sourceIeeeAddr);
+    const to = endOf(raw.target, raw.targetIeeeAddr);
+    if (!from || !to || from === to || !known.has(from) || !known.has(to)) {
+      continue;
+    }
+
+    // Two devices that can hear each other report the link twice, once from
+    // each side. It is one line on the map either way.
+    const pair = [from, to].sort().join('~');
+    if (seen.has(pair)) {
+      continue;
+    }
+    seen.add(pair);
+
+    links.push({
+      from,
+      to,
+      quality: typeof raw.linkquality === 'number' ? raw.linkquality : 0,
+    });
+  }
+
+  return { nodes, links, at: Date.now() };
+}
+
+function kindOf(type: unknown): NetworkNode['kind'] {
+  const name = String(type ?? '').toLowerCase();
+  if (name === 'coordinator') {
+    return 'coordinator';
+  }
+  return name === 'router' ? 'router' : 'end device';
+}
+
+/** The address of one end of a link, whichever way this version reports it. */
+function endOf(side: unknown, fallback: unknown): string | undefined {
+  if (isPlainObject(side) && typeof side.ieeeAddr === 'string') {
+    return side.ieeeAddr;
+  }
+  return typeof fallback === 'string' ? fallback : undefined;
 }
 
 function describe(error: unknown): string {

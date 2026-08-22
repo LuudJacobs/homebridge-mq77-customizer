@@ -140,6 +140,9 @@ export class WebServer {
       if (path === '/api/log' && request.method === 'GET') {
         return send(response, 200, { entries: this.deps.rules.getLog() });
       }
+      if (path === '/api/map' && request.method === 'POST') {
+        return this.networkMap(response);
+      }
       if (path === '/api/events' && request.method === 'GET') {
         return this.subscribe(response);
       }
@@ -321,6 +324,29 @@ export class WebServer {
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       build: buildLabel(),
     };
+  }
+
+  /**
+   * Runs a network scan and answers with what it found.
+   *
+   * A scan takes minutes, so this request is held open for the length of one
+   * rather than answered now and collected later. It is only ever started
+   * because somebody pressed the button.
+   */
+  private async networkMap(response: ServerResponse): Promise<void> {
+    try {
+      const map = await this.deps.catalog.getNetworkMap();
+      if (!map) {
+        return send(response, 501, {
+          error: 'No source here can describe a network. That needs Zigbee2MQTT.',
+        });
+      }
+      return send(response, 200, map);
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      this.deps.log.error(`Network map failed: ${why}`);
+      return send(response, 502, { error: why });
+    }
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {

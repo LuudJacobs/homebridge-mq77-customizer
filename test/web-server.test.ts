@@ -19,20 +19,25 @@ interface Harness {
   store: Store;
   base: string;
   syncs: number;
+  mqtt: FakeMqtt;
 }
 
-async function harness(options: { password?: string } = {}): Promise<Harness> {
+async function harness(
+  options: { password?: string; sources?: Parameters<Catalog['start']>[0] } = {},
+): Promise<Harness> {
   const directory = await mkdtemp(join(tmpdir(), 'mq77-customizer-web-'));
   const store = new Store(join(directory, 'state.json'), silentLogger);
   await store.load();
 
   const mqtt = new FakeMqtt();
   const catalog = new Catalog(mqtt.asConnection(), silentLogger);
-  await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
+  await catalog.start(
+    options.sources ?? [{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }],
+  );
   mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
   mqtt.deliver('zigbee2mqtt/woonkamer_lampen-ZB2GS', { state_l1: 'ON', state_l2: 'OFF' });
 
-  const result: Harness = { server: undefined as never, store, base: '', syncs: 0 };
+  const result: Harness = { server: undefined as never, store, base: '', syncs: 0, mqtt };
 
   const server = new WebServer({
     config: { port: 0, password: options.password ?? PASSWORD },
@@ -380,5 +385,81 @@ describe('sanitiseExposure', () => {
       buttons: {},
     });
     expect(sanitiseExposure({ properties: 'nope' }, known).properties).toEqual([]);
+  });
+});
+
+describe('the network map', () => {
+  const SCAN = {
+    status: 'ok',
+    data: {
+      type: 'raw',
+      value: {
+        nodes: [
+          { ieeeAddr: '0x001', friendlyName: 'Coordinator', type: 'Coordinator' },
+          { ieeeAddr: '0x002', friendlyName: 'hall_socket', type: 'Router' },
+        ],
+        links: [{ source: { ieeeAddr: '0x001' }, target: { ieeeAddr: '0x002' }, linkquality: 180 }],
+      },
+    },
+  };
+
+  /** The request goes out over MQTT, so wait for it before answering. */
+  async function whenAsked(mqtt: FakeMqtt): Promise<void> {
+    for (let turn = 0; turn < 50; turn++) {
+      if (mqtt.published.some((message) => message.topic.endsWith('request/networkmap'))) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('the server never asked for a map');
+  }
+
+  it('answers with the scan once the bridge replies', async () => {
+    const { base, mqtt } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const pending = signed('/api/map', { method: 'POST' });
+    await whenAsked(mqtt);
+    mqtt.deliver('zigbee2mqtt/bridge/response/networkmap', SCAN);
+
+    const response = await pending;
+    expect(response.status).toBe(200);
+    const map = (await response.json()) as { nodes: unknown[]; links: unknown[] };
+    expect(map.nodes).toHaveLength(2);
+    expect(map.links).toHaveLength(1);
+  });
+
+  it('passes on a refusal rather than hanging', async () => {
+    const { base, mqtt } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const pending = signed('/api/map', { method: 'POST' });
+    await whenAsked(mqtt);
+    mqtt.deliver('zigbee2mqtt/bridge/response/networkmap', {
+      status: 'error',
+      error: 'coordinator is busy',
+    });
+
+    const response = await pending;
+    expect(response.status).toBe(502);
+    expect((await response.json()) as { error: string }).toMatchObject({
+      error: expect.stringContaining('busy'),
+    });
+  });
+
+  it('says there is no network to describe when no source has one', async () => {
+    const { base } = await harness({
+      sources: [{ id: 'broadlink', adapter: 'json-topic', baseTopic: 'broadlinkrm' }],
+    });
+    const { fetch: signed } = await signIn(base);
+
+    const response = await signed('/api/map', { method: 'POST' });
+    expect(response.status).toBe(501);
+  });
+
+  it('is behind the password like everything else', async () => {
+    const { base } = await harness();
+    const response = await fetch(`${base}/api/map`, { method: 'POST' });
+    expect(response.status).toBe(401);
   });
 });

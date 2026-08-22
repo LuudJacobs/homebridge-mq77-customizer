@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.11.0
+# MQ77 Customizer 0.12.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -143,6 +143,12 @@ Two things guard against a pair of rules setting each other off:
 - a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+
+### Map
+
+The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
+
+A scan questions every device in turn, so it takes minutes on a mesh of any size and only runs when asked for. Zigbee2MQTT only: a flat JSON source has no network to describe.
 
 The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Each entry says whether it came from an automation or a mirror.
 

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 import { getAdapterFactory } from './adapters/index.js';
-import type { SourceAdapter, SourceConfig } from './adapters/types.js';
+import type { NetworkMap, SourceAdapter, SourceConfig } from './adapters/types.js';
 import { prefixed, type Logger } from './logger.js';
 import type { MqttConnection } from './mqtt/client.js';
 import { deviceKey, type NormalisedDevice, type StateUpdate } from './model/types.js';
@@ -90,6 +90,21 @@ export class Catalog extends EventEmitter<CatalogEvents> {
    * the difference matters: acting on the second would remove accessories that
    * are about to come back.
    */
+  /**
+   * The network behind the first source that has one to describe.
+   *
+   * Only Zigbee2MQTT can answer this. A flat JSON publisher has no mesh, so
+   * the absence of an answer is the normal case rather than a failure.
+   */
+  async getNetworkMap(): Promise<NetworkMap | undefined> {
+    for (const adapter of this.adapters.values()) {
+      if (adapter.getNetworkMap) {
+        return adapter.getNetworkMap();
+      }
+    }
+    return undefined;
+  }
+
   hasReported(sourceId: string): boolean {
     return this.reported.has(sourceId);
   }

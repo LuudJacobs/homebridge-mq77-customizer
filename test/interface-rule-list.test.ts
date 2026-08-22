@@ -167,18 +167,122 @@ describe('sorting the automation list', () => {
     expect(named(ui, '#automation')).toEqual(['Apple', 'Zebra']);
   });
 
-  it('sorts by the device that sets it off', async () => {
+  it('offers name and trigger, and nothing about the target', async () => {
     const ui = await openTab('Automation', rules);
-    await sortBy(ui, 'trigger');
-    // hall_lamp before porch_lamp, which is the reverse of by name.
-    expect(named(ui, '#automation')).toEqual(['Zebra', 'Apple']);
+    const options = [...ui.document.querySelectorAll('#sort option')].map(
+      (node) => (node as HTMLOptionElement).value,
+    );
+    expect(options).toEqual(['name', 'trigger']);
+  });
+});
+
+describe('listing automations under their trigger', () => {
+  const headings = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#automation .rule-group')].map((node) => node.textContent);
+
+  /** Two buttons on one remote, and a third on another. */
+  const shelly = automation('r1', 'Hall on', '0xa', '0xb', {
+    triggers: [{ ...ref('0xa'), match: { kind: 'changedTo', value: '1_single' } }],
+  });
+  const shellyToo = automation('r2', 'Porch on', '0xa', '0xc', {
+    triggers: [{ ...ref('0xa'), match: { kind: 'changedTo', value: '2_double' } }],
+  });
+  const aqara = automation('r3', 'Shed on', '0xb', '0xc', {
+    triggers: [{ ...ref('0xb'), match: { kind: 'changedTo', value: 'single_left' } }],
   });
 
-  it('sorts by the device it acts on', async () => {
-    const ui = await openTab('Automation', rules);
-    await sortBy(ui, 'target');
-    // porch_lamp before shed_lamp.
-    expect(named(ui, '#automation')).toEqual(['Apple', 'Zebra']);
+  it('puts a heading per trigger device, in name order', async () => {
+    const ui = await openTab('Automation', [aqara, shelly, shellyToo]);
+    await sortBy(ui, 'trigger');
+    expect(headings(ui)).toEqual(['hall_lamp', 'porch_lamp']);
+  });
+
+  it('names the automation, then what sets it off', async () => {
+    const ui = await openTab('Automation', [shelly, shellyToo]);
+    await sortBy(ui, 'trigger');
+
+    // The heading has said which device, so the line is about the automation.
+    expect(named(ui, '#automation')).toEqual(['Hall on', 'Porch on']);
+    const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
+      (node) => node.textContent,
+    );
+    expect(meta).toEqual(['State becomes 1_single', 'State becomes 2_double']);
+  });
+
+  it('lists a rule once per trigger, under each device', async () => {
+    const both = automation('r4', 'Either', '0xa', '0xc', {
+      triggers: [
+        { ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } },
+        { ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } },
+      ],
+    });
+    const ui = await openTab('Automation', [both]);
+    await sortBy(ui, 'trigger');
+
+    // The list answers what a button does, so one rule can answer twice.
+    expect(headings(ui)).toEqual(['hall_lamp', 'porch_lamp']);
+    expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
+  });
+
+  it('opens one occurrence without opening the other', async () => {
+    const both = automation('r4', 'Either', '0xa', '0xc', {
+      triggers: [
+        { ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } },
+        { ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } },
+      ],
+    });
+    const ui = await openTab('Automation', [both]);
+    await sortBy(ui, 'trigger');
+
+    const cards = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
+    cards[0]!.open = true;
+    cards[0]!.dispatchEvent(new ui.window.Event('toggle'));
+    await ui.settle();
+
+    const after = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
+    // Two editors of one rule means two drafts, and the second save wins.
+    expect(after.map((card) => card.open)).toEqual([true, false]);
+  });
+
+  it('groups anything whose trigger device has gone at the end', async () => {
+    const orphan = automation('r5', 'Gone', '0xz', '0xc', {
+      triggers: [{ ...ref('0xz'), match: { kind: 'changedTo', value: 'ON' } }],
+    });
+    const ui = await openTab('Automation', [orphan, shelly]);
+    await sortBy(ui, 'trigger');
+    expect(headings(ui)).toEqual(['hall_lamp', 'No device']);
+  });
+});
+
+describe('a rule just added', () => {
+  it('sits at the top until it is saved, whatever it is called', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    // By name it would be second and easy to miss on a long list.
+    expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
+  });
+
+  it('takes its place in the order once saved', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+
+    expect(card).not.toBeNull();
+    expect(named(ui, '#automation')).toEqual(['Apple', 'New automation']);
   });
 });
 

@@ -58,6 +58,7 @@
         <button id="tab-automation" type="button" class="tab">Automation</button>
         <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
         <button id="tab-activity" type="button" class="tab">Activity</button>
+        <button id="tab-map" type="button" class="tab">Map</button>
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
           Zigbee2MQTT
           <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
@@ -102,6 +103,19 @@
           <button id="add-mirror" type="button">Add mirror</button>
         </div>
         <main id="mirror"></main>
+      </section>
+
+      <section id="view-map" hidden>
+        <p class="hint">
+          How the Zigbee network is put together: what reaches the hub directly, and what
+          reaches it through something else. Scanning questions every device in turn, so it
+          takes a while and is only done when asked.
+        </p>
+        <div class="rules-actions">
+          <button id="scan-map" type="button">Scan the network</button>
+          <span id="map-status" class="device-meta"></span>
+        </div>
+        <div id="map" class="map"><div id="map-tip" class="map-tip" hidden></div></div>
       </section>
 
       <section id="view-activity" hidden>

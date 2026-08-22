@@ -15,6 +15,16 @@ const state = {
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
   sorts: { devices: 'name', automation: 'name', mirror: 'name' },
+  /**
+   * A rule just added, kept at the top of its list.
+   *
+   * It is saved the moment it is added, so sorting would otherwise drop it
+   * somewhere down the page under the name it has not been given yet.
+   */
+  pinned: undefined,
+  /** The last network scan, and whether one is running. */
+  map: undefined,
+  scanning: false,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
@@ -45,10 +55,16 @@ const el = {
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
   tabActivity: document.getElementById('tab-activity'),
+  tabMap: document.getElementById('tab-map'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
   viewActivity: document.getElementById('view-activity'),
+  viewMap: document.getElementById('view-map'),
+  map: document.getElementById('map'),
+  mapStatus: document.getElementById('map-status'),
+  scanMap: document.getElementById('scan-map'),
+  mapTip: document.getElementById('map-tip'),
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
   activityLog: document.getElementById('activity-log'),
@@ -376,7 +392,6 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['trigger', 'Trigger device'],
-      ['target', 'Target device'],
     ],
     placeholder: 'Filter name, topic or model',
   },
@@ -389,6 +404,7 @@ const TAB_CONTROLS = {
     placeholder: 'Filter name, topic or model',
   },
   activity: { sorts: [], placeholder: 'Filter by name' },
+  map: { sorts: [], placeholder: 'Filter by name' },
 };
 
 /** Points the header controls at whatever the current tab is about. */
@@ -413,6 +429,8 @@ function paintControls() {
     el.sort.value = state.sorts[view] ?? 'name';
   }
 
+  // Nothing on the map is filtered or sorted from up here.
+  el.filter.hidden = view === 'map';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
 }
@@ -1078,6 +1096,8 @@ function renderRuleList(kind, container, emptyText) {
     .filter((rule) => matchesRuleFilter(rule, term))
     .sort(
       (a, b) =>
+        // A rule just added stays in sight, wherever its name would put it.
+        Number(b.id === state.pinned) - Number(a.id === state.pinned) ||
         compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
         compareNames(a.name, b.name),
     );
@@ -1091,20 +1111,98 @@ function renderRuleList(kind, container, emptyText) {
     container.append(empty);
     return;
   }
+
+  // Sorting automations by trigger is really a question about a remote: what
+  // does each of its buttons do. That reads better as a list per device than
+  // as one long list in trigger order.
+  if (kind === 'standard' && sort === 'trigger') {
+    renderByTrigger(container, rules);
+    return;
+  }
+
   for (const rule of rules) {
     container.append(renderRule(rule));
   }
 }
 
-function renderRule(rule) {
+/** What a trigger waits for, as a phrase: "Action becomes 1_single". */
+function describeTrigger(trigger) {
+  if (!trigger) {
+    return 'Nothing yet';
+  }
+  const label = findProperty(trigger)?.label ?? trigger.propertyKey ?? 'something';
+  const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
+  const value = trigger.match?.value;
+  const hasValue = value !== undefined && value !== '';
+  return [label, verb, hasValue ? value : ''].filter(Boolean).join(' ');
+}
+
+/**
+ * A heading per trigger device, and a line under it per trigger.
+ *
+ * A rule set off by three buttons appears three times, which is the point: the
+ * list answers what a given button does, not what a given rule is called.
+ */
+function renderByTrigger(container, rules) {
+  const groups = new Map();
+
+  for (const rule of rules) {
+    // A rule just added has nothing set yet, so it goes above the headings
+    // rather than under one for whichever device happened to be first.
+    if (rule.id === state.pinned) {
+      container.append(renderRule(rule));
+      continue;
+    }
+
+    const triggers = ruleTriggers(rule);
+    for (const [index, trigger] of (triggers.length ? triggers : [undefined]).entries()) {
+      const device = trigger && findDevice(trigger);
+      const key = device ? `${device.sourceId}|${device.deviceId}` : '';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: device ? displayName(device) : 'No device',
+          known: Boolean(device),
+          entries: [],
+        });
+      }
+      groups.get(key).entries.push({ rule, trigger, index });
+    }
+  }
+
+  // Devices by name, and anything whose device has gone at the end.
+  const ordered = [...groups.values()].sort(
+    (a, b) => Number(b.known) - Number(a.known) || compareNames(a.name, b.name),
+  );
+
+  for (const group of ordered) {
+    const heading = document.createElement('h3');
+    heading.className = 'rule-group';
+    heading.textContent = group.name;
+    container.append(heading);
+
+    group.entries.sort(
+      (a, b) =>
+        compareNames(describeTrigger(a.trigger), describeTrigger(b.trigger)) ||
+        compareNames(a.rule.name, b.rule.name),
+    );
+    for (const entry of group.entries) {
+      container.append(renderRule(entry.rule, entry));
+    }
+  }
+}
+
+function renderRule(rule, occurrence) {
   const card = document.createElement('details');
   card.className = 'device rule';
-  card.open = state.openRules.has(rule.id);
+  // One rule can be listed under several of its triggers, and opening it in
+  // one place should not open it in the others.
+  const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
+  card.open = state.openRules.has(key);
   card.addEventListener('toggle', () => {
     if (card.open) {
-      state.openRules.add(rule.id);
+      state.openRules.add(key);
     } else {
-      state.openRules.delete(rule.id);
+      state.openRules.delete(key);
     }
   });
 
@@ -1114,7 +1212,9 @@ function renderRule(rule) {
   name.textContent = rule.name;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
-  detail.textContent = summarise(rule);
+  // Under a trigger heading the rule is named first and what sets it off
+  // second, since the heading has already said which device it is.
+  detail.textContent = occurrence ? describeTrigger(occurrence.trigger) : summarise(rule);
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
   badge.textContent = rule.enabled ? 'on' : 'off';
@@ -1201,6 +1301,10 @@ function ruleFooter(rule, draft) {
     error.textContent = '';
     try {
       await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      // Saved, so it has a name worth sorting by and can take its place.
+      if (state.pinned === rule.id) {
+        state.pinned = undefined;
+      }
       await loadRules();
     } catch (problem) {
       error.textContent = problem.message;
@@ -2068,19 +2172,291 @@ function repaint() {
   }
 }
 
+const SVG = 'http://www.w3.org/2000/svg';
+/** Room for one device box, and the gaps around it. */
+const NODE_WIDTH = 132;
+const NODE_HEIGHT = 34;
+/** Across, one step per hop away from the hub. */
+const COLUMN_STEP = NODE_WIDTH + 64;
+/** Down, one step per device sharing a hop. */
+const ROW_STEP = NODE_HEIGHT + 20;
+
+/**
+ * Works out how far each device sits from the hub.
+ *
+ * A walk out from the coordinator, taking the strongest link first, so a
+ * device hangs off the route it most likely uses rather than the first one
+ * the scan happened to mention. Anything the walk never reaches is put on a
+ * row of its own at the bottom: it answered the scan but nothing connects it.
+ */
+function layoutMap(map) {
+  const neighbours = new Map(map.nodes.map((node) => [node.address, []]));
+  for (const link of map.links) {
+    neighbours.get(link.from)?.push({ to: link.to, quality: link.quality });
+    neighbours.get(link.to)?.push({ to: link.from, quality: link.quality });
+  }
+
+  const root = map.nodes.find((node) => node.kind === 'coordinator') ?? map.nodes[0];
+  const depth = new Map();
+  const parents = new Map();
+
+  if (root) {
+    depth.set(root.address, 0);
+    const queue = [root.address];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const edges = [...(neighbours.get(current) ?? [])].sort((a, b) => b.quality - a.quality);
+      for (const edge of edges) {
+        if (depth.has(edge.to)) {
+          continue;
+        }
+        depth.set(edge.to, depth.get(current) + 1);
+        parents.set(edge.to, current);
+        queue.push(edge.to);
+      }
+    }
+  }
+
+  const rows = new Map();
+  for (const node of map.nodes) {
+    const level = depth.has(node.address) ? depth.get(node.address) : Infinity;
+    if (!rows.has(level)) {
+      rows.set(level, []);
+    }
+    rows.get(level).push(node);
+  }
+
+  // A hop per column, so the hub is on the left and the network reads out
+  // from it. Devices sharing a hop stack down that column.
+  const levels = [...rows.keys()].sort((a, b) => a - b);
+  const tallest = Math.max(1, ...levels.map((level) => rows.get(level).length));
+  const height = tallest * ROW_STEP + ROW_STEP;
+  const placed = new Map();
+
+  levels.forEach((level, column) => {
+    const nodes = rows.get(level).sort((a, b) => compareNames(a.name, b.name));
+    const step = height / (nodes.length + 1);
+    nodes.forEach((node, index) => {
+      placed.set(node.address, {
+        node,
+        x: column * COLUMN_STEP + NODE_WIDTH / 2 + 10,
+        y: step * (index + 1),
+        reached: level !== Infinity,
+      });
+    });
+  });
+
+  return { placed, parents, width: levels.length * COLUMN_STEP + 20, height };
+}
+
+/** Anything at or above this is a good link, at or below the other a poor one. */
+const QUALITY_GOOD = 200;
+const QUALITY_POOR = 100;
+
+function qualityClass(quality) {
+  if (quality >= QUALITY_GOOD) {
+    return 'good';
+  }
+  return quality <= QUALITY_POOR ? 'poor' : '';
+}
+
+/**
+ * What a device is, and what it can hear.
+ *
+ * Link quality belongs here rather than on the lines: a device with six
+ * neighbours has six lines crossing each other, and reading one of them means
+ * finding the right pixel.
+ */
+function describeNode(spot, map) {
+  const lines = [`${spot.node.kind}, ${spot.node.address}`];
+  if (spot.node.failed) {
+    lines.push('Did not answer the scan');
+  }
+  if (!spot.reached) {
+    lines.push('Nothing links this to the hub');
+  }
+
+  const heard = map.links
+    .filter((link) => link.from === spot.node.address || link.to === spot.node.address)
+    .map((link) => ({
+      other: link.from === spot.node.address ? link.to : link.from,
+      quality: link.quality,
+    }))
+    .sort((a, b) => b.quality - a.quality);
+
+  if (heard.length === 0) {
+    lines.push('No links');
+  }
+  return { lines, heard };
+}
+
+/** Closes whatever device panel is open, if any. */
+function closeMapTip() {
+  el.mapTip.hidden = true;
+}
+
+function openMapTip(spot, map, event) {
+  const { lines, heard } = describeNode(spot, map);
+  el.mapTip.replaceChildren();
+
+  const name = document.createElement('strong');
+  name.textContent = spot.node.name;
+  el.mapTip.append(name);
+
+  for (const line of lines) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    el.mapTip.append(paragraph);
+  }
+
+  if (heard.length > 0) {
+    const list = document.createElement('ul');
+    for (const entry of heard) {
+      const item = document.createElement('li');
+      const other = map.nodes.find((node) => node.address === entry.other);
+      const strength = document.createElement('strong');
+      strength.textContent = String(entry.quality);
+      strength.className = qualityClass(entry.quality);
+      item.append(document.createTextNode(`${other?.name ?? entry.other} · `), strength);
+      list.append(item);
+    }
+    el.mapTip.append(list);
+  }
+
+  // Shown before it is placed, since where it fits depends on how big it is.
+  el.mapTip.hidden = false;
+
+  const bounds = el.map.getBoundingClientRect();
+  const room = {
+    x: el.map.clientWidth - el.mapTip.offsetWidth - 8,
+    y: el.map.clientHeight - el.mapTip.offsetHeight - 8,
+  };
+  // Kept inside the map, so a device near an edge does not open a panel half
+  // of which needs scrolling to.
+  const left = event.clientX - bounds.left + el.map.scrollLeft + 12;
+  const top = event.clientY - bounds.top + el.map.scrollTop + 12;
+  el.mapTip.style.left = `${Math.max(8, Math.min(left, room.x + el.map.scrollLeft))}px`;
+  el.mapTip.style.top = `${Math.max(8, Math.min(top, room.y + el.map.scrollTop))}px`;
+}
+
+function drawMap() {
+  el.map.replaceChildren();
+  el.scanMap.disabled = state.scanning;
+  el.scanMap.textContent = state.scanning ? 'Scanning…' : 'Scan the network';
+
+  if (!state.map) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = state.scanning
+      ? 'Asking every device in turn. This takes a few minutes.'
+      : 'Nothing scanned yet.';
+    el.map.append(empty);
+    return;
+  }
+
+  const { placed, parents, width, height } = layoutMap(state.map);
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'map-svg');
+  svg.setAttribute('role', 'img');
+
+  // Every link faintly, so alternatives are visible, and the route back to
+  // the hub solid on top of it.
+  for (const link of state.map.links) {
+    const from = placed.get(link.from);
+    const to = placed.get(link.to);
+    if (!from || !to) {
+      continue;
+    }
+    const tree = parents.get(link.to) === link.from || parents.get(link.from) === link.to;
+    const line = document.createElementNS(SVG, 'line');
+    line.setAttribute('x1', from.x);
+    line.setAttribute('y1', from.y);
+    line.setAttribute('x2', to.x);
+    line.setAttribute('y2', to.y);
+    // Colour says how good the link is, weight says whether it is the route
+    // this device actually uses to reach the hub.
+    line.setAttribute(
+      'class',
+      ['map-link', tree ? 'route' : '', qualityClass(link.quality)].filter(Boolean).join(' '),
+    );
+    svg.append(line);
+  }
+
+  for (const spot of placed.values()) {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('class', `map-node ${spot.node.kind.replace(' ', '-')}`);
+    if (!spot.reached) {
+      group.classList.add('adrift');
+    }
+    if (spot.node.failed) {
+      group.classList.add('failed');
+    }
+
+    const box = document.createElementNS(SVG, 'rect');
+    box.setAttribute('x', spot.x - NODE_WIDTH / 2);
+    box.setAttribute('y', spot.y - NODE_HEIGHT / 2);
+    box.setAttribute('width', NODE_WIDTH);
+    box.setAttribute('height', NODE_HEIGHT);
+    box.setAttribute('rx', 7);
+
+    const text = document.createElementNS(SVG, 'text');
+    text.setAttribute('x', spot.x);
+    text.setAttribute('y', spot.y + 4);
+    text.setAttribute('text-anchor', 'middle');
+    text.textContent = spot.node.name;
+
+    group.addEventListener('click', (event) => {
+      // Kept from the closing handler on the page, which would shut the panel
+      // in the same click that opened it.
+      event.stopPropagation();
+      openMapTip(spot, state.map, event);
+    });
+
+    group.append(box, text);
+    svg.append(group);
+  }
+
+  el.map.append(svg, el.mapTip);
+  closeMapTip();
+}
+
+async function scanNetwork() {
+  state.scanning = true;
+  el.mapStatus.textContent = 'Scanning. Every device is questioned in turn.';
+  drawMap();
+
+  try {
+    state.map = await api('/api/map', { method: 'POST' });
+    el.mapStatus.textContent = `${state.map.nodes.length} devices, scanned ${formatLastSeen(
+      state.map.at,
+    )}`;
+  } catch (problem) {
+    el.mapStatus.textContent = problem.message;
+  } finally {
+    state.scanning = false;
+    drawMap();
+  }
+}
+
 function showView(view) {
   state.view = view;
   el.viewDevices.hidden = view !== 'devices';
   el.viewAutomation.hidden = view !== 'automation';
   el.viewMirror.hidden = view !== 'mirror';
   el.viewActivity.hidden = view !== 'activity';
+  el.viewMap.hidden = view !== 'map';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
   el.tabActivity.classList.toggle('active', view === 'activity');
+  el.tabMap.classList.toggle('active', view === 'map');
   paintControls();
   if (view === 'devices') {
     safeRender();
+  } else if (view === 'map') {
+    // Nothing to fetch: a scan is slow enough that it only happens on asking.
+    drawMap();
   } else {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
@@ -2093,11 +2469,17 @@ el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
+el.tabMap.addEventListener('click', () => showView('map'));
+el.scanMap.addEventListener('click', () => scanNetwork());
+
+// One device panel at a time, and anywhere else closes it.
+document.addEventListener('click', () => closeMapTip());
 
 async function addRule(draft) {
   try {
     const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
     state.openRules.add(created.rule.id);
+    state.pinned = created.rule.id;
     await loadRules();
   } catch (problem) {
     setStatus(problem.message, 'lost');

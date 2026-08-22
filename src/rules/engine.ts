@@ -130,6 +130,17 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    * mirrors again, and every other member is by then already equal, so
    * nothing is sent and it stops after one round.
    */
+  /*
+   * Acting on the first thing heard from a device was tried and taken out
+   * again. Zigbee2MQTT does not retain state, so after a restart the first
+   * report from each member reads as a change and the group is written to,
+   * which looks like a rule firing on startup.
+   *
+   * Ignoring it costs more than it saves: nothing is known after a restart,
+   * so the first real change gets swallowed too, and a member that has not
+   * spoken since cannot be written to at all. A quiet startup is not worth a
+   * mirror that misses the first press.
+   */
   private mirror(
     rule: MirrorRule,
     update: StateUpdate,
@@ -420,8 +431,9 @@ function branchesOf(rule: Rule): Branch[] {
 }
 
 /** What to call an outcome in the activity list. */
-function nameOf(_branch: Branch, index: number): string {
-  return `outcome ${index + 1}`;
+function nameOf(branch: Branch, index: number): string {
+  // Whatever it was called, since that is what the run log is read for.
+  return branch.label ?? `outcome ${index + 1}`;
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */

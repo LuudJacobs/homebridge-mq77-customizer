@@ -52,6 +52,12 @@ async function harness(rules: MirrorRule[]) {
 
   const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
   catalog.on('state', (update) => engine.handleState(update));
+
+  // What every device has done before anything happens: said where it stands.
+  // Retained, so it primes the values without being read as a change.
+  mqtt.deliver(SWITCH.topic, { state_l1: 'OFF', state_l2: 'OFF' }, { retained: true });
+  mqtt.deliver(SOCKET.topic, { state: 'OFF', child_lock: 'UNLOCK' }, { retained: true });
+
   return { engine, store, mqtt };
 }
 
