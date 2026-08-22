@@ -286,6 +286,71 @@ describe('a rule just added', () => {
   });
 });
 
+describe('deleting a rule', () => {
+  const apple = automation('r1', 'Apple', '0xa', '0xb');
+
+  async function openSaved() {
+    const ui = await openTab('Automation', [apple]);
+    const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
+    card.open = true;
+    card.dispatchEvent(new ui.window.Event('toggle'));
+    await ui.settle();
+    return ui;
+  }
+
+  const deleteButton = (ui: { document: Document }) =>
+    ui.document.querySelector('#automation .rule-footer button.danger') as HTMLButtonElement;
+
+  it('asks once before deleting something that was saved', async () => {
+    const ui = await openSaved();
+    const button = deleteButton(ui);
+    expect(button.textContent).toBe('Delete');
+
+    await ui.click(button);
+    expect(button.textContent).toBe('Confirm');
+    // Nothing has gone yet.
+    expect(ui.requests.some((request) => request.path.includes('/api/rules/r1'))).toBe(false);
+
+    await ui.click(button);
+    expect(ui.requests.some((request) => request.path.includes('/api/rules/r1'))).toBe(true);
+  });
+
+  it('goes back to asking after a couple of seconds', async () => {
+    const ui = await openSaved();
+    const button = deleteButton(ui);
+    button.click();
+    expect(button.textContent).toBe('Confirm');
+
+    // A real wait: the countdown runs on the page's own timers, which fake
+    // ones do not reach from out here.
+    await new Promise((resolve) => setTimeout(resolve, 2300));
+
+    // A button left saying Confirm would be a trap for the next click.
+    expect(button.textContent).toBe('Delete');
+    expect(button.classList.contains('armed')).toBe(false);
+  }, 6000);
+
+  it('deletes a rule just added on the first click', async () => {
+    const ui = await openTab('Automation', [apple]);
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, automation('r2', 'New automation', '0xa', '0xb')] };
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    // Nothing has been written into it yet, so asking twice is in the way.
+    const button = ui.document.querySelector(
+      '#automation .rule-footer button.danger',
+    ) as HTMLButtonElement;
+    await ui.click(button);
+    expect(ui.requests.some((request) => request.path.includes('/api/rules/r2'))).toBe(true);
+  });
+
+  it('sits at the far end of the footer, away from Save', async () => {
+    const ui = await openSaved();
+    const footer = ui.document.querySelector('#automation .rule-footer')!;
+    expect(footer.lastElementChild).toBe(deleteButton(ui));
+  });
+});
+
 describe('the mirror list', () => {
   const rules = [mirror('m1', 'Zebra', '0xa', '0xc'), mirror('m2', 'Apple', '0xb', '0xb')];
 

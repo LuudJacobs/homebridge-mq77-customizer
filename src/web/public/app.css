@@ -503,6 +503,23 @@ button.primary {
   border-top: 1px solid var(--line);
 }
 
+/* Away from Save, at the far end, so the two are not next to each other. */
+.rule-footer .danger {
+  margin-left: auto;
+}
+
+button.danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Asked once and waiting to be meant. */
+button.danger.armed {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
 .log {
   border: 1px solid var(--line);
   border-radius: var(--radius);

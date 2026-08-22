@@ -1313,14 +1313,40 @@ function ruleFooter(rule, draft) {
 
   const remove = document.createElement('button');
   remove.type = 'button';
+  remove.className = 'danger';
   remove.textContent = 'Delete';
-  remove.addEventListener('click', async () => {
+
+  const erase = async () => {
     await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
     state.openRules.delete(rule.id);
     await loadRules();
-  });
+  };
 
-  footer.append(save, remove, error);
+  // A rule that has only just been added is a blank nobody has written
+  // anything into, so asking twice is in the way. Anything else took work.
+  if (rule.id === state.pinned) {
+    remove.addEventListener('click', erase);
+  } else {
+    let armed;
+    remove.addEventListener('click', () => {
+      if (armed) {
+        clearTimeout(armed);
+        armed = undefined;
+        return erase();
+      }
+      remove.textContent = 'Confirm';
+      remove.classList.add('armed');
+      // Long enough to mean it, short enough that a button left saying
+      // Confirm cannot be pressed by mistake later.
+      armed = setTimeout(() => {
+        armed = undefined;
+        remove.textContent = 'Delete';
+        remove.classList.remove('armed');
+      }, CONFIRM_MS);
+    });
+  }
+
+  footer.append(save, error, remove);
   return footer;
 }
 
@@ -2248,6 +2274,9 @@ function layoutMap(map) {
 
   return { placed, parents, width: levels.length * COLUMN_STEP + 20, height };
 }
+
+/** How long a Delete button stays armed before going back to asking. */
+const CONFIRM_MS = 2000;
 
 /** Anything at or above this is a good link, at or below the other a poor one. */
 const QUALITY_GOOD = 200;
