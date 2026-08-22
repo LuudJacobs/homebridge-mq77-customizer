@@ -13,6 +13,21 @@ export interface SourceConfig {
   topics?: string;
   /** Suffix that turns a state topic into a command topic, usually `set`. */
   setTopicSuffix?: string;
+  /**
+   * Functions a device has that it may never mention.
+   *
+   * A flat JSON topic carries no schema, so a key is only known once it has
+   * turned up in a payload. A fan that reports nothing but `state` until
+   * someone changes its speed is invisible up to that point, and saying so
+   * here fills the gap.
+   */
+  devices?: DeclaredDevice[];
+}
+
+export interface DeclaredDevice {
+  /** The device topic, relative to `baseTopic`. */
+  topic: string;
+  properties: string[];
 }
 
 export interface AdapterContext {

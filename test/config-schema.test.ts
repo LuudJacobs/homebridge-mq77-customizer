@@ -51,7 +51,7 @@ describe('config.schema.json', () => {
   });
 
   it('shows adapter specific fields only for that adapter', () => {
-    for (const name of ['topics', 'setTopicSuffix']) {
+    for (const name of ['topics', 'setTopicSuffix', 'devices']) {
       const [, field] = properties(schema.schema).find(([path]) => path.endsWith(`.${name}`))!;
       // Otherwise a Zigbee2MQTT source offers two fields that do nothing.
       expect(field.condition?.functionBody).toContain("adapter === 'json-topic'");
@@ -83,6 +83,97 @@ describe('config.schema.json', () => {
   it('asks for a web password, since the interface will not start without one', () => {
     const [, password] = properties(schema.schema).find(([path]) => path === 'web.password')!;
     expect(password.required).toBe(true);
+  });
+
+  it('lays out every field, since a layout replaces the automatic form', () => {
+    // Naming a layout means fields are shown because they are listed, not
+    // because they exist. One left out disappears from the config UI without
+    // any sign of it, so this is the thing that says so.
+    const keys = new Set<string>();
+    const walk = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          keys.add(node);
+        } else {
+          if (node.key) {
+            keys.add(node.key);
+          }
+          walk(node.items ?? []);
+        }
+      }
+    };
+    walk(schema.layout);
+
+    // A field is covered by itself or by any parent that is laid out whole.
+    const covered = (path: string) => {
+      const key = path.replace(/\.\[\]/g, '[]');
+      return [...keys].some(
+        (laid) => key === laid || key.startsWith(`${laid}.`) || key.startsWith(`${laid}[]`),
+      );
+    };
+
+    // Only the fields someone fills in. A container is covered by its
+    // children being laid out one by one.
+    const isLeaf = (property: any) =>
+      property.properties === undefined && property.items?.properties === undefined;
+
+    const missing = properties(schema.schema)
+      .filter(([, property]) => isLeaf(property))
+      .map(([path]) => path)
+      .filter((path) => !covered(path));
+
+    expect(missing).toEqual([]);
+  });
+
+  it('makes the described devices array itself the panel', () => {
+    const panel = schema.layout
+      .flatMap((node: any) => (node.key === 'sources' ? node.items : []))
+      .find((node: any) => node.title === 'Described devices');
+
+    expect(panel).toBeDefined();
+    // Collapsed to start with, since most sources never describe anything.
+    expect(panel.expandable).toBe(true);
+    expect(panel.expanded).toBe(false);
+    // One title, on the panel, and none on the array under it.
+    const [, devices] = properties(schema.schema).find(([path]) => path === 'sources.[].devices')!;
+    expect(devices.title).toBeUndefined();
+
+    // An expandable node shows what its items say. Without them it opens on
+    // nothing, which is worse than not collapsing at all.
+    expect(panel.items?.length).toBeGreaterThan(0);
+  });
+
+  it('gives every expandable node something to show', () => {
+    const check = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          continue;
+        }
+        if (node.expandable) {
+          expect(node.items?.length, `${node.title ?? node.key} opens on nothing`).toBeGreaterThan(0);
+        }
+        check(node.items ?? []);
+      }
+    };
+    check(schema.layout);
+  });
+
+  it('conditions only what carries an array index', () => {
+    // `arrayIndices` is bound to a node with a key. On a wrapper without one
+    // the condition cannot be worked out, and the whole node disappears
+    // rather than failing loudly, which is how the panel went missing.
+    const check = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          continue;
+        }
+        if (node.condition?.functionBody?.includes('arrayIndices')) {
+          expect(node.key, `condition on ${node.title ?? node.type}`).toBeDefined();
+        }
+        check(node.items ?? []);
+      }
+    };
+    check(schema.layout);
   });
 
   it('offers every adapter the plugin can actually load', () => {

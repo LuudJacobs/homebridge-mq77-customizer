@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.11.0] - 2026-08-22
+
+### Added
+
+- A flat JSON source can describe functions a device has but never reports, such as the speed and swing of a fan. What was described is logged at startup, and a described topic nothing reports on is named in a warning alongside the topics that did
+- Outcomes can be named, beside a remove button that is now a plain cross
+
+### Changed
+
+- The automation editor keeps "or", "and" and the buttons that add another on the row they belong to, instead of each on a line of its own
+- Remove group sits at the top right of its box
+- Outcomes are spaced apart and faintly shaded
+- Rule rows have fixed widths, so the columns line up from one row to the next
+- Number inputs are styled like every other input instead of unstyled, which is what made the delay box look out of place
+- In the config form, described devices sit behind a collapsed panel and Rules only moved up under ID
+
+### Fixed
+
+- Sorting and filtering on the Automation and Mirror tabs, which threw on any rule saved since outcomes arrived and emptied both tabs without saying why
+- The device picker in a rule was styled as a device card, since it shared its class
+
 ## [0.10.0] - 2026-08-21
 
 ### Changed

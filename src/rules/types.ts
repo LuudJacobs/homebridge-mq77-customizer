@@ -60,6 +60,8 @@ export interface Action extends PropertyRef {
  * is a legitimate thing to have half built.
  */
 export interface Branch {
+  /** A note from whoever wrote the rule. Nothing evaluates it. */
+  label?: string;
   when?: ConditionNode;
   actions: Action[];
 }

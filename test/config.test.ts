@@ -85,6 +85,56 @@ describe('resolveConfig', () => {
     expect(log.errors).toHaveLength(1);
   });
 
+  it('reads devices described by hand', () => {
+    const config = resolveConfig(
+      {
+        sources: [
+          {
+            id: 'broadlink',
+            adapter: 'json-topic',
+            baseTopic: 'broadlinkrm',
+            devices: [{ topic: 'fan_office', properties: ['speed', 'swing'] }],
+          },
+        ],
+      },
+      collectingLogger(),
+    );
+    expect(config.sources[0]?.devices).toEqual([
+      { topic: 'fan_office', properties: ['speed', 'swing'] },
+    ]);
+  });
+
+  it('skips a described device with no topic or no functions, keeping the rest', () => {
+    const log = collectingLogger();
+    const config = resolveConfig(
+      {
+        sources: [
+          {
+            id: 'broadlink',
+            adapter: 'json-topic',
+            baseTopic: 'broadlinkrm',
+            devices: [
+              { properties: ['speed'] },
+              { topic: 'empty', properties: [] },
+              { topic: 'fan_office', properties: ['speed'] },
+            ],
+          },
+        ],
+      },
+      log,
+    );
+    expect(config.sources[0]?.devices).toEqual([{ topic: 'fan_office', properties: ['speed'] }]);
+    expect(log.errors).toHaveLength(2);
+  });
+
+  it('leaves devices unset when none are described', () => {
+    const config = resolveConfig(
+      { sources: [{ id: 'z', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }] },
+      collectingLogger(),
+    );
+    expect(config.sources[0]?.devices).toBeUndefined();
+  });
+
   it('skips unknown adapters and says what is available', () => {
     const log = collectingLogger();
     const config = resolveConfig(

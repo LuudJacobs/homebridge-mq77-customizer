@@ -214,7 +214,11 @@ function parseBranch(raw: unknown): { branch: Branch } | { error: string } {
     return { error: 'A rule needs at least one action' };
   }
 
-  return { branch: { ...(when ? { when } : {}), actions } };
+  // A branch is rebuilt rather than copied, so its name has to be carried
+  // across by hand or saving the rule would quietly drop it.
+  const label = typeof raw.label === 'string' ? raw.label.trim() : '';
+
+  return { branch: { ...(label ? { label } : {}), ...(when ? { when } : {}), actions } };
 }
 
 /**

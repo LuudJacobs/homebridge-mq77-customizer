@@ -137,12 +137,7 @@ async function load() {
  * user back to the login form with a misleading message.
  */
 function safeRender() {
-  try {
-    render();
-  } catch (error) {
-    console.error('Rendering failed', error);
-    setStatus(`display error: ${error.message}`, 'lost');
-  }
+  safely(render);
 }
 
 function setStatus(text, kind) {
@@ -984,22 +979,62 @@ async function loadRules() {
 const kindOf = (rule) => (rule.kind === 'mirror' ? 'mirror' : 'standard');
 
 function renderRules() {
-  renderRuleList('standard', el.automation, 'No automations yet.');
-  renderRuleList('mirror', el.mirror, 'No mirrored devices yet.');
+  safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
+  safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
+}
+
+/**
+ * Keeps one rule the interface cannot read from blanking the tab.
+ *
+ * Sorting and filtering both walk every rule, so a single rule in a shape
+ * this build does not understand used to take the whole list down with it,
+ * and silently: an empty tab looks exactly like having no rules.
+ */
+function safely(render) {
+  try {
+    render();
+  } catch (error) {
+    console.error('Rendering failed', error);
+    setStatus(`display error: ${error.message}`, 'lost');
+  }
 }
 
 /** The devices a rule touches, in the order it names them. */
+/**
+ * Every trigger of a rule, whatever shape it was saved in.
+ *
+ * `trigger` is what versions before outcomes stored, a single one, and rules
+ * written back then are still on disk unchanged.
+ */
+function ruleTriggers(rule) {
+  if (rule.triggers?.length) {
+    return rule.triggers;
+  }
+  return rule.trigger ? [rule.trigger] : [];
+}
+
+/** Every action of a rule, across all of its outcomes. */
+function ruleActions(rule) {
+  if (rule.branches?.length) {
+    return rule.branches.flatMap((branch) => branch.actions ?? []);
+  }
+  return rule.actions ?? [];
+}
+
 function ruleRefs(rule) {
-  return rule.kind === 'mirror' ? rule.groups.flat() : [rule.trigger, ...rule.actions];
+  if (rule.kind === 'mirror') {
+    return (rule.groups ?? []).flat();
+  }
+  return [...ruleTriggers(rule), ...ruleActions(rule)];
 }
 
 /** First device on each side, which is what the two orderings compare. */
 function ruleSides(rule) {
-  const refs = ruleRefs(rule);
   if (rule.kind === 'mirror') {
+    const refs = ruleRefs(rule);
     return { trigger: refs[0], target: refs[1] };
   }
-  return { trigger: rule.trigger, target: rule.actions[0] };
+  return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
 
 function ruleSortKey(rule, sort) {
@@ -1201,12 +1236,7 @@ function drawWhenThen(body, draft) {
   const drawTriggers = () => {
     triggers.replaceChildren();
     draft.triggers.forEach((trigger, index) => {
-      if (index > 0) {
-        const or = document.createElement('p');
-        or.className = 'joiner';
-        or.textContent = 'or';
-        triggers.append(or);
-      }
+      const last = index === draft.triggers.length - 1;
       triggers.append(
         refRow(trigger, {
           pick: watchable,
@@ -1219,15 +1249,19 @@ function drawWhenThen(body, draft) {
                   drawTriggers();
                 }
               : undefined,
+          joiner: last ? undefined : 'or',
+          trailing: last
+            ? addButton('+ trigger', () => {
+                draft.triggers.push({
+                  ...blankRef(watchable),
+                  match: { kind: 'changedTo', value: '' },
+                });
+                drawTriggers();
+              })
+            : undefined,
         }),
       );
     });
-    triggers.append(
-      addButton('Add or', () => {
-        draft.triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
-        drawTriggers();
-      }),
-    );
   };
   drawTriggers();
   body.append(triggers);
@@ -1266,19 +1300,48 @@ function renderBranch(branch, index, branches, redraw) {
 
   const head = document.createElement('div');
   head.className = 'branch-head';
-  head.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
+  // Where the condition editor puts its add button while there is nothing to
+  // show, since there is no row for it to sit on yet.
+  const slot = document.createElement('span');
+  left.append(slot);
+  head.append(left);
+
+  const right = document.createElement('div');
+  right.className = 'branch-head-right';
+
+  // Says what this outcome is for. Nothing reads it, it is there so a rule
+  // with three outcomes can still be understood next year.
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.className = 'outcome-name';
+  name.placeholder = 'name';
+  name.value = branch.label ?? '';
+  name.addEventListener('input', () => {
+    branch.label = name.value.trim() || undefined;
+  });
+  right.append(name);
 
   if (!only) {
-    head.append(
-      addButton(`Remove outcome ${index + 1}`, () => {
-        branches.splice(index, 1);
-        redraw();
-      }),
-    );
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'add-row';
+    remove.textContent = '✕';
+    remove.title = `Remove outcome ${index + 1}`;
+    remove.addEventListener('click', () => {
+      branches.splice(index, 1);
+      redraw();
+    });
+    right.append(remove);
   }
 
+  head.append(right);
+
   box.append(head);
-  box.append(conditionEditor(branch));
+  box.append(conditionEditor(branch, slot));
 
   box.append(sectionTitle('Then'));
   box.append(actionEditor(branch));
@@ -1293,6 +1356,7 @@ function actionEditor(branch) {
   const draw = () => {
     wrap.replaceChildren();
     branch.actions.forEach((action, index) => {
+      const last = index === branch.actions.length - 1;
       wrap.append(
         refRow(action, {
           pick: writable,
@@ -1305,15 +1369,15 @@ function actionEditor(branch) {
                   draw();
                 }
               : undefined,
+          trailing: last
+            ? addButton('+ action', () => {
+                branch.actions.push({ ...blankRef(writable), value: '' });
+                draw();
+              })
+            : undefined,
         }),
       );
     });
-    wrap.append(
-      addButton('Add action', () => {
-        branch.actions.push({ ...blankRef(writable), value: '' });
-        draw();
-      }),
-    );
   };
 
   draw();
@@ -1526,7 +1590,7 @@ function drawMirror(body, draft) {
  * Deeper nesting would express nothing new, since every boolean expression can
  * be written as an or of ands, and it would cost a much heavier editor.
  */
-function conditionEditor(draft) {
+function conditionEditor(draft, slot) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
@@ -1558,13 +1622,20 @@ function conditionEditor(draft) {
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
 
-    wrap.append(
-      addButton(groups.length === 0 ? 'Add condition' : 'Add or', () => {
-        groups.push({ negated: false, tests: [newTest()] });
-        commit();
-        draw();
-      }),
-    );
+    const add = addButton(groups.length === 0 ? '+ condition' : 'Add or', () => {
+      groups.push({ negated: false, tests: [newTest()] });
+      commit();
+      draw();
+    });
+
+    // With no conditions set there is no row to hang the button off, so it
+    // goes up beside the heading instead of alone on a line of its own.
+    slot?.replaceChildren();
+    if (groups.length === 0 && slot) {
+      slot.append(add);
+    } else {
+      wrap.append(add);
+    }
   };
 
   function commit() {
@@ -1580,7 +1651,7 @@ function renderGroup(group, groups, index, commit, redraw) {
   box.className = 'condition-group';
 
   const head = document.createElement('div');
-  head.className = 'option';
+  head.className = 'group-head';
   const negate = document.createElement('label');
   negate.className = 'toggle';
   const negateBox = document.createElement('input');
@@ -1604,12 +1675,7 @@ function renderGroup(group, groups, index, commit, redraw) {
   box.append(head);
 
   group.tests.forEach((node, position) => {
-    if (position > 0) {
-      const and = document.createElement('span');
-      and.className = 'joiner inline';
-      and.textContent = 'and';
-      box.append(and);
-    }
+    const last = position === group.tests.length - 1;
     box.append(
       refRow(node, {
         pick: watchable,
@@ -1623,17 +1689,17 @@ function renderGroup(group, groups, index, commit, redraw) {
                 redraw();
               }
             : undefined,
+        joiner: last ? undefined : 'and',
+        trailing: last
+          ? addButton('+ condition', () => {
+              group.tests.push(newTest());
+              commit();
+              redraw();
+            })
+          : undefined,
       }),
     );
   });
-
-  box.append(
-    addButton('Add and', () => {
-      group.tests.push(newTest());
-      commit();
-      redraw();
-    }),
-  );
 
   return box;
 }
@@ -1731,6 +1797,10 @@ function refRow(ref, options) {
   row.className = 'rule-row';
 
   const devices = document.createElement('select');
+  // Wider than the rest of the row, since a device name is the longest thing
+  // on it and the one worth reading at a glance. Not `device`, which is the
+  // card a device is drawn in and would style this like one.
+  devices.className = 'device-picker';
   // Always by name here, whatever the device list is sorted by. A rule is
   // written by looking for a device by name, not by when it last reported.
   for (const device of byName(state.devices.filter((candidate) => options.pick(candidate).length > 0))) {
@@ -1861,7 +1931,7 @@ function refRow(ref, options) {
       delay.type = 'number';
       delay.className = 'delay';
       delay.min = 0;
-      delay.placeholder = 'delay s';
+      delay.placeholder = 'delay (s)';
       delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
       delay.addEventListener('input', () => {
         const seconds = Number(delay.value);
@@ -1878,6 +1948,19 @@ function refRow(ref, options) {
       remove.title = 'Remove';
       remove.addEventListener('click', options.onRemove);
       tail.append(remove);
+    }
+
+    // The word joining this row to the next one, and the button that adds
+    // another, both belong on this line rather than on one of their own.
+    if (options.joiner) {
+      const joiner = document.createElement('span');
+      joiner.className = 'joiner inline';
+      joiner.textContent = options.joiner;
+      tail.append(joiner);
+    }
+
+    if (options.trailing) {
+      tail.append(options.trailing);
     }
   }
 
