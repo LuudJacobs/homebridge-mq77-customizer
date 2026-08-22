@@ -224,12 +224,23 @@
         },
         {
           "key": "sources[].devices",
+          "type": "array",
           "title": "Described devices",
           "expandable": true,
           "expanded": false,
           "condition": {
             "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
-          }
+          },
+          "items": [
+            "sources[].devices[].topic",
+            {
+              "key": "sources[].devices[].properties",
+              "type": "array",
+              "items": [
+                "sources[].devices[].properties[]"
+              ]
+            }
+          ]
         }
       ]
     },
