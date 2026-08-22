@@ -467,8 +467,9 @@ button.primary {
   width: 8rem;
 }
 
+/* A value box sits among the dropdowns, so it is the width of one. */
 .rule-row input {
-  max-width: 14rem;
+  width: 8rem;
 }
 
 .rule-row select.device-picker {
