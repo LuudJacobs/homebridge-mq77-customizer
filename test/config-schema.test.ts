@@ -137,6 +137,25 @@ describe('config.schema.json', () => {
     // One title, on the panel, and none on the array under it.
     const [, devices] = properties(schema.schema).find(([path]) => path === 'sources.[].devices')!;
     expect(devices.title).toBeUndefined();
+
+    // An expandable node shows what its items say. Without them it opens on
+    // nothing, which is worse than not collapsing at all.
+    expect(panel.items?.length).toBeGreaterThan(0);
+  });
+
+  it('gives every expandable node something to show', () => {
+    const check = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          continue;
+        }
+        if (node.expandable) {
+          expect(node.items?.length, `${node.title ?? node.key} opens on nothing`).toBeGreaterThan(0);
+        }
+        check(node.items ?? []);
+      }
+    };
+    check(schema.layout);
   });
 
   it('conditions only what carries an array index', () => {
