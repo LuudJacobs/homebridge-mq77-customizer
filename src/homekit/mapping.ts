@@ -258,8 +258,12 @@ function tileServices(
       }
     }
 
+    // HomeKit only allows a physical lock on the air services, of which a fan
+    // is the one here. A switch or an outlet accepts the characteristic and
+    // then shows nothing, so the lock gets a switch of its own instead: a
+    // control that works beats one that is technically correct and invisible.
     const childLock = byRole.childLock;
-    if (childLock) {
+    if (childLock && kind === 'Fan') {
       bindings.push({
         characteristic: 'LockPhysicalControls',
         propertyKey: childLock.key,
@@ -274,6 +278,25 @@ function tileServices(
       name: qualify ? qualifiedName(accessoryName, power) : accessoryName,
       bindings,
     });
+
+    if (childLock && kind !== 'Fan') {
+      services.push({
+        kind: 'Switch',
+        subtype: childLock.key,
+        name: sanitiseName(
+          [accessoryName, childLock.endpoint, childLock.label].filter(Boolean).join(' '),
+          accessoryName,
+        ),
+        bindings: [
+          {
+            characteristic: 'On',
+            propertyKey: childLock.key,
+            role: 'childLock',
+            writable: childLock.access.writable,
+          },
+        ],
+      });
+    }
   }
 
   return services;
