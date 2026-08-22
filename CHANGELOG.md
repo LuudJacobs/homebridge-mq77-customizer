@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed: a child lock ticked on a socket showed nothing in the Home app. HomeKit only allows a physical lock on its air services, so on anything but a fan the lock now gets a switch of its own
+
 - Fixed: a mirror rule wrote to its group on every restart. The first thing heard from a device is it saying where it stands, not somebody changing it, and a device whose state is unknown is no longer written to on the assumption that it disagrees
 - Link quality on the map is shown as a bare number, coloured green above 200 and red below 100, with the links coloured to match
 - The map reads left to right, a column per hop from the hub, and clicking a device opens a panel with what it can hear
