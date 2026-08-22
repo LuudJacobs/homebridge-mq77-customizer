@@ -467,8 +467,11 @@ button.primary {
   width: 8rem;
 }
 
-/* A value box sits among the dropdowns, so it is the width of one. */
-.rule-row input {
+/*
+ * A value box sits among the dropdowns, so it is the width of one. A tick box
+ * is not a value box: the mirror editor puts one on a row of its own.
+ */
+.rule-row input:not([type='checkbox']) {
   width: 8rem;
 }
 
@@ -551,8 +554,8 @@ button.primary {
 }
 
 .mirror-devices {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
   gap: 0.35rem 1.1rem;
   padding: 0.25rem 0 0.5rem;
 }
