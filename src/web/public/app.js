@@ -15,6 +15,13 @@ const state = {
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
   sorts: { devices: 'name', automation: 'name', mirror: 'name' },
+  /**
+   * A rule just added, kept at the top of its list.
+   *
+   * It is saved the moment it is added, so sorting would otherwise drop it
+   * somewhere down the page under the name it has not been given yet.
+   */
+  pinned: undefined,
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
@@ -376,7 +383,6 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['trigger', 'Trigger device'],
-      ['target', 'Target device'],
     ],
     placeholder: 'Filter name, topic or model',
   },
@@ -1078,6 +1084,8 @@ function renderRuleList(kind, container, emptyText) {
     .filter((rule) => matchesRuleFilter(rule, term))
     .sort(
       (a, b) =>
+        // A rule just added stays in sight, wherever its name would put it.
+        Number(b.id === state.pinned) - Number(a.id === state.pinned) ||
         compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
         compareNames(a.name, b.name),
     );
@@ -1091,30 +1099,109 @@ function renderRuleList(kind, container, emptyText) {
     container.append(empty);
     return;
   }
+
+  // Sorting automations by trigger is really a question about a remote: what
+  // does each of its buttons do. That reads better as a list per device than
+  // as one long list in trigger order.
+  if (kind === 'standard' && sort === 'trigger') {
+    renderByTrigger(container, rules);
+    return;
+  }
+
   for (const rule of rules) {
     container.append(renderRule(rule));
   }
 }
 
-function renderRule(rule) {
+/** What a trigger waits for, as a phrase: "Action becomes 1_single". */
+function describeTrigger(trigger) {
+  if (!trigger) {
+    return 'Nothing yet';
+  }
+  const label = findProperty(trigger)?.label ?? trigger.propertyKey ?? 'something';
+  const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
+  const value = trigger.match?.value;
+  const hasValue = value !== undefined && value !== '';
+  return [label, verb, hasValue ? value : ''].filter(Boolean).join(' ');
+}
+
+/**
+ * A heading per trigger device, and a line under it per trigger.
+ *
+ * A rule set off by three buttons appears three times, which is the point: the
+ * list answers what a given button does, not what a given rule is called.
+ */
+function renderByTrigger(container, rules) {
+  const groups = new Map();
+
+  for (const rule of rules) {
+    // A rule just added has nothing set yet, so it goes above the headings
+    // rather than under one for whichever device happened to be first.
+    if (rule.id === state.pinned) {
+      container.append(renderRule(rule));
+      continue;
+    }
+
+    const triggers = ruleTriggers(rule);
+    for (const [index, trigger] of (triggers.length ? triggers : [undefined]).entries()) {
+      const device = trigger && findDevice(trigger);
+      const key = device ? `${device.sourceId}|${device.deviceId}` : '';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: device ? displayName(device) : 'No device',
+          known: Boolean(device),
+          entries: [],
+        });
+      }
+      groups.get(key).entries.push({ rule, trigger, index });
+    }
+  }
+
+  // Devices by name, and anything whose device has gone at the end.
+  const ordered = [...groups.values()].sort(
+    (a, b) => Number(b.known) - Number(a.known) || compareNames(a.name, b.name),
+  );
+
+  for (const group of ordered) {
+    const heading = document.createElement('h3');
+    heading.className = 'rule-group';
+    heading.textContent = group.name;
+    container.append(heading);
+
+    group.entries.sort(
+      (a, b) =>
+        compareNames(describeTrigger(a.trigger), describeTrigger(b.trigger)) ||
+        compareNames(a.rule.name, b.rule.name),
+    );
+    for (const entry of group.entries) {
+      container.append(renderRule(entry.rule, entry));
+    }
+  }
+}
+
+function renderRule(rule, occurrence) {
   const card = document.createElement('details');
   card.className = 'device rule';
-  card.open = state.openRules.has(rule.id);
+  // One rule can be listed under several of its triggers, and opening it in
+  // one place should not open it in the others.
+  const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
+  card.open = state.openRules.has(key);
   card.addEventListener('toggle', () => {
     if (card.open) {
-      state.openRules.add(rule.id);
+      state.openRules.add(key);
     } else {
-      state.openRules.delete(rule.id);
+      state.openRules.delete(key);
     }
   });
 
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = rule.name;
+  // Listed under its trigger, the trigger is what tells one line from the next.
+  name.textContent = occurrence ? describeTrigger(occurrence.trigger) : rule.name;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
-  detail.textContent = summarise(rule);
+  detail.textContent = occurrence ? `→ ${rule.name}` : summarise(rule);
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
   badge.textContent = rule.enabled ? 'on' : 'off';
@@ -1201,6 +1288,10 @@ function ruleFooter(rule, draft) {
     error.textContent = '';
     try {
       await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      // Saved, so it has a name worth sorting by and can take its place.
+      if (state.pinned === rule.id) {
+        state.pinned = undefined;
+      }
       await loadRules();
     } catch (problem) {
       error.textContent = problem.message;
@@ -2098,6 +2189,7 @@ async function addRule(draft) {
   try {
     const created = await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
     state.openRules.add(created.rule.id);
+    state.pinned = created.rule.id;
     await loadRules();
   } catch (problem) {
     setStatus(problem.message, 'lost');

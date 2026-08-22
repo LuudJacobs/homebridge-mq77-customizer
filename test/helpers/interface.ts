@@ -44,7 +44,9 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
 
   window.fetch = ((path: string, init?: { method?: string; body?: string }) => {
     requests.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
-    const body = responses[path] ?? { ok: true };
+    // Keyed by method first, so a PUT can answer differently from the GET
+    // that follows it, which is how adding something behaves.
+    const body = responses[`${init?.method ?? 'GET'} ${path}`] ?? responses[path] ?? { ok: true };
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -70,6 +72,8 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   return {
     window,
     document: window.document,
+    /** Mutable, so a test can change what a later request answers. */
+    responses,
     requests,
     errors,
     settle: () => settle(window),

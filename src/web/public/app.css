@@ -566,6 +566,17 @@ button.primary {
   align-items: center;
 }
 
+/* The device a run of triggers belongs to, when listed that way. */
+.rule-group {
+  margin: 1.2rem 0 0.4rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.rule-group:first-child {
+  margin-top: 0.2rem;
+}
+
 .condition-group {
   border: 1px solid var(--line);
   border-radius: 7px;

@@ -299,6 +299,30 @@ describe('branches', () => {
     expect(engine.getLog()[0]?.detail).toContain('outcome 2');
   });
 
+  it('calls an outcome what it was named, not what number it is', async () => {
+    const rule = branching();
+    rule.branches![1]!.label = 'nobody home';
+    const { engine, mqtt } = await harness([rule]);
+
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    // The name is the reason for having one: the run log is what it is read in.
+    expect(engine.getLog()[0]?.detail).toContain('nobody home');
+    expect(engine.getLog()[0]?.detail).not.toContain('outcome 2');
+  });
+
+  it('names a declining outcome the same way', async () => {
+    const rule = branching();
+    rule.branches = [{ ...rule.branches![0]!, label: 'while it is dark' }];
+    const { engine, mqtt } = await harness([rule]);
+
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(engine.getLog()[0]?.detail).toContain('while it is dark');
+  });
+
   it('does nothing, and says why, when no branch holds', async () => {
     const rule = branching();
     rule.branches = [rule.branches![0]!];
