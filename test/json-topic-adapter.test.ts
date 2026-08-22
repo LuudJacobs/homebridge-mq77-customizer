@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { JsonTopicAdapter } from '../src/adapters/json-topic/adapter.js';
 import type { SourceConfig } from '../src/adapters/types.js';
@@ -342,6 +342,53 @@ describe('functions described in the config', () => {
 
     mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
     expect(lines.some((line) => line.includes('added speed from the config'))).toBe(true);
+  });
+
+  it('says when a described topic is one nothing reports on', async () => {
+    vi.useFakeTimers();
+    try {
+      const warnings: string[] = [];
+      const mqtt = new FakeMqtt();
+      const adapter = new JsonTopicAdapter({
+        // One letter out from the real topic, which reads as correct.
+        source: { ...BROADLINK, devices: [{ topic: 'sensys', properties: ['speed'] }] },
+        mqtt: mqtt.asConnection(),
+        log: { ...silentLogger, warn: (message: string) => warnings.push(message) },
+      });
+      await adapter.start();
+      mqtt.deliver('broadlinkrm/sencys', { state: 'ON' }, { retained: true });
+
+      // Nothing yet: the broker may still be replaying what it retains.
+      expect(warnings).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('broadlinkrm/sensys');
+      // And what did report, which is where the mistake shows.
+      expect(warnings[0]).toContain('broadlinkrm/sencys');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says nothing when every described topic turned up', async () => {
+    vi.useFakeTimers();
+    try {
+      const warnings: string[] = [];
+      const mqtt = new FakeMqtt();
+      const adapter = new JsonTopicAdapter({
+        source: { ...BROADLINK, devices: [{ topic: 'fan_office', properties: ['speed'] }] },
+        mqtt: mqtt.asConnection(),
+        log: { ...silentLogger, warn: (message: string) => warnings.push(message) },
+      });
+      await adapter.start();
+      mqtt.deliver('broadlinkrm/fan_office', { state: 'ON' });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(warnings).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says nothing about a device that is described but never speaks', async () => {

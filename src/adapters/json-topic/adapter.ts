@@ -8,6 +8,9 @@ import type { NormalisedDevice, NormalisedProperty, StateUpdate } from '../../mo
 import type { AdapterContext, AdapterEvents, SourceAdapter, SourceConfig } from '../types.js';
 import { inferType, KNOWN_KEYS, labelFor } from './keys.js';
 
+/** How long to wait for the broker's retained messages before complaining. */
+const UNMATCHED_AFTER_MS = 15_000;
+
 interface Tracked {
   deviceId: string;
   topic: string;
@@ -45,6 +48,7 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
 
   private readonly tracked = new Map<string, Tracked>();
   private readonly unsubscribes: (() => void)[] = [];
+  private unmatchedCheck?: ReturnType<typeof setTimeout>;
 
   constructor(context: AdapterContext) {
     super();
@@ -96,12 +100,39 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     for (const [topic, keys] of this.declared) {
       this.log.info(`Described ${joinTopic(this.base, topic)}: ${keys.join(', ')}`);
     }
+
+    if (this.declared.size > 0) {
+      // Long enough for the broker to have replayed what it retains. A
+      // description naming a topic nothing reports on does nothing at all,
+      // and one letter out from a real topic looks entirely correct.
+      this.unmatchedCheck = setTimeout(() => this.reportUnmatched(), UNMATCHED_AFTER_MS);
+      this.unmatchedCheck.unref?.();
+    }
   }
 
   async stop(): Promise<void> {
     for (const unsubscribe of this.unsubscribes.splice(0)) {
       unsubscribe();
     }
+    clearTimeout(this.unmatchedCheck);
+    this.unmatchedCheck = undefined;
+  }
+
+  /** Names any described topic nothing has turned up on, and what did. */
+  private reportUnmatched(): void {
+    const missing = [...this.declared.keys()].filter((topic) => !this.tracked.has(topic));
+    if (missing.length === 0) {
+      return;
+    }
+
+    const seen = [...this.tracked.keys()];
+    this.log.warn(
+      `Nothing has reported on ${missing.map((topic) => joinTopic(this.base, topic)).join(', ')}, ` +
+        `described in the config. ` +
+        (seen.length > 0
+          ? `Seen on this source: ${seen.map((topic) => joinTopic(this.base, topic)).join(', ')}`
+          : 'Nothing at all has reported on this source.'),
+    );
   }
 
   getDevices(): NormalisedDevice[] {
