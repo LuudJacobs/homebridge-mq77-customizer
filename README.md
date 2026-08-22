@@ -135,6 +135,8 @@ Functions are matched on meaning rather than on name, so a socket calling its on
 
 A member that already holds the value is left alone, and after a write the group is left to settle, one and a half seconds by default. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
 
+Nothing is written on the first thing heard from a device. After a restart nothing is known, and a device saying where it stands is indistinguishable from somebody changing it, so acting on it would switch things nobody touched. A group left out of step while Homebridge was down comes back into line the next time one of its members reports.
+
 The cost is that flipping a mirrored device again within the settling window is ignored, and devices that disagree are retried once per window rather than as fast as they can talk. Set it per rule between 0.25 and 60 seconds. Below a quarter of a second two devices that disagree can trade places fast enough to look like the runaway the window exists to prevent.
 
 Two things guard against a pair of rules setting each other off:
