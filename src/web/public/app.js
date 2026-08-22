@@ -64,6 +64,7 @@ const el = {
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
   scanMap: document.getElementById('scan-map'),
+  mapTip: document.getElementById('map-tip'),
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
   activityLog: document.getElementById('activity-log'),
@@ -1208,11 +1209,12 @@ function renderRule(rule, occurrence) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  // Listed under its trigger, the trigger is what tells one line from the next.
-  name.textContent = occurrence ? describeTrigger(occurrence.trigger) : rule.name;
+  name.textContent = rule.name;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
-  detail.textContent = occurrence ? `→ ${rule.name}` : summarise(rule);
+  // Under a trigger heading the rule is named first and what sets it off
+  // second, since the heading has already said which device it is.
+  detail.textContent = occurrence ? describeTrigger(occurrence.trigger) : summarise(rule);
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
   badge.textContent = rule.enabled ? 'on' : 'off';
@@ -2171,10 +2173,13 @@ function repaint() {
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
-/** Room for one device box, and the gap between one row and the next. */
+/** Room for one device box, and the gaps around it. */
 const NODE_WIDTH = 132;
 const NODE_HEIGHT = 34;
-const ROW_HEIGHT = 96;
+/** Across, one step per hop away from the hub. */
+const COLUMN_STEP = NODE_WIDTH + 64;
+/** Down, one step per device sharing a hop. */
+const ROW_STEP = NODE_HEIGHT + 20;
 
 /**
  * Works out how far each device sits from the hub.
@@ -2221,25 +2226,93 @@ function layoutMap(map) {
     rows.get(level).push(node);
   }
 
+  // A hop per column, so the hub is on the left and the network reads out
+  // from it. Devices sharing a hop stack down that column.
   const levels = [...rows.keys()].sort((a, b) => a - b);
-  const widest = Math.max(1, ...levels.map((level) => rows.get(level).length));
-  const width = widest * (NODE_WIDTH + 24);
+  const tallest = Math.max(1, ...levels.map((level) => rows.get(level).length));
+  const height = tallest * ROW_STEP + ROW_STEP;
   const placed = new Map();
 
-  levels.forEach((level, row) => {
+  levels.forEach((level, column) => {
     const nodes = rows.get(level).sort((a, b) => compareNames(a.name, b.name));
-    const step = width / (nodes.length + 1);
+    const step = height / (nodes.length + 1);
     nodes.forEach((node, index) => {
       placed.set(node.address, {
         node,
-        x: step * (index + 1),
-        y: row * ROW_HEIGHT + NODE_HEIGHT,
+        x: column * COLUMN_STEP + NODE_WIDTH / 2 + 10,
+        y: step * (index + 1),
         reached: level !== Infinity,
       });
     });
   });
 
-  return { placed, parents, width, height: levels.length * ROW_HEIGHT + NODE_HEIGHT * 2 };
+  return { placed, parents, width: levels.length * COLUMN_STEP + 20, height };
+}
+
+/**
+ * What a device is, and what it can hear.
+ *
+ * Link quality belongs here rather than on the lines: a device with six
+ * neighbours has six lines crossing each other, and reading one of them means
+ * finding the right pixel.
+ */
+function describeNode(spot, map) {
+  const lines = [`${spot.node.kind}, ${spot.node.address}`];
+  if (spot.node.failed) {
+    lines.push('Did not answer the scan');
+  }
+  if (!spot.reached) {
+    lines.push('Nothing links this to the hub');
+  }
+
+  const heard = map.links
+    .filter((link) => link.from === spot.node.address || link.to === spot.node.address)
+    .map((link) => ({
+      other: link.from === spot.node.address ? link.to : link.from,
+      quality: link.quality,
+    }))
+    .sort((a, b) => b.quality - a.quality);
+
+  if (heard.length === 0) {
+    lines.push('No links');
+  }
+  return { lines, heard };
+}
+
+/** Closes whatever device panel is open, if any. */
+function closeMapTip() {
+  el.mapTip.hidden = true;
+}
+
+function openMapTip(spot, map, event) {
+  const { lines, heard } = describeNode(spot, map);
+  el.mapTip.replaceChildren();
+
+  const name = document.createElement('strong');
+  name.textContent = spot.node.name;
+  el.mapTip.append(name);
+
+  for (const line of lines) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    el.mapTip.append(paragraph);
+  }
+
+  if (heard.length > 0) {
+    const list = document.createElement('ul');
+    for (const entry of heard) {
+      const item = document.createElement('li');
+      const other = map.nodes.find((node) => node.address === entry.other);
+      item.textContent = `${other?.name ?? entry.other} · quality ${entry.quality}`;
+      list.append(item);
+    }
+    el.mapTip.append(list);
+  }
+
+  const bounds = el.map.getBoundingClientRect();
+  el.mapTip.style.left = `${event.clientX - bounds.left + 12}px`;
+  el.mapTip.style.top = `${event.clientY - bounds.top + 12}px`;
+  el.mapTip.hidden = false;
 }
 
 function drawMap() {
@@ -2278,9 +2351,6 @@ function drawMap() {
     line.setAttribute('x2', to.x);
     line.setAttribute('y2', to.y);
     line.setAttribute('class', tree ? 'map-link route' : 'map-link');
-    const title = document.createElementNS(SVG, 'title');
-    title.textContent = `${from.node.name} ↔ ${to.node.name}, quality ${link.quality}`;
-    line.append(title);
     svg.append(line);
   }
 
@@ -2307,22 +2377,19 @@ function drawMap() {
     text.setAttribute('text-anchor', 'middle');
     text.textContent = spot.node.name;
 
-    const title = document.createElementNS(SVG, 'title');
-    title.textContent = [
-      spot.node.name,
-      spot.node.kind,
-      spot.node.address,
-      spot.reached ? '' : 'nothing links this to the hub',
-      spot.node.failed ? 'did not answer the scan' : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    group.addEventListener('click', (event) => {
+      // Kept from the closing handler on the page, which would shut the panel
+      // in the same click that opened it.
+      event.stopPropagation();
+      openMapTip(spot, state.map, event);
+    });
 
-    group.append(box, text, title);
+    group.append(box, text);
     svg.append(group);
   }
 
-  el.map.append(svg);
+  el.map.append(svg, el.mapTip);
+  closeMapTip();
 }
 
 async function scanNetwork() {
@@ -2375,6 +2442,9 @@ el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
+
+// One device panel at a time, and anywhere else closes it.
+document.addEventListener('click', () => closeMapTip());
 
 async function addRule(draft) {
   try {

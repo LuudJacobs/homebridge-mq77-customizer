@@ -197,15 +197,16 @@ describe('listing automations under their trigger', () => {
     expect(headings(ui)).toEqual(['hall_lamp', 'porch_lamp']);
   });
 
-  it('shows what the trigger waits for, and what it runs', async () => {
+  it('names the automation, then what sets it off', async () => {
     const ui = await openTab('Automation', [shelly, shellyToo]);
     await sortBy(ui, 'trigger');
 
-    expect(named(ui, '#automation')).toEqual(['State becomes 1_single', 'State becomes 2_double']);
+    // The heading has said which device, so the line is about the automation.
+    expect(named(ui, '#automation')).toEqual(['Hall on', 'Porch on']);
     const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
       (node) => node.textContent,
     );
-    expect(meta).toEqual(['→ Hall on', '→ Porch on']);
+    expect(meta).toEqual(['State becomes 1_single', 'State becomes 2_double']);
   });
 
   it('lists a rule once per trigger, under each device', async () => {
