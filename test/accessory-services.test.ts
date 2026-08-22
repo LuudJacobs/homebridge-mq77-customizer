@@ -92,17 +92,56 @@ describe('dimmable light', () => {
 });
 
 describe('socket with a child lock', () => {
-  it('puts the lock on the outlet rather than inventing a service', async () => {
+  async function socketWithLock(tile: 'Outlet' | 'Fan' = 'Outlet') {
     const context = await harness();
     context.mqtt.deliver(SOCKET.topic, { state: 'ON', child_lock: 'LOCK' });
     context.store.setExposure(`zigbee:${SOCKET.id}`, {
       properties: ['state', 'child_lock'],
-      tileTypes: { '': 'Outlet' },
+      tileTypes: { '': tile },
     });
     context.manager.sync();
+    return context;
+  }
 
-    const outlet = context.hb.registered[0]!.getServiceById(Service.Outlet, 'state')!;
-    expect(outlet.getCharacteristic(Characteristic.LockPhysicalControls).value).toBe(1);
+  it('gives the lock a switch of its own, since an outlet cannot show one', async () => {
+    const context = await socketWithLock();
+    const accessory = context.hb.registered[0]!;
+
+    // HomeKit allows a physical lock on the air services only. An outlet
+    // accepts the characteristic and shows nothing, which is what happened:
+    // the box was ticked and the Home app carried on as before.
+    const outlet = accessory.getServiceById(Service.Outlet, 'state')!;
+    expect(outlet.testCharacteristic(Characteristic.LockPhysicalControls)).toBe(false);
+
+    const lock = accessory.getServiceById(Service.Switch, 'child_lock')!;
+    expect(lock).toBeDefined();
+    expect(lock.getCharacteristic(Characteristic.On).value).toBe(true);
+  });
+
+  it('names the lock after the device it belongs to', async () => {
+    const context = await socketWithLock();
+    const lock = context.hb.registered[0]!.getServiceById(Service.Switch, 'child_lock')!;
+    expect(lock.displayName).toContain('Child lock');
+  });
+
+  it('sends the lock the words the device uses', async () => {
+    const context = await socketWithLock();
+    const lock = context.hb.registered[0]!.getServiceById(Service.Switch, 'child_lock')!;
+
+    lock.getCharacteristic(Characteristic.On).setValue(false);
+    expect(context.mqtt.published.at(-1)).toMatchObject({
+      topic: `${SOCKET.topic}/set`,
+      payload: '{"child_lock":"UNLOCK"}',
+    });
+  });
+
+  it('keeps it on the tile where HomeKit does allow it', async () => {
+    const context = await socketWithLock('Fan');
+    const fan = context.hb.registered[0]!.getServiceById(Service.Fan, 'state')!;
+
+    // A fan is an air service, so the lock belongs on it rather than beside it.
+    expect(fan.getCharacteristic(Characteristic.LockPhysicalControls).value).toBe(1);
+    expect(context.hb.registered[0]!.getServiceById(Service.Switch, 'child_lock')).toBeUndefined();
   });
 });
 
