@@ -566,6 +566,68 @@ button.primary {
   align-items: center;
 }
 
+.map {
+  overflow-x: auto;
+  padding: 0.5rem 0 1rem;
+}
+
+.map-svg {
+  width: 100%;
+  min-width: 34rem;
+  height: auto;
+}
+
+.map-link {
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+/* The way back to the hub, as against a neighbour it can merely hear. */
+.map-link.route {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.map-node rect {
+  fill: var(--card);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.map-node text {
+  fill: var(--text);
+  font: 12px/1 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.map-node.coordinator rect {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+}
+
+.map-node.router rect {
+  stroke: var(--accent);
+}
+
+/* It answered the scan, but nothing joins it to the rest. */
+.map-node.adrift rect {
+  stroke-dasharray: 4 3;
+}
+
+.map-node.failed rect {
+  stroke: var(--error);
+}
+
+/* The device a run of triggers belongs to, when listed that way. */
+.rule-group {
+  margin: 1.2rem 0 0.4rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.rule-group:first-child {
+  margin-top: 0.2rem;
+}
+
 .condition-group {
   border: 1px solid var(--line);
   border-radius: 7px;

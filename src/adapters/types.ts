@@ -49,6 +49,29 @@ export interface AdapterEvents {
  * Adapters own their subscriptions and are responsible for unsubscribing in
  * `stop()`. They never touch HomeKit.
  */
+/** A device as the network sees it, rather than as HomeKit does. */
+export interface NetworkNode {
+  address: string;
+  name: string;
+  kind: 'coordinator' | 'router' | 'end device';
+  /** Set when the device did not answer the scan. */
+  failed?: boolean;
+}
+
+export interface NetworkLink {
+  from: string;
+  to: string;
+  /** 0 to 255, as the radio reports it. */
+  quality: number;
+}
+
+export interface NetworkMap {
+  nodes: NetworkNode[];
+  links: NetworkLink[];
+  /** When the scan finished, since one takes long enough to be worth saying. */
+  at: number;
+}
+
 export interface SourceAdapter extends EventEmitter<AdapterEvents> {
   readonly sourceId: string;
   /**
@@ -64,6 +87,14 @@ export interface SourceAdapter extends EventEmitter<AdapterEvents> {
   getDevices(): NormalisedDevice[];
   /** Last known values for a device, keyed by property key. */
   getState(deviceId: string): Readonly<Record<string, unknown>> | undefined;
+  /**
+   * Asks the network how it is put together.
+   *
+   * Only a source that has a network to ask. A scan is slow, minutes on a
+   * large mesh, and every device is questioned in turn, so this is only ever
+   * called because somebody asked for it.
+   */
+  getNetworkMap?(): Promise<NetworkMap>;
 }
 
 export type AdapterFactory = (context: AdapterContext) => SourceAdapter;

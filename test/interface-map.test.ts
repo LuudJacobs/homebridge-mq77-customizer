@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+
+import { openInterface } from './helpers/interface.js';
+
+/** A hub, two routers off it, and a sensor that only the shed router hears. */
+const SCAN = {
+  nodes: [
+    { address: '0x001', name: 'Coordinator', kind: 'coordinator' },
+    { address: '0x002', name: 'hall_socket', kind: 'router' },
+    { address: '0x003', name: 'shed_socket', kind: 'router' },
+    { address: '0x004', name: 'shed_sensor', kind: 'end device' },
+  ],
+  links: [
+    { from: '0x001', to: '0x002', quality: 200 },
+    { from: '0x001', to: '0x003', quality: 120 },
+    { from: '0x003', to: '0x004', quality: 80 },
+  ],
+  at: 1_700_000_000_000,
+};
+
+async function openMap(map: unknown = SCAN) {
+  const ui = await openInterface({ state: { devices: [] } });
+  ui.responses['POST /api/map'] = map;
+  await ui.click(ui.byText('button.tab', 'Map'));
+  return ui;
+}
+
+const names = (ui: { document: Document }) =>
+  [...ui.document.querySelectorAll('#map .map-node text')].map((node) => node.textContent);
+
+describe('the map tab', () => {
+  it('scans nothing until it is asked to', async () => {
+    const ui = await openMap();
+    // A scan questions every device in turn, so it is never automatic.
+    expect(ui.requests.some((request) => request.path === '/api/map')).toBe(false);
+    expect(ui.document.querySelector('#map')!.textContent).toContain('Nothing scanned yet');
+  });
+
+  it('draws a device per node once scanned', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    expect(names(ui).sort()).toEqual(['Coordinator', 'hall_socket', 'shed_sensor', 'shed_socket']);
+    expect(ui.document.querySelectorAll('#map .map-link')).toHaveLength(3);
+  });
+
+  it('marks the way back to the hub', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    // Every link is drawn, and the route each device uses stands out.
+    expect(ui.document.querySelectorAll('#map .map-link.route')).toHaveLength(3);
+  });
+
+  it('puts each device as far from the hub as it sits', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const rows = new Map<string, number>();
+    for (const group of ui.document.querySelectorAll('#map .map-node')) {
+      const name = group.querySelector('text')!.textContent!;
+      rows.set(name, Number(group.querySelector('rect')!.getAttribute('y')));
+    }
+
+    // The sensor is reached through the shed socket, so it sits a row lower.
+    expect(rows.get('Coordinator')!).toBeLessThan(rows.get('shed_socket')!);
+    expect(rows.get('shed_socket')!).toBeLessThan(rows.get('shed_sensor')!);
+    expect(rows.get('hall_socket')).toBe(rows.get('shed_socket'));
+  });
+
+  it('shows a device nothing connects to, rather than dropping it', async () => {
+    const ui = await openMap({
+      ...SCAN,
+      nodes: [...SCAN.nodes, { address: '0x009', name: 'lost_thing', kind: 'end device' }],
+    });
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const adrift = ui.document.querySelector('#map .map-node.adrift text');
+    expect(adrift?.textContent).toBe('lost_thing');
+  });
+
+  it('names a device that did not answer the scan', async () => {
+    const ui = await openMap({
+      ...SCAN,
+      nodes: SCAN.nodes.map((node) =>
+        node.address === '0x002' ? { ...node, failed: true } : node,
+      ),
+    });
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const failed = ui.document.querySelector('#map .map-node.failed text');
+    expect(failed?.textContent).toBe('hall_socket');
+  });
+
+  it('says what went wrong instead of drawing nothing', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    await ui.click(ui.byText('button.tab', 'Map'));
+    ui.failures['POST /api/map'] = { status: 502, body: { error: 'coordinator is busy' } };
+
+    await ui.click(ui.byText('button', 'Scan the network'));
+    expect(ui.document.querySelector('#map-status')!.textContent).toContain('busy');
+  });
+
+  it('leaves the filter box out, since nothing here is filtered', async () => {
+    const ui = await openMap();
+    expect((ui.document.querySelector('#filter') as HTMLInputElement).hidden).toBe(true);
+  });
+});

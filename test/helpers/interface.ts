@@ -41,10 +41,26 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   };
 
   const requests: { path: string; body: unknown }[] = [];
+  /** Requests that should fail, keyed the same way as the answers. */
+  const failures: Record<string, { status: number; body?: unknown }> = {};
 
   window.fetch = ((path: string, init?: { method?: string; body?: string }) => {
     requests.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
-    const body = responses[path] ?? { ok: true };
+    const key = `${init?.method ?? 'GET'} ${path}`;
+
+    const failure = failures[key] ?? failures[path];
+    if (failure) {
+      return Promise.resolve({
+        ok: false,
+        status: failure.status,
+        json: () => Promise.resolve(failure.body ?? {}),
+        headers: { getSetCookie: () => [] },
+      });
+    }
+
+    // Keyed by method first, so a PUT can answer differently from the GET
+    // that follows it, which is how adding something behaves.
+    const body = responses[key] ?? responses[path] ?? { ok: true };
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -70,6 +86,9 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   return {
     window,
     document: window.document,
+    /** Mutable, so a test can change what a later request answers. */
+    responses,
+    failures,
     requests,
     errors,
     settle: () => settle(window),
