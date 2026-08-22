@@ -136,6 +136,10 @@
                     "description": "One name per line: state, level, speed, swing, temperature, humidity, co2_levels."
                   }
                 }
+              },
+              "x-schema-form": {
+                "expandable": true,
+                "expanded": false
               }
             }
           }
@@ -219,19 +223,13 @@
           }
         },
         {
-          "type": "fieldset",
+          "key": "sources[].devices",
           "title": "Described devices",
           "expandable": true,
           "expanded": false,
           "condition": {
             "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
-          },
-          "items": [
-            {
-              "key": "sources[].devices",
-              "notitle": true
-            }
-          ]
+          }
         }
       ]
     },

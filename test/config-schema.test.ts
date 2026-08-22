@@ -125,7 +125,7 @@ describe('config.schema.json', () => {
     expect(missing).toEqual([]);
   });
 
-  it('names the described devices panel once, not twice', () => {
+  it('makes the described devices array itself the panel', () => {
     const panel = schema.layout
       .flatMap((node: any) => (node.key === 'sources' ? node.items : []))
       .find((node: any) => node.title === 'Described devices');
@@ -134,10 +134,27 @@ describe('config.schema.json', () => {
     // Collapsed to start with, since most sources never describe anything.
     expect(panel.expandable).toBe(true);
     expect(panel.expanded).toBe(false);
-    // The array inside it carries no title of its own to repeat.
+    // One title, on the panel, and none on the array under it.
     const [, devices] = properties(schema.schema).find(([path]) => path === 'sources.[].devices')!;
     expect(devices.title).toBeUndefined();
-    expect(panel.items[0].notitle).toBe(true);
+  });
+
+  it('conditions only what carries an array index', () => {
+    // `arrayIndices` is bound to a node with a key. On a wrapper without one
+    // the condition cannot be worked out, and the whole node disappears
+    // rather than failing loudly, which is how the panel went missing.
+    const check = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          continue;
+        }
+        if (node.condition?.functionBody?.includes('arrayIndices')) {
+          expect(node.key, `condition on ${node.title ?? node.type}`).toBeDefined();
+        }
+        check(node.items ?? []);
+      }
+    };
+    check(schema.layout);
   });
 
   it('offers every adapter the plugin can actually load', () => {
