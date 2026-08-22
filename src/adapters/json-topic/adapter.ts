@@ -56,8 +56,26 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     this.setSuffix = context.source.setTopicSuffix?.replace(/^\/+/, '') || undefined;
 
     for (const device of context.source.devices ?? []) {
-      this.declared.set(device.topic.replace(/^\/+|\/+$/g, ''), device.properties);
+      const topic = this.relative(device.topic);
+      const keys = device.properties
+        .map((property) => property.trim().toLowerCase())
+        .filter(Boolean);
+      if (topic && keys.length > 0) {
+        this.declared.set(topic, keys);
+      }
     }
+  }
+
+  /**
+   * The device part of a topic, however it was written.
+   *
+   * The config asks for the part under the base topic, but the whole topic is
+   * the obvious thing to paste and used to be ignored without a word, which
+   * looks exactly like the feature not working.
+   */
+  private relative(topic: string): string {
+    const trimmed = topic.trim().replace(/^\/+|\/+$/g, '');
+    return trimmed.startsWith(`${this.base}/`) ? trimmed.slice(this.base.length + 1) : trimmed;
   }
 
   async start(): Promise<void> {
@@ -72,6 +90,12 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
         ? `Watching ${filter}, commands on <topic>/${this.setSuffix}`
         : `Watching ${filter}, read only`,
     );
+
+    // Said out loud, so a topic written in a way that matches nothing is
+    // visible in the log rather than looking like nothing happened.
+    for (const [topic, keys] of this.declared) {
+      this.log.info(`Described ${joinTopic(this.base, topic)}: ${keys.join(', ')}`);
+    }
   }
 
   async stop(): Promise<void> {
@@ -195,6 +219,8 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
    * nothing about what kind of value it carries.
    */
   private addDeclared(entry: Tracked): void {
+    const added: string[] = [];
+
     for (const key of this.declared.get(entry.deviceId) ?? []) {
       if (entry.properties.has(key)) {
         continue;
@@ -212,7 +238,12 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       if (property) {
         entry.properties.set(key, property);
         entry.unconfirmed.add(key);
+        added.push(key);
       }
+    }
+
+    if (added.length > 0) {
+      this.log.info(`${entry.deviceId}: added ${added.join(', ')} from the config`);
     }
   }
 

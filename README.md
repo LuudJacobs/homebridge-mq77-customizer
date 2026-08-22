@@ -78,7 +78,9 @@ A flat JSON topic carries no schema, so a function is only known once it has tur
   "devices": [{ "topic": "fan_office", "properties": ["speed", "swing"] }] }
 ```
 
-`topic` is the part after the base topic, so `broadlinkrm/fan_office` is written as `fan_office`. Only recognised keys can be named, since a name on its own says nothing about the kind of value it carries. A function the device does report is left exactly as reported.
+`topic` is the part after the base topic, so `broadlinkrm/fan_office` is written as `fan_office`, though the whole topic is accepted too. Only recognised keys can be named, since a name on its own says nothing about the kind of value it carries. A function the device does report is left exactly as reported.
+
+What was described is logged at startup, so a topic that matches no device is visible rather than silent.
 
 ## Usage
 
