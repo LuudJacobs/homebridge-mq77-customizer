@@ -84,8 +84,48 @@ describe('the map tab', () => {
     expect(tip.textContent).toContain('shed_socket');
     expect(tip.textContent).toContain('router');
     // Link quality belongs to the device rather than to a line to hunt for.
-    expect(tip.textContent).toContain('Coordinator · quality 120');
-    expect(tip.textContent).toContain('shed_sensor · quality 80');
+    expect(tip.textContent).toContain('Coordinator · 120');
+    expect(tip.textContent).toContain('shed_sensor · 80');
+  });
+
+  it('says how good each link is, in the panel and on the line', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const shed = [...ui.document.querySelectorAll('#map .map-node')].find(
+      (group) => group.querySelector('text')?.textContent === 'shed_socket',
+    )!;
+    shed.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+
+    const numbers = [...ui.document.querySelectorAll('#map-tip li strong')].map((node) => ({
+      text: node.textContent,
+      className: node.className,
+    }));
+    // The number alone, with the word dropped, coloured by how good it is.
+    expect(numbers).toEqual([
+      { text: '120', className: '' },
+      { text: '80', className: 'poor' },
+    ]);
+
+    // The lines say the same thing.
+    expect(ui.document.querySelectorAll('#map .map-link.good')).toHaveLength(1);
+    expect(ui.document.querySelectorAll('#map .map-link.poor')).toHaveLength(1);
+  });
+
+  it('keeps the panel inside the map rather than off the edge', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const node = ui.document.querySelector('#map .map-node')!;
+    node.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true, clientX: 9999 }));
+    await ui.settle();
+
+    const tip = ui.document.querySelector('#map-tip') as HTMLElement;
+    // jsdom measures nothing, so this only proves it is placed rather than
+    // left to run off: the clamp itself needs a real browser.
+    expect(tip.style.left).not.toBe('');
+    expect(Number.parseFloat(tip.style.left)).toBeGreaterThanOrEqual(0);
   });
 
   it('keeps one panel open at a time, and closes on a click away', async () => {

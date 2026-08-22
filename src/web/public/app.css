@@ -9,6 +9,7 @@
   --rules: #7a5c00;
   --rules-soft: #f6ecc8;
   --error: #b91c1c;
+  --good: #1a7f37;
   --sunken: #eef0f4;
   --radius: 10px;
 }
@@ -25,6 +26,7 @@
     --rules: #d9b44a;
     --rules-soft: #342d16;
     --error: #f27272;
+    --good: #4ac26b;
     --sunken: #21252c;
   }
 }
@@ -622,6 +624,18 @@ button.primary {
   color: var(--muted);
 }
 
+.map-tip strong {
+  color: var(--text);
+}
+
+.map-tip strong.good {
+  color: var(--good);
+}
+
+.map-tip strong.poor {
+  color: var(--error);
+}
+
 .map-node {
   cursor: pointer;
 }
@@ -641,6 +655,15 @@ button.primary {
 .map-link.route {
   stroke: var(--accent);
   stroke-width: 2.5;
+}
+
+/* How good the link is, which outranks what the link is for. */
+.map-link.good {
+  stroke: var(--good);
+}
+
+.map-link.poor {
+  stroke: var(--error);
 }
 
 .map-node rect {
