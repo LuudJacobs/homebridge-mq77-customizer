@@ -553,11 +553,34 @@ button.primary {
   text-underline-offset: 3px;
 }
 
+/*
+ * Columns rather than a grid, so the names run down one column and on to the
+ * next. A grid fills across, which puts b beside a and c under it.
+ */
 .mirror-devices {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-  gap: 0.35rem 1.1rem;
+  column-count: 3;
+  column-gap: 1.1rem;
   padding: 0.25rem 0 0.5rem;
+}
+
+.mirror-devices .toggle {
+  break-inside: avoid;
+  padding: 0.17rem 0;
+  /* A name too long for its column is cut rather than pushing the rest wide. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 60rem) {
+  .mirror-devices {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 36rem) {
+  .mirror-devices {
+    column-count: 1;
+  }
 }
 
 .kind-filters {
@@ -567,8 +590,40 @@ button.primary {
 }
 
 .map {
+  position: relative;
   overflow-x: auto;
   padding: 0.5rem 0 1rem;
+}
+
+/* What a device is and what it can hear, on clicking it. */
+.map-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: 18rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  font-size: 0.82rem;
+}
+
+.map-tip p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.map-tip ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+}
+
+.map-tip li {
+  color: var(--muted);
+}
+
+.map-node {
+  cursor: pointer;
 }
 
 .map-svg {

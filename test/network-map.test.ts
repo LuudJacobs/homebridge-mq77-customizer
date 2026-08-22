@@ -156,6 +156,13 @@ describe('reading a raw scan', () => {
     expect(map.nodes[0]).toMatchObject({ failed: true });
   });
 
+  it('leaves a device that answered everything alone', () => {
+    // Zigbee2MQTT sends an empty list for a device with nothing to report,
+    // and an empty list is true in a boolean: every router looked broken.
+    const map = readNetworkMap([node('0x002', 'b', 'Router', { failed: [] })], []);
+    expect(map.nodes[0]?.failed).toBeUndefined();
+  });
+
   it('falls back to the address when a device has no name', () => {
     const map = readNetworkMap([{ ieeeAddr: '0x004', type: 'Router' }], []);
     expect(map.nodes[0]?.name).toBe('0x004');

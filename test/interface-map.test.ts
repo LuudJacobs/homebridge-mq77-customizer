@@ -56,16 +56,56 @@ describe('the map tab', () => {
     const ui = await openMap();
     await ui.click(ui.byText('button', 'Scan the network'));
 
-    const rows = new Map<string, number>();
+    const columns = new Map<string, number>();
     for (const group of ui.document.querySelectorAll('#map .map-node')) {
       const name = group.querySelector('text')!.textContent!;
-      rows.set(name, Number(group.querySelector('rect')!.getAttribute('y')));
+      columns.set(name, Number(group.querySelector('rect')!.getAttribute('x')));
     }
 
-    // The sensor is reached through the shed socket, so it sits a row lower.
-    expect(rows.get('Coordinator')!).toBeLessThan(rows.get('shed_socket')!);
-    expect(rows.get('shed_socket')!).toBeLessThan(rows.get('shed_sensor')!);
-    expect(rows.get('hall_socket')).toBe(rows.get('shed_socket'));
+    // A hop per column, so the sensor behind the shed socket is one further
+    // right, and the two sockets share a column.
+    expect(columns.get('Coordinator')!).toBeLessThan(columns.get('shed_socket')!);
+    expect(columns.get('shed_socket')!).toBeLessThan(columns.get('shed_sensor')!);
+    expect(columns.get('hall_socket')).toBe(columns.get('shed_socket'));
+  });
+
+  it('tells you about a device when you click it', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const shed = [...ui.document.querySelectorAll('#map .map-node')].find(
+      (group) => group.querySelector('text')?.textContent === 'shed_socket',
+    )!;
+    shed.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+
+    const tip = ui.document.querySelector('#map-tip') as HTMLElement;
+    expect(tip.hidden).toBe(false);
+    expect(tip.textContent).toContain('shed_socket');
+    expect(tip.textContent).toContain('router');
+    // Link quality belongs to the device rather than to a line to hunt for.
+    expect(tip.textContent).toContain('Coordinator · quality 120');
+    expect(tip.textContent).toContain('shed_sensor · quality 80');
+  });
+
+  it('keeps one panel open at a time, and closes on a click away', async () => {
+    const ui = await openMap();
+    await ui.click(ui.byText('button', 'Scan the network'));
+
+    const nodes = [...ui.document.querySelectorAll('#map .map-node')];
+    nodes[0]!.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+    const tip = ui.document.querySelector('#map-tip') as HTMLElement;
+    const first = tip.textContent;
+
+    nodes[1]!.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+    expect(ui.document.querySelectorAll('#map-tip')).toHaveLength(1);
+    expect(tip.textContent).not.toBe(first);
+
+    ui.document.body.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+    expect(tip.hidden).toBe(true);
   });
 
   it('shows a device nothing connects to, rather than dropping it', async () => {

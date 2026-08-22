@@ -382,11 +382,15 @@ export function readNetworkMap(rawNodes: unknown[], rawLinks: unknown[]): Networ
       continue;
     }
     known.add(address);
+    // `failed` lists the requests that went unanswered, and an empty list is
+    // a device that answered everything. An empty array is true in a boolean,
+    // so testing it directly marks every healthy router as broken.
+    const failed = Array.isArray(raw.failed) ? raw.failed.length > 0 : Boolean(raw.failed);
     nodes.push({
       address,
       name: typeof raw.friendlyName === 'string' ? raw.friendlyName : address,
       kind: kindOf(raw.type),
-      ...(raw.failed ? { failed: true } : {}),
+      ...(failed ? { failed: true } : {}),
     });
   }
 
