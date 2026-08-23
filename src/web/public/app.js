@@ -1679,8 +1679,8 @@ function drawSlider(body, draft) {
   const drawButtons = () => {
     buttons.replaceChildren();
     for (const [key, label] of [
-      ['up', 'Brighter'],
-      ['down', 'Dimmer'],
+      ['up', 'Step up'],
+      ['down', 'Step down'],
       ['on', 'Switch on'],
       ['off', 'Switch off'],
     ]) {
