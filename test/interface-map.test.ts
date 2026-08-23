@@ -44,6 +44,37 @@ describe('the page around it', () => {
     expect(ui.document.querySelector('.header-actions #status')).toBeNull();
   });
 
+  it('signs out when the footer link is pressed', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    await ui.click(ui.document.querySelector('#logout'));
+
+    expect(ui.requests.some((request) => request.path === '/api/logout')).toBe(true);
+    // And the way back in is offered rather than an empty page.
+    expect((ui.document.querySelector('#login') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('empties the log when Clear is pressed', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    ui.responses['/api/log'] = {
+      entries: [
+        {
+          at: Date.now(),
+          ruleId: 'r1',
+          ruleName: 'Something',
+          ruleKind: 'standard',
+          outcome: 'fired',
+          detail: '1 action sent',
+        },
+      ],
+    };
+    await ui.click(ui.byText('button.tab', 'Activity'));
+    expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
+
+    await ui.click(ui.document.querySelector('#clear-log'));
+    expect(ui.requests.some((request) => request.path === '/api/log')).toBe(true);
+    expect(ui.document.querySelector('#activity-log')!.textContent).toContain('Nothing has run');
+  });
+
   it('has no in HomeKit only or enabled only filters', async () => {
     const ui = await openInterface({ state: { devices: [] } });
     expect(ui.document.querySelector('#exposed-only')).toBeNull();
