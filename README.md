@@ -142,7 +142,7 @@ Two things guard against a pair of rules setting each other off:
 - a rule will not run more often than its rate limit, one second by default
 - a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
 
-An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button goes out of use until the panel and the stored rule agree again.
+An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button is absent until the panel and the stored rule agree again.
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 

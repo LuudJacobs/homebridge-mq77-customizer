@@ -531,13 +531,13 @@ describe('running a rule by hand', () => {
 
   it('sits beside Save and asks the server to run it', async () => {
     const ui = await openSaved();
-    expect(trigger(ui).disabled).toBe(false);
+    expect(trigger(ui).hidden).toBe(false);
 
     await ui.click(trigger(ui));
     expect(ui.requests.some((request) => request.path === '/api/rules/r1/run')).toBe(true);
   });
 
-  it('goes out of use once the rule has been edited', async () => {
+  it('goes away once the rule has been edited', async () => {
     const ui = await openSaved();
     const name = ui.document.querySelector('#automation .device-body input') as HTMLInputElement;
 
@@ -547,11 +547,12 @@ describe('running a rule by hand', () => {
     await ui.settle();
 
     // The engine reads what is stored, so running now would run something
-    // other than what is on the screen.
-    expect(trigger(ui).disabled).toBe(true);
+    // other than what is on the screen. A button that has gone is
+    // unmistakable, where a greyed one is a shade nobody notices.
+    expect(trigger(ui).hidden).toBe(true);
   });
 
-  it('is out of use on a rule that has only just been added', async () => {
+  it('is absent on a rule that has only just been added', async () => {
     const added = automation('r2', 'New automation', '0xa', '0xb');
     const ui = await openTab('Automation', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
@@ -563,7 +564,7 @@ describe('running a rule by hand', () => {
     card.dispatchEvent(new ui.window.Event('toggle'));
     await ui.settle();
 
-    expect(trigger(ui).disabled).toBe(true);
+    expect(trigger(ui).hidden).toBe(true);
   });
 
   it('is not offered on a mirror rule', async () => {
