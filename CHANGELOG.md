@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - Every device takes a name, a room and a kind, set in its panel and used for reading and grouping in the interface. The device list can be sorted into groups by room or by kind, and the rule lists by the room of the device a rule acts on
+- A rule is named by the rooms it acts in, said in front of its name and left off under a room heading. A rule reaching two rooms is listed under both
+- The line under a rule's name uses the names you have given devices, with their kind icons
+- Button presses from a device marked as a Controller appear in the Activity tab, with a filter of their own
 - The pencil rename button is gone: the name is one of the three fields now, and offered on every device rather than only on the ones no source names
 
 ## [0.13.0] - 2026-08-23

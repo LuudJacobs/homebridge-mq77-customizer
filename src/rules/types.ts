@@ -184,7 +184,8 @@ export interface LogEntry {
   ruleId: string;
   ruleName: string;
   /** Which list the rule lives in, so the run log can be split the same way. */
-  ruleKind: 'standard' | 'mirror' | 'slider';
+  /** `action` is not a rule at all, but a button press worth seeing. */
+  ruleKind: 'standard' | 'mirror' | 'slider' | 'action';
   outcome: LogOutcome;
   /** Why, in a sentence, for the run log in the interface. */
   detail: string;

@@ -99,6 +99,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
+    this.notePresses(update);
+
     for (const rule of rules) {
       if (!rule.enabled) {
         continue;
@@ -424,6 +426,48 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       property.setTopic as string,
       JSON.stringify(writePath(property.encode ?? property.extract, value)),
     );
+  }
+
+  /**
+   * Records a press on a device somebody has marked as a controller.
+   *
+   * Only those: a marked device is one whose presses are worth watching, and
+   * every remote in the house reporting into one list would bury the rules.
+   * An empty action is Zigbee2MQTT clearing the last one, not a new press.
+   */
+  private notePresses(update: StateUpdate): void {
+    const device = this.catalog.getDevice(update.sourceId, update.deviceId);
+    if (!device) {
+      return;
+    }
+    const exposure = this.store.getExposure(`${update.sourceId}:${update.deviceId}`);
+    if (exposure?.type !== 'controller') {
+      return;
+    }
+
+    for (const [propertyKey, value] of Object.entries(update.changes)) {
+      const property = device.properties.find((candidate) => candidate.key === propertyKey);
+      if (property?.semantic !== 'action' || value === '' || value === undefined) {
+        continue;
+      }
+      this.notePress(update, device.name, property.label, value);
+    }
+  }
+
+  private notePress(update: StateUpdate, name: string, label: string, value: unknown): void {
+    const entry: LogEntry = {
+      at: Date.now(),
+      ruleId: `${update.sourceId}:${update.deviceId}`,
+      ruleName: name,
+      ruleKind: 'action',
+      outcome: 'fired',
+      detail: `${label} ${String(value)}`,
+    };
+    this.entries.push(entry);
+    if (this.entries.length > LOG_SIZE) {
+      this.entries.shift();
+    }
+    this.emit('log', entry);
   }
 
   /** Shared rate limit and runaway guard, for whichever kind of rule. */

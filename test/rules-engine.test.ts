@@ -242,6 +242,53 @@ describe('retained messages', () => {
   });
 });
 
+describe('watching a controller', () => {
+  it('notes a press on a device marked as one', async () => {
+    const { engine, mqtt, store } = await harness([]);
+    store.setExposure(`zigbee:${ROCKER.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(engine.getLog()[0]).toMatchObject({ ruleKind: 'action', ruleName: expect.any(String) });
+    expect(engine.getLog()[0]?.detail).toContain('single_left');
+  });
+
+  it('says nothing about a device nobody has marked', async () => {
+    const { engine, mqtt } = await harness([]);
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    // Every remote in the house reporting in would bury the rules.
+    expect(engine.getLog()).toEqual([]);
+  });
+
+  it('passes over the clear that follows a press', async () => {
+    const { engine, mqtt, store } = await harness([]);
+    store.setExposure(`zigbee:${ROCKER.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+    mqtt.deliver(ROCKER.topic, { action: '' });
+
+    // Zigbee2MQTT clearing the last action is not a second press.
+    expect(engine.getLog()).toHaveLength(1);
+  });
+
+  it('says nothing about anything that is not a press', async () => {
+    const { engine, mqtt, store } = await harness([]);
+    store.setExposure(`zigbee:${SWITCH.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(engine.getLog()).toEqual([]);
+  });
+
+  it('ignores a replayed press on reconnecting', async () => {
+    const { engine, mqtt, store } = await harness([]);
+    store.setExposure(`zigbee:${ROCKER.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' }, { retained: true });
+    expect(engine.getLog()).toEqual([]);
+  });
+});
+
 describe('branches', () => {
   /** When the button is pressed: if l2 is on do A, else if it is off do B. */
   const branching = (): Rule => ({
