@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Every device takes a name, a room and a kind, set in its panel and used for reading and grouping in the interface. The device list and the rule lists can be sorted into groups by room or by kind, the rule lists going by the device a rule acts on
+- Every device takes a name, a room and a kind, set in its panel and used for reading and grouping in the interface. The device list can be sorted into groups by room or by kind, and the rule lists by the room of the device a rule acts on
 - The pencil rename button is gone: the name is one of the three fields now, and offered on every device rather than only on the ones no source names
 
 ## [0.13.0] - 2026-08-23
