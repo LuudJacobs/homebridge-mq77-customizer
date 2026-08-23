@@ -6,9 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- An automation or a timer can be run by hand from its panel, switched on or not, once it has been saved
+## [0.15.0] - 2026-08-23
 
-- A Timers tab waits between one thing and another. The clock starts again if the same thing happens again, and is called off the moment what started it stops being so, which an automation with a delayed action cannot do
+### Added
+
+- A Timers tab waits between one thing and another: a light coming on, thirty seconds, the light going out again. The clock starts again if the same thing happens again, and is called off the moment what started it stops being so, which an automation with a delayed action cannot do. A timer counting when Homebridge restarts is forgotten
+- An automation or a timer can be run by hand from its panel, switched on or not, once it has been saved. The conditions still hold sway, and the button is absent while the panel and the stored rule disagree
 
 ## [0.14.0] - 2026-08-23
 
