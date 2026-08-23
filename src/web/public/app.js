@@ -1305,8 +1305,13 @@ function affectedRooms(rule) {
  * for a rule that reaches nowhere named.
  */
 function ruleTitle(rule, grouped = false) {
-  const rooms = grouped ? [] : affectedRooms(rule);
-  return rooms.length > 0 ? `${rooms.join(' / ')}: ${rule.name}` : rule.name;
+  const rooms = affectedRooms(rule);
+  // Left off only when the heading has said all of it. A rule reaching two
+  // rooms still says so under either, since the other room is news.
+  if (rooms.length === 0 || (grouped && rooms.length === 1)) {
+    return rule.name;
+  }
+  return `${rooms.join(' / ')}: ${rule.name}`;
 }
 
 function ruleSortKey(rule, sort) {
