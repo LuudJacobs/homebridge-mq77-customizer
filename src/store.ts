@@ -26,6 +26,7 @@ export const DEVICE_TYPES = [
   'controller',
   'fan',
   'tv',
+  'audio',
   'media',
   'other',
 ] as const;

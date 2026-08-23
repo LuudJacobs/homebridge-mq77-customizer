@@ -163,13 +163,23 @@ describe('grouping the device list', () => {
       'Controller',
       'Fan',
       'TV',
+      'Audio device',
       'Media device',
       'Other',
     ]);
   });
 
   it('draws something for each of them', async () => {
-    for (const type of ['light', 'sensor', 'controller', 'fan', 'tv', 'media', 'other']) {
+    for (const type of [
+      'light',
+      'sensor',
+      'controller',
+      'fan',
+      'tv',
+      'audio',
+      'media',
+      'other',
+    ]) {
       const ui = await openDevices([device('0xa', 'thing', { type })]);
       const icon = ui.document.querySelector('#devices .type-icon');
       expect(icon, type).not.toBeNull();
