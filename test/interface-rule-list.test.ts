@@ -526,6 +526,39 @@ describe('switching a rule on and off', () => {
     expect(saved).toMatchObject({ id: 'r1', enabled: false });
   });
 
+  it('changes its word when it is switched', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
+    expect(
+      (ui.document.querySelector('#automation .rule-enabled') as HTMLElement).textContent,
+    ).toContain('enabled');
+
+    // What the server holds after the change, since the list is reloaded.
+    ui.responses['/api/rules'] = { rules: [{ ...apple, enabled: false }] };
+    box.checked = false;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+
+    const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
+    expect(toggle.textContent).toContain('disabled');
+    expect((toggle.querySelector('input') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('puts the word back if the save is refused', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
+
+    ui.failures['PUT /api/rules'] = { status: 500, body: { error: 'no' } };
+    box.checked = false;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+
+    // Saying it is off when it is not would be worse than saying nothing.
+    expect(
+      (ui.document.querySelector('#automation .rule-enabled') as HTMLElement).textContent,
+    ).toContain('enabled');
+  });
+
   it('does not open the panel when clicked', async () => {
     const ui = await openTab('Automation', [apple]);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
