@@ -144,13 +144,23 @@ Two things guard against a pair of rules setting each other off:
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
+### Timers
+
+A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
+
+The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
+
+A timer counting when Homebridge restarts is forgotten. Whatever it was going to do stays undone until something starts it again.
+
+An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
+
 ### Sliders
 
 A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step. Either button switches the device on when it is off: up goes to the level it comes on at, down to the bottom of the range, since a button pressed at a dark light is a request for light. Down from the first step switches it off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
 
 Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
 
-Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. It then carries on from the nearest step to wherever it landed.
+Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. That is also what happens in the moments after a restart, before the device has reported anything: the first press goes to the first step, and once it has spoken the level it keeps is used. It then carries on from the nearest step to wherever it landed.
 
 Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
 
