@@ -31,6 +31,7 @@ import {
   type Branch,
   type MirrorRule,
   type PropertyRef,
+  type Match,
   type Rule,
   type SliderRule,
   type TimerRule,
@@ -63,6 +64,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
   private readonly steps = new Map<string, { step: number; at: number }>();
+  /**
+   * What each timer last sent, so its own doing does not start it again.
+   *
+   * A timer watching for any change and switching a light off hears the
+   * light say it is off, reads that as a change, and starts over.
+   */
+  private readonly echoes = new Map<string, { at: number; keys: Set<string> }>();
   /** Timers counting, by rule, with what set each one off. */
   private readonly waiting = new Map<
     string,
@@ -469,12 +477,28 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         continue;
       }
       const value = update.changes[trigger.propertyKey];
-      if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
+      const before = previously.get(trigger.propertyKey);
+      if (!matches(trigger.match, value, before)) {
+        continue;
+      }
+      if (!justBecameTrue(trigger.match, before)) {
+        continue;
+      }
+      if (this.isOwnDoing(rule, trigger)) {
         continue;
       }
       this.startWaiting(rule, trigger, value);
       return;
     }
+  }
+
+  /** True when this timer wrote to that property a moment ago. */
+  private isOwnDoing(rule: TimerRule, trigger: Trigger): boolean {
+    const echo = this.echoes.get(rule.id);
+    if (!echo || Date.now() - echo.at > SELF_ECHO_MS) {
+      return false;
+    }
+    return echo.keys.has(`${trigger.sourceId}:${trigger.deviceId}:${trigger.propertyKey}`);
   }
 
   private startWaiting(rule: TimerRule, trigger: Trigger, value: unknown): void {
@@ -495,7 +519,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.timers.add(timer);
     this.waiting.set(rule.id, { timer, trigger, startedWith: value });
 
-    this.record(rule, running ? 'started' : 'started', `waiting ${Math.round(wait / 1000)}s`);
+    const total = Math.round(wait / 1000);
+    const clock = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    this.record(rule, 'started', `waiting ${clock}`);
   }
 
   private fireTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
@@ -515,6 +541,17 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       this.record(rule, 'failed', problems.join('; '));
       return;
     }
+    // Noted before the devices answer, so their answer is not read as a new
+    // reason to start.
+    this.echoes.set(rule.id, {
+      at: Date.now(),
+      keys: new Set(
+        (rule.actions ?? []).map(
+          (action) => `${action.sourceId}:${action.deviceId}:${action.propertyKey}`,
+        ),
+      ),
+    });
+
     const count = rule.actions?.length ?? 0;
     this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`);
   }
@@ -751,6 +788,34 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.emit('log', entry);
   }
 }
+
+/**
+ * Whether a match has only just come true, rather than being true again.
+ *
+ * A light saying it is still on is not somebody turning it on. Starting a
+ * wait is an event, so `is ON` starts one when the light comes on and not on
+ * every message that mentions it, and a stale report after the wait ran does
+ * not set the whole thing going a second time.
+ */
+function justBecameTrue(match: Match, before: unknown): boolean {
+  // Nothing known yet, so this is the first anybody has heard of it.
+  if (before === undefined) {
+    return true;
+  }
+  // These describe a change already: there is no state to have held.
+  if (match.kind === 'changed' || match.kind === 'changedTo') {
+    return true;
+  }
+  return !holds(match, before, before);
+}
+
+/**
+ * How long a timer disregards its own writes coming back.
+ *
+ * Long enough for a device to answer, short enough that a person flicking a
+ * switch straight afterwards still counts.
+ */
+const SELF_ECHO_MS = 2000;
 
 /** Keeps a wait inside what the interface offers, whatever was stored. */
 function clampWait(waitMs: unknown): number {

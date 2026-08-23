@@ -148,7 +148,7 @@ Rules never run on retained messages, so reconnecting to the broker cannot repla
 
 A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
 
-The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
+The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. Starting is an event: a light saying it is still on is not somebody turning it on, so `is ON` starts a wait when the light comes on and not on every message that mentions it. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
 
 A timer counting when Homebridge restarts is forgotten. Whatever it was going to do stays undone until something starts it again.
 
