@@ -38,6 +38,35 @@ export function matches(match: Match, value: unknown, previous?: unknown): boole
 }
 
 /** Describes a match in words, for the run log and the interface. */
+/**
+ * Whether a match still describes where a value stands.
+ *
+ * `matches` answers whether something just happened, which is a question
+ * about a moment. This one asks whether it is still the case, which is what
+ * a timer needs to know before it goes off: told to run when a light came
+ * on, it should stop caring the moment the light is off.
+ *
+ * `changed` describes no state at all, so it falls back to whether the value
+ * is the one that started the wait.
+ */
+export function holds(match: Match, value: unknown, startedWith: unknown): boolean {
+  switch (match.kind) {
+    case 'changed':
+      return same(value, startedWith);
+    case 'changedTo':
+    case 'equals':
+      return same(value, match.value);
+    case 'notEquals':
+      return !same(value, match.value);
+    case 'above':
+      return Number(value) > Number(match.value);
+    case 'below':
+      return Number(value) < Number(match.value);
+    default:
+      return true;
+  }
+}
+
 export function describeMatch(match: Match): string {
   switch (match.kind) {
     case 'changed':

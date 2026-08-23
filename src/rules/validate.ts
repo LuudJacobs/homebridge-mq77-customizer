@@ -1,4 +1,13 @@
-import { DEFAULT_STEPS, MAX_SETTLE_MS, MAX_STEPS, MIN_SETTLE_MS, MIN_STEPS } from './types.js';
+import {
+  DEFAULT_STEPS,
+  DEFAULT_WAIT_MS,
+  MAX_SETTLE_MS,
+  MAX_STEPS,
+  MAX_WAIT_MS,
+  MIN_SETTLE_MS,
+  MIN_STEPS,
+  MIN_WAIT_MS,
+} from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
   Action,
@@ -11,6 +20,7 @@ import type {
   PropertyRef,
   Rule,
   SliderRule,
+  TimerRule,
   Trigger,
 } from './types.js';
 
@@ -40,6 +50,10 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
 
   if (raw.kind === 'slider') {
     return parseSlider(raw, id, name);
+  }
+
+  if (raw.kind === 'timer') {
+    return parseTimer(raw, id, name);
   }
 
   // Several triggers, any of which fires the rule. Earlier versions stored one.
@@ -96,6 +110,88 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       enabled: raw.enabled !== false,
       triggers,
       branches,
+      ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
+    },
+  };
+}
+
+function parseActions(raw: unknown): { actions: Action[] } | { error: string } {
+  const actions: Action[] = [];
+
+  for (const entry of asArray(raw)) {
+    const ref = parseRef(entry);
+    if (!ref || !isObject(entry)) {
+      return { error: 'An action needs a device and a function' };
+    }
+
+    const copies = isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
+    const value = entry.value;
+    const literal =
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+
+    if (!copies && !literal) {
+      return { error: 'An action needs a value to send' };
+    }
+
+    const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
+    actions.push({
+      ...ref,
+      ...(copies
+        ? { valueFrom: { kind: 'trigger' } as const }
+        : { value: value as string | number | boolean }),
+      ...(delay ? { delayMs: delay } : {}),
+    });
+  }
+
+  return { actions };
+}
+
+function parseTimer(
+  raw: Record<string, unknown>,
+  id: string,
+  name: string,
+): { rule: TimerRule } | { error: string } {
+  const triggers: Trigger[] = [];
+  for (const entry of Array.isArray(raw.triggers) ? raw.triggers : []) {
+    const ref = parseRef(entry);
+    if (!ref) {
+      return { error: 'The trigger needs a device and a function' };
+    }
+    const match = parseMatch(isObject(entry) ? entry.match : undefined);
+    if ('error' in match) {
+      return { error: `Trigger: ${match.error}` };
+    }
+    triggers.push({ ...ref, match: match.match });
+  }
+
+  const parsed = parseActions(raw.actions);
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  // A timer being drafted has nothing in it yet, and refusing to store that
+  // would leave nowhere to build it.
+  if (raw.enabled !== false && (triggers.length === 0 || parsed.actions.length === 0)) {
+    return { error: 'A timer needs something to start it and something to do' };
+  }
+
+  const waitMs = clamp(
+    typeof raw.waitMs === 'number' ? Math.round(raw.waitMs) : DEFAULT_WAIT_MS,
+    MIN_WAIT_MS,
+    MAX_WAIT_MS,
+  );
+  const rateLimitMs =
+    typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
+
+  return {
+    rule: {
+      id,
+      kind: 'timer',
+      name,
+      enabled: raw.enabled !== false,
+      triggers,
+      waitMs,
+      actions: parsed.actions,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
   };
@@ -259,31 +355,11 @@ function parseBranch(raw: unknown): { branch: Branch } | { error: string } {
     when = fromConditions(conditions);
   }
 
-  const actions: Action[] = [];
-  for (const entry of asArray(raw.actions)) {
-    const ref = parseRef(entry);
-    if (!ref || !isObject(entry)) {
-      return { error: 'An action needs a device and a function' };
-    }
-
-    const copies = isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
-    const value = entry.value;
-    const literal =
-      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
-
-    if (!copies && !literal) {
-      return { error: 'An action needs a value to send' };
-    }
-
-    const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
-    actions.push({
-      ...ref,
-      ...(copies
-        ? { valueFrom: { kind: 'trigger' } as const }
-        : { value: value as string | number | boolean }),
-      ...(delay ? { delayMs: delay } : {}),
-    });
+  const parsed = parseActions(raw.actions);
+  if ('error' in parsed) {
+    return parsed;
   }
+  const actions = parsed.actions;
 
   if (actions.length === 0) {
     return { error: 'A rule needs at least one action' };
