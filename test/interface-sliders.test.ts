@@ -108,7 +108,8 @@ describe('the sliders tab', () => {
   it('says what a slider drives, and how far', async () => {
     const ui = await openSliders();
     const summary = ui.document.querySelector('#sliders .device-meta')?.textContent;
-    expect(summary).toContain('Brightness');
+    // The device, not which of its functions: that is in the slider itself.
+    expect(summary).toContain('hall_dimmer');
     expect(summary).toContain('4 steps');
     expect(summary).toContain('1 button');
   });
