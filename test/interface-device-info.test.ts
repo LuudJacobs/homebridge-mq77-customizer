@@ -146,6 +146,37 @@ describe('grouping the device list', () => {
     expect(headings(ui)).toEqual(['Hall', 'Kitchen', 'Unknown']);
   });
 
+  it('offers every kind, including the ones added later', async () => {
+    const ui = await openDevices(devices);
+    const card = ui.document.querySelector('#devices .device') as HTMLDetailsElement;
+    card.open = true;
+    await ui.settle();
+
+    // Every card builds its panel, open or not, so ask this one only.
+    const kinds = [...card.querySelectorAll('.device-field select option')].map(
+      (node) => node.textContent,
+    );
+    expect(kinds).toEqual([
+      'Not set',
+      'Light',
+      'Sensor',
+      'Controller',
+      'Fan',
+      'TV',
+      'Media device',
+      'Other',
+    ]);
+  });
+
+  it('draws something for each of them', async () => {
+    for (const type of ['light', 'sensor', 'controller', 'fan', 'tv', 'media', 'other']) {
+      const ui = await openDevices([device('0xa', 'thing', { type })]);
+      const icon = ui.document.querySelector('#devices .type-icon');
+      expect(icon, type).not.toBeNull();
+      expect(icon!.querySelectorAll('path').length, type).toBeGreaterThan(0);
+    }
+  });
+
   it('groups by type, naming the kinds rather than their values', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'type');
