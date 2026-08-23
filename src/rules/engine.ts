@@ -11,10 +11,15 @@ import { convertValue } from './convert.js';
 import { describeMatch, matches } from './match.js';
 import {
   isMirror,
+  isSlider,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
+  DEFAULT_STEPS,
+  MAX_STEPS,
+  MIN_STEPS,
   RUNAWAY_FIRINGS,
   RUNAWAY_WINDOW_MS,
+  STEP_MEMORY_MS,
   type Action,
   type LogEntry,
   type LogOutcome,
@@ -23,6 +28,7 @@ import {
   type MirrorRule,
   type PropertyRef,
   type Rule,
+  type SliderRule,
   type Trigger,
 } from './types.js';
 
@@ -50,6 +56,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private readonly entries: LogEntry[] = [];
   /** When each mirror group was last written to, so it can be left to settle. */
   private readonly settling = new Map<string, number>();
+  /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
+  private readonly steps = new Map<string, { step: number; at: number }>();
   private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(
@@ -100,6 +108,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         for (const [propertyKey, value] of Object.entries(update.changes)) {
           this.mirror(rule, update, propertyKey, value);
         }
+        continue;
+      }
+
+      if (isSlider(rule)) {
+        this.slide(rule, update, previously);
         continue;
       }
 
@@ -230,6 +243,187 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         `${source.label} copied to ${writes.map((write) => write.target.label).join(', ')}`,
       );
     }
+  }
+
+  /**
+   * Moves a dimmer when one of its buttons is pressed.
+   *
+   * The four buttons are checked in turn and the first that matches wins, so
+   * one press does one thing however the buttons are set up.
+   */
+  private slide(rule: SliderRule, update: StateUpdate, previously: Map<string, unknown>): void {
+    const target = this.property(rule.target);
+    if (!target) {
+      return;
+    }
+
+    for (const button of ['up', 'down', 'on', 'off'] as const) {
+      // Any of a button's triggers presses it, and one message satisfying two
+      // of them is still one press.
+      for (const trigger of buttonTriggers(rule, button)) {
+        if (!(trigger.propertyKey in update.changes)) {
+          continue;
+        }
+        if (!refersTo(trigger, update, trigger.propertyKey)) {
+          continue;
+        }
+        const value = update.changes[trigger.propertyKey];
+        if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
+          continue;
+        }
+
+        if (!this.allowed(rule)) {
+          return;
+        }
+        this.press(rule, target, button);
+        return;
+      }
+    }
+  }
+
+  private press(rule: SliderRule, target: NormalisedProperty, button: SliderButton): void {
+    const power = rule.power && this.property(rule.power);
+
+    if (button === 'on' || button === 'off') {
+      if (!power?.setTopic) {
+        this.record(rule, 'failed', 'nothing on that device can be switched on and off');
+        return;
+      }
+      const wanted = button === 'on' ? power.onValue : power.offValue;
+      this.send(power, wanted);
+      this.record(rule, 'fired', `switched ${button}`);
+      return;
+    }
+
+    if (!target.setTopic) {
+      this.record(rule, 'failed', `${target.label} cannot be written to`);
+      return;
+    }
+
+    const ladder = stepsOf(rule, target);
+    const step = this.stepNow(rule, target, ladder);
+
+    // Down from off comes on at the bottom of the range. Somebody pressing a
+    // button at a dark light wants light, and the dimmest step is what down
+    // means when there is nothing below it.
+    const wanted =
+      button === 'up'
+        ? Math.min(step + 1, ladder.steps)
+        : step === 0
+          ? 1
+          : step - 1;
+
+    if (wanted === step && step === ladder.steps) {
+      this.record(rule, 'skipped', `${target.label} is already at the top`);
+      return;
+    }
+
+    // Off is a step of its own at the bottom: a light at zero brightness is
+    // usually still on, drawing power and looking broken.
+    if (wanted === 0) {
+      if (power?.setTopic) {
+        this.send(power, power.offValue);
+        this.remember(rule, 0);
+        this.record(rule, 'fired', `${target.label} stepped down to off`);
+        return;
+      }
+      this.send(target, ladder.min);
+      this.remember(rule, 0);
+      this.record(rule, 'fired', `${target.label} down to ${ladder.min}`);
+      return;
+    }
+
+    // Coming on from off lands where the device says it should, since the
+    // first step is dim for a light somebody has just asked for. The slider
+    // can say instead, for a device that has no opinion.
+    const onLevel = rule.onLevel ?? this.deviceOnLevel(rule);
+    // Only stepping up lands on the level the device keeps. Down asked for
+    // the bottom of the range, not for the light it comes on at.
+    const fromOff = button === 'up' && step === 0 && onLevel !== undefined;
+    const level = fromOff ? clampLevel(onLevel as number, ladder) : levelAt(wanted, ladder);
+    const landed = fromOff ? stepFor(level, ladder) : wanted;
+
+    // The light has to be told to come on as well. Many devices do that
+    // themselves on a brightness write, and the ones that do not would
+    // otherwise take the level and stay dark.
+    if (step === 0 && power?.setTopic) {
+      this.send(power, power.onValue);
+    }
+    this.send(target, level);
+    this.remember(rule, landed);
+    this.record(
+      rule,
+      'fired',
+      fromOff
+        ? `${target.label} on at ${level}`
+        : `${target.label} ${button} to step ${landed} of ${ladder.steps}`,
+    );
+  }
+
+  /**
+   * Which step the dimmer is on, counted from what it was last told.
+   *
+   * A held button sends faster than a light reports back, so within the
+   * memory window a press carries on from the last one. After that the
+   * device is believed, since somebody may have changed it another way.
+   */
+  private stepNow(rule: SliderRule, target: NormalisedProperty, ladder: Ladder): number {
+    const remembered = this.steps.get(rule.id);
+    if (remembered && Date.now() - remembered.at < STEP_MEMORY_MS) {
+      return remembered.step;
+    }
+
+    const power = rule.power && this.property(rule.power);
+    const powerState =
+      rule.power && this.catalog.getState(rule.power.sourceId, rule.power.deviceId)?.[
+        rule.power.propertyKey
+      ];
+    if (power && powerState !== undefined && powerState === power.offValue) {
+      return 0;
+    }
+
+    const current = this.catalog.getState(rule.target.sourceId, rule.target.deviceId)?.[
+      rule.target.propertyKey
+    ];
+    if (typeof current !== 'number') {
+      // Never reported, so there is nothing to count from. Treated as off,
+      // which makes the first press a step up to one.
+      return 0;
+    }
+
+    const above = (current - ladder.min) / (ladder.max - ladder.min || 1);
+    return Math.max(0, Math.min(ladder.steps, Math.round(above * ladder.steps)));
+    // Rounded to the nearest step on purpose: a level set elsewhere snaps to
+    // the ladder before it moves, which is easier to predict than landing
+    // between steps.
+  }
+
+  /**
+   * The level the device itself comes on at, when it keeps one.
+   *
+   * Zigbee2MQTT calls it `level_config.on_level`. A device that has it set
+   * already knows the answer, so asking for it twice would only be a second
+   * place to keep it up to date.
+   */
+  private deviceOnLevel(rule: SliderRule): number | undefined {
+    const device = this.catalog.getDevice(rule.target.sourceId, rule.target.deviceId);
+    const property = device?.properties.find((candidate) => candidate.key.endsWith('on_level'));
+    if (!property) {
+      return undefined;
+    }
+    const value = this.catalog.getState(rule.target.sourceId, rule.target.deviceId)?.[property.key];
+    return typeof value === 'number' ? value : undefined;
+  }
+
+  private remember(rule: SliderRule, step: number): void {
+    this.steps.set(rule.id, { step, at: Date.now() });
+  }
+
+  private send(property: NormalisedProperty, value: unknown): void {
+    this.mqtt.publish(
+      property.setTopic as string,
+      JSON.stringify(writePath(property.encode ?? property.extract, value)),
+    );
   }
 
   /** Shared rate limit and runaway guard, for whichever kind of rule. */
@@ -400,7 +594,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       at: Date.now(),
       ruleId: rule.id,
       ruleName: rule.name,
-      ruleKind: isMirror(rule) ? 'mirror' : 'standard',
+      ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
       outcome,
       detail,
     };
@@ -415,6 +609,50 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
+}
+
+type SliderButton = 'up' | 'down' | 'on' | 'off';
+
+interface Ladder {
+  min: number;
+  max: number;
+  steps: number;
+}
+
+/** The range a slider covers, and how many steps it is cut into. */
+function stepsOf(rule: SliderRule, target: NormalisedProperty): Ladder {
+  const min = target.min ?? 0;
+  const ceiling = target.max ?? 100;
+  return {
+    min,
+    max: Math.min(rule.max ?? ceiling, ceiling),
+    steps: Math.max(MIN_STEPS, Math.min(MAX_STEPS, Math.round(rule.steps || DEFAULT_STEPS))),
+  };
+}
+
+/** What to send for a given step, rounded to something a device will take. */
+function levelAt(step: number, ladder: Ladder): number {
+  const span = ladder.max - ladder.min;
+  return Math.round(ladder.min + (span * step) / ladder.steps);
+}
+
+/** A button's triggers, reading what earlier versions stored as a single one. */
+function buttonTriggers(rule: SliderRule, button: SliderButton): Trigger[] {
+  const given = rule[button] as Trigger[] | Trigger | undefined;
+  if (!given) {
+    return [];
+  }
+  return Array.isArray(given) ? given : [given];
+}
+
+function clampLevel(level: number, ladder: Ladder): number {
+  return Math.round(Math.max(ladder.min, Math.min(ladder.max, level)));
+}
+
+/** The nearest step to a level, so a press from there carries on sensibly. */
+function stepFor(level: number, ladder: Ladder): number {
+  const above = (level - ladder.min) / (ladder.max - ladder.min || 1);
+  return Math.max(1, Math.min(ladder.steps, Math.round(above * ladder.steps)));
 }
 
 /** A rule's branches, reading what earlier versions stored as a single one. */

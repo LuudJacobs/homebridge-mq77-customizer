@@ -1,4 +1,4 @@
-import { MAX_SETTLE_MS, MIN_SETTLE_MS } from './types.js';
+import { DEFAULT_STEPS, MAX_SETTLE_MS, MAX_STEPS, MIN_SETTLE_MS, MIN_STEPS } from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
   Action,
@@ -10,6 +10,7 @@ import type {
   MirrorRule,
   PropertyRef,
   Rule,
+  SliderRule,
   Trigger,
 } from './types.js';
 
@@ -35,6 +36,10 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
 
   if (raw.kind === 'mirror') {
     return parseMirror(raw, id, name);
+  }
+
+  if (raw.kind === 'slider') {
+    return parseSlider(raw, id, name);
   }
 
   // Several triggers, any of which fires the rule. Earlier versions stored one.
@@ -91,6 +96,76 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       enabled: raw.enabled !== false,
       triggers,
       branches,
+      ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
+    },
+  };
+}
+
+function parseSlider(
+  raw: Record<string, unknown>,
+  id: string,
+  name: string,
+): { rule: SliderRule } | { error: string } {
+  const target = parseRef(raw.target);
+
+  // A slider being drafted has no device picked yet, and refusing to store
+  // that would leave nowhere to build it. Only one meant to be running has
+  // to be complete.
+  if (!target && raw.enabled !== false) {
+    return { error: 'Pick the level a slider drives' };
+  }
+
+  const power = parseRef(raw.power);
+  const steps = clamp(
+    typeof raw.steps === 'number' ? Math.round(raw.steps) : DEFAULT_STEPS,
+    MIN_STEPS,
+    MAX_STEPS,
+  );
+
+  const buttons: Partial<Record<'up' | 'down' | 'on' | 'off', Trigger[]>> = {};
+  for (const button of ['up', 'down', 'on', 'off'] as const) {
+    if (raw[button] === undefined || raw[button] === null) {
+      continue;
+    }
+    // Stored as a list. Earlier versions kept one, which reads as a list of
+    // one and is written back as such on the next save.
+    const given = Array.isArray(raw[button]) ? raw[button] : [raw[button]];
+    const triggers: Trigger[] = [];
+
+    for (const entry of given) {
+      const ref = parseRef(entry);
+      if (!ref) {
+        return { error: `The ${button} button needs a device and a function` };
+      }
+      const match = parseMatch(isObject(entry) ? entry.match : undefined);
+      if ('error' in match) {
+        return { error: `The ${button} button: ${match.error}` };
+      }
+      triggers.push({ ...ref, match: match.match });
+    }
+
+    if (triggers.length > 0) {
+      buttons[button] = triggers;
+    }
+  }
+
+  const rateLimitMs =
+    typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
+  const max = typeof raw.max === 'number' ? raw.max : undefined;
+  const onLevel = typeof raw.onLevel === 'number' ? raw.onLevel : undefined;
+
+  return {
+    rule: {
+      id,
+      kind: 'slider',
+      name,
+      enabled: raw.enabled !== false,
+      ...(target ? { target } : { target: { sourceId: '', deviceId: '', propertyKey: '' } }),
+      ...(power ? { power } : {}),
+      steps,
+      ...(max === undefined ? {} : { max }),
+      ...(onLevel === undefined ? {} : { onLevel }),
+      ...buttons,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
   };

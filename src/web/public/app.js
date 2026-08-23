@@ -10,11 +10,11 @@ const state = {
   /** Hides rules that are switched off. */
   enabledOnly: false,
   /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true },
+  activityKinds: { standard: true, mirror: true, slider: true },
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
-  sorts: { devices: 'name', automation: 'name', mirror: 'name' },
+  sorts: { devices: 'name', automation: 'name', mirror: 'name', sliders: 'name' },
   /**
    * A rule just added, kept at the top of its list.
    *
@@ -49,16 +49,19 @@ const el = {
   kindFilters: document.getElementById('kind-filters'),
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
+  kindSlider: document.getElementById('kind-slider'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   tabDevices: document.getElementById('tab-devices'),
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
+  tabSliders: document.getElementById('tab-sliders'),
   tabActivity: document.getElementById('tab-activity'),
   tabMap: document.getElementById('tab-map'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
+  viewSliders: document.getElementById('view-sliders'),
   viewActivity: document.getElementById('view-activity'),
   viewMap: document.getElementById('view-map'),
   map: document.getElementById('map'),
@@ -67,9 +70,11 @@ const el = {
   mapTip: document.getElementById('map-tip'),
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
+  sliders: document.getElementById('sliders'),
   activityLog: document.getElementById('activity-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
+  addSlider: document.getElementById('add-slider'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
   build: document.getElementById('build'),
 };
@@ -403,6 +408,13 @@ const TAB_CONTROLS = {
     ],
     placeholder: 'Filter name, topic or model',
   },
+  sliders: {
+    sorts: [
+      ['name', 'Name'],
+      ['target', 'Device'],
+    ],
+    placeholder: 'Filter name, topic or model',
+  },
   activity: { sorts: [], placeholder: 'Filter by name' },
   map: { sorts: [], placeholder: 'Filter by name' },
 };
@@ -411,7 +423,7 @@ const TAB_CONTROLS = {
 function paintControls() {
   const view = state.view;
   const controls = TAB_CONTROLS[view];
-  const rules = view === 'automation' || view === 'mirror';
+  const rules = view === 'automation' || view === 'mirror' || view === 'sliders';
 
   el.onlyExposed.hidden = view !== 'devices';
   el.onlyEnabled.hidden = !rules;
@@ -929,6 +941,11 @@ el.kindMirror.addEventListener('change', () => {
   renderLog();
 });
 
+el.kindSlider.addEventListener('change', () => {
+  state.activityKinds.slider = el.kindSlider.checked;
+  renderLog();
+});
+
 async function start() {
   await load();
   listen();
@@ -962,6 +979,7 @@ const OUTCOME_LABELS = {
   conditionsFailed: 'conditions not met',
   failed: 'failed',
   disabled: 'turned off',
+  skipped: 'nothing to do',
 };
 
 /** By display name, for the pickers a rule is built from. */
@@ -994,11 +1012,13 @@ async function loadRules() {
 }
 
 /** Whether a stored rule belongs to the mirror tab or the automation one. */
-const kindOf = (rule) => (rule.kind === 'mirror' ? 'mirror' : 'standard');
+const kindOf = (rule) =>
+  rule.kind === 'mirror' ? 'mirror' : rule.kind === 'slider' ? 'slider' : 'standard';
 
 function renderRules() {
   safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
   safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
+  safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
 }
 
 /**
@@ -1043,6 +1063,12 @@ function ruleRefs(rule) {
   if (rule.kind === 'mirror') {
     return (rule.groups ?? []).flat();
   }
+  if (rule.kind === 'slider') {
+    const buttons = ['up', 'down', 'on', 'off'].flatMap((key) =>
+      Array.isArray(rule[key]) ? rule[key] : [rule[key]],
+    );
+    return [rule.target, ...buttons].filter(Boolean);
+  }
   return [...ruleTriggers(rule), ...ruleActions(rule)];
 }
 
@@ -1051,6 +1077,12 @@ function ruleSides(rule) {
   if (rule.kind === 'mirror') {
     const refs = ruleRefs(rule);
     return { trigger: refs[0], target: refs[1] };
+  }
+  if (rule.kind === 'slider') {
+    // The device being driven is what a slider is about, whichever button
+    // happens to be set.
+    const first = (key) => (Array.isArray(rule[key]) ? rule[key][0] : rule[key]);
+    return { trigger: first('up') ?? first('on'), target: rule.target };
   }
   return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
@@ -1090,10 +1122,15 @@ function renderRuleList(kind, container, emptyText) {
   const term = currentFilter();
   const sort = state.sorts[state.view] ?? 'name';
 
+  // A rule just added is exempt from both. It is saved the moment it is
+  // added, so it starts with a placeholder name and switched off, and a list
+  // that was filtered or set to enabled only would swallow it on the spot.
+  const justAdded = (rule) => rule.id === state.pinned;
+
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
-    .filter((rule) => !state.enabledOnly || rule.enabled)
-    .filter((rule) => matchesRuleFilter(rule, term))
+    .filter((rule) => justAdded(rule) || !state.enabledOnly || rule.enabled)
+    .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
     .sort(
       (a, b) =>
         // A rule just added stays in sight, wherever its name would put it.
@@ -1226,6 +1263,15 @@ function renderRule(rule, occurrence) {
 }
 
 function summarise(rule) {
+  if (rule.kind === 'slider') {
+    const property = findProperty(rule.target);
+    const device = findDevice(rule.target);
+    const where = property ? `${device?.name} ${property.label}` : 'a removed function';
+    const buttons = ['up', 'down', 'on', 'off'].filter(
+      (key) => (Array.isArray(rule[key]) ? rule[key].length : rule[key]) ? true : false,
+    ).length;
+    return `${where} · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`;
+  }
   if (rule.kind === 'mirror') {
     const devices = new Set(
       rule.groups.flat().map((ref) => findDevice(ref)?.name ?? 'a removed device'),
@@ -1278,6 +1324,8 @@ function renderRuleBody(rule) {
   const shape = document.createElement('div');
   if (draft.kind === 'mirror') {
     drawMirror(shape, draft);
+  } else if (draft.kind === 'slider') {
+    drawSlider(shape, draft);
   } else {
     drawWhenThen(shape, draft);
   }
@@ -1313,14 +1361,40 @@ function ruleFooter(rule, draft) {
 
   const remove = document.createElement('button');
   remove.type = 'button';
+  remove.className = 'danger';
   remove.textContent = 'Delete';
-  remove.addEventListener('click', async () => {
+
+  const erase = async () => {
     await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
     state.openRules.delete(rule.id);
     await loadRules();
-  });
+  };
 
-  footer.append(save, remove, error);
+  // A rule that has only just been added is a blank nobody has written
+  // anything into, so asking twice is in the way. Anything else took work.
+  if (rule.id === state.pinned) {
+    remove.addEventListener('click', erase);
+  } else {
+    let armed;
+    remove.addEventListener('click', () => {
+      if (armed) {
+        clearTimeout(armed);
+        armed = undefined;
+        return erase();
+      }
+      remove.textContent = 'Confirm';
+      remove.classList.add('armed');
+      // Long enough to mean it, short enough that a button left saying
+      // Confirm cannot be pressed by mistake later.
+      armed = setTimeout(() => {
+        armed = undefined;
+        remove.textContent = 'Delete';
+        remove.classList.remove('armed');
+      }, CONFIRM_MS);
+    });
+  }
+
+  footer.append(save, error, remove);
   return footer;
 }
 
@@ -1495,6 +1569,165 @@ function actionEditor(branch) {
  * on/off `state` and a two channel switch calls the same thing `state_l1`, and
  * mirroring one onto the other is exactly what this is for.
  */
+/** Levels a slider can drive: a number the device will take. */
+const slidable = (device) =>
+  device.properties.filter((property) => property.writable && property.type === 'numeric');
+
+/** The on/off of the same device, which is what the ends of the range need. */
+function powerOf(ref) {
+  const device = ref && findDevice(ref);
+  const power = device?.properties.find(
+    (property) => property.role === 'power' && property.writable,
+  );
+  return power ? { sourceId: ref.sourceId, deviceId: ref.deviceId, propertyKey: power.key } : undefined;
+}
+
+function drawSlider(body, draft) {
+  draft.target = draft.target?.propertyKey ? draft.target : blankRef(slidable);
+  draft.power = draft.power ?? powerOf(draft.target);
+  draft.steps = draft.steps ?? 5;
+
+  body.append(sectionTitle('Level'));
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+
+  /** What the device itself comes on at, when it keeps such a setting. */
+  const deviceOnLevel = () => {
+    const device = findDevice(draft.target);
+    const property = device?.properties.find((candidate) => candidate.key.endsWith('on_level'));
+    const value = property && device.state?.[property.key];
+    return typeof value === 'number' ? value : undefined;
+  };
+
+  const describeLadder = () => {
+    const property = findProperty(draft.target);
+    if (!property) {
+      hint.textContent = 'Pick something with a level to drive.';
+      return;
+    }
+    const fromDevice = deviceOnLevel();
+    onLevel.placeholder = fromDevice === undefined ? 'first step' : String(fromDevice);
+    const min = property.min ?? 0;
+    const top = Math.min(draft.max ?? property.max ?? 100, property.max ?? 100);
+    const size = Math.round((top - min) / draft.steps);
+    const ladder = `${draft.steps} steps of about ${size}, from ${min} to ${top}.`;
+    const landing = draft.onLevel ?? fromDevice;
+    const coming =
+      landing === undefined
+        ? 'Comes on at the first step.'
+        : draft.onLevel === undefined
+          ? `Comes on at ${landing}, which is what the device is set to.`
+          : `Comes on at ${landing}.`;
+    hint.textContent = draft.power
+      ? `${ladder} ${coming} Off is a step of its own.`
+      : `${ladder} Nothing on this device switches on and off, so the ends cannot.`;
+  };
+
+  body.append(
+    refRow(draft.target, {
+      pick: slidable,
+      onChange: () => {
+        // The switch belongs to whichever device is being driven.
+        draft.power = powerOf(draft.target);
+        describeLadder();
+      },
+    }),
+  );
+
+  const settings = document.createElement('div');
+  settings.className = 'option';
+
+  const stepsLabel = document.createElement('label');
+  stepsLabel.textContent = 'Steps';
+  const steps = document.createElement('input');
+  steps.type = 'number';
+  steps.className = 'delay';
+  steps.min = 2;
+  steps.max = 20;
+  steps.value = draft.steps;
+  steps.addEventListener('input', () => {
+    const count = Number(steps.value);
+    draft.steps = Number.isFinite(count) && count >= 2 ? Math.round(count) : 5;
+    describeLadder();
+  });
+
+  const maxLabel = document.createElement('label');
+  maxLabel.textContent = 'Highest';
+  const max = document.createElement('input');
+  max.type = 'number';
+  max.className = 'delay';
+  max.placeholder = 'device max';
+  max.value = draft.max ?? '';
+  max.addEventListener('input', () => {
+    const ceiling = Number(max.value);
+    draft.max = max.value !== '' && Number.isFinite(ceiling) ? ceiling : undefined;
+    describeLadder();
+  });
+
+  const onLevelLabel = document.createElement('label');
+  onLevelLabel.textContent = 'On at';
+  const onLevel = document.createElement('input');
+  onLevel.type = 'number';
+  onLevel.className = 'delay';
+  onLevel.value = draft.onLevel ?? '';
+  onLevel.addEventListener('input', () => {
+    const level = Number(onLevel.value);
+    draft.onLevel = onLevel.value !== '' && Number.isFinite(level) ? level : undefined;
+    describeLadder();
+  });
+
+  settings.append(stepsLabel, steps, maxLabel, max, onLevelLabel, onLevel);
+  body.append(settings, hint);
+  describeLadder();
+
+  const buttons = document.createElement('div');
+  const drawButtons = () => {
+    buttons.replaceChildren();
+    for (const [key, label] of [
+      ['up', 'Step up'],
+      ['down', 'Step down'],
+      ['on', 'Switch on'],
+      ['off', 'Switch off'],
+    ]) {
+      // Stored as a list. A slider written before that carries one, which is
+      // read as a list of one and written back as such on the next save.
+      draft[key] = Array.isArray(draft[key]) ? draft[key] : draft[key] ? [draft[key]] : [];
+      const triggers = draft[key];
+
+      buttons.append(sectionTitle(label));
+
+      const add = () => {
+        triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
+        drawButtons();
+      };
+
+      if (triggers.length === 0) {
+        buttons.append(addButton('+ trigger', add));
+        continue;
+      }
+
+      triggers.forEach((trigger, index) => {
+        const last = index === triggers.length - 1;
+        buttons.append(
+          refRow(trigger, {
+            pick: watchable,
+            withMatch: true,
+            onRemove: () => {
+              triggers.splice(index, 1);
+              drawButtons();
+            },
+            // No "or" between them: a heading of its own already says what
+            // this run of rows is for, and any of them presses it.
+            trailing: last ? addButton('+ trigger', add) : undefined,
+          }),
+        );
+      });
+    }
+  };
+  drawButtons();
+  body.append(buttons);
+}
+
 function drawMirror(body, draft) {
   draft.groups = draft.groups ?? [];
 
@@ -2124,7 +2357,7 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
-const KIND_LABELS = { standard: 'automation', mirror: 'mirror' };
+const KIND_LABELS = { standard: 'automation', mirror: 'mirror', slider: 'slider' };
 
 function renderLog() {
   const container = el.activityLog;
@@ -2248,6 +2481,9 @@ function layoutMap(map) {
 
   return { placed, parents, width: levels.length * COLUMN_STEP + 20, height };
 }
+
+/** How long a Delete button stays armed before going back to asking. */
+const CONFIRM_MS = 2000;
 
 /** Anything at or above this is a good link, at or below the other a poor one. */
 const QUALITY_GOOD = 200;
@@ -2444,11 +2680,13 @@ function showView(view) {
   el.viewDevices.hidden = view !== 'devices';
   el.viewAutomation.hidden = view !== 'automation';
   el.viewMirror.hidden = view !== 'mirror';
+  el.viewSliders.hidden = view !== 'sliders';
   el.viewActivity.hidden = view !== 'activity';
   el.viewMap.hidden = view !== 'map';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
+  el.tabSliders.classList.toggle('active', view === 'sliders');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabMap.classList.toggle('active', view === 'map');
   paintControls();
@@ -2463,11 +2701,15 @@ function showView(view) {
 }
 
 const showsRules = () =>
-  state.view === 'automation' || state.view === 'mirror' || state.view === 'activity';
+  state.view === 'automation' ||
+  state.view === 'mirror' ||
+  state.view === 'sliders' ||
+  state.view === 'activity';
 
 el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
+el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
@@ -2495,6 +2737,16 @@ el.addAutomation.addEventListener('click', () =>
     trigger: { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } },
     conditions: [],
     actions: [{ ...blankRef(writable), value: '' }],
+  }),
+);
+
+el.addSlider.addEventListener('click', () =>
+  addRule({
+    name: 'New slider',
+    enabled: false,
+    kind: 'slider',
+    target: blankRef(slidable),
+    steps: 5,
   }),
 );
 

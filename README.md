@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.12.0
+# MQ77 Customizer 0.13.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -143,6 +143,18 @@ Two things guard against a pair of rules setting each other off:
 - a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+
+### Sliders
+
+A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step. Either button switches the device on when it is off: up goes to the level it comes on at, down to the bottom of the range, since a button pressed at a dark light is a request for light. Down from the first step switches it off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
+
+Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
+
+Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. It then carries on from the nearest step to wherever it landed.
+
+Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
+
+Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 
 ### Map
 
