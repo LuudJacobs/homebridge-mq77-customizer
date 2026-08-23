@@ -6,8 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Fixed: adding a device to a mirror did nothing. The rows were redrawn but never written back, so saving sent the members it had before and the new device was dropped
-- Fixed: removing devices until one was left kept a group that mirrors nothing, and the save was refused for a reason nothing on the screen explained
+## [0.16.1] - 2026-08-24
+
+### Fixed
+
+- Adding a device to a mirror did nothing. The function rows were redrawn with the new device in them, but the group behind them was only written back when something was clicked, so saving sent the members it had before
+- Taking devices away until one was left kept a group of one, which mirrors nothing. The save was then refused for a reason nothing on the screen explained, since the row had already gone
 
 ## [0.16.0] - 2026-08-24
 
