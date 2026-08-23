@@ -723,7 +723,8 @@ button.danger.armed {
 
 /* Beside running text rather than in a row of its own, so it sits on the
    line instead of stretching it. */
-.device-meta .type-icon {
+.device-meta .type-icon,
+.log-line .type-icon {
   width: 1rem;
   height: 1rem;
   vertical-align: text-bottom;

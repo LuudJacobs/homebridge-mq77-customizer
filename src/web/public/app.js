@@ -91,15 +91,24 @@ const key = (device) => `${device.sourceId}:${device.deviceId}`;
  * a device called "Kitchen" in Zigbee2MQTT would otherwise read "Kitchen
  * Kitchen".
  */
-const displayName = (device, grouped = false) => {
+/**
+ * What a device is called here, said for the room being read.
+ *
+ * Under a heading the room comes off the devices that are in it, since the
+ * heading has said it. Anything from elsewhere keeps its room: a remote in
+ * the living room switching a kitchen light is listed under Kitchen, and
+ * which remote it is matters.
+ */
+const displayName = (device, inRoom) => {
   const name = device.exposure.label?.trim();
   const room = device.exposure.room?.trim();
   if (!name) {
     return device.name;
   }
-  // Under a room heading the room is already said, so saying it again in
-  // every name reads as a stutter.
-  return room && !grouped ? `${room} ${name}` : name;
+  if (!room || (inRoom !== undefined && room === inRoom)) {
+    return name;
+  }
+  return `${room} ${name}`;
 };
 
 const DEVICE_TYPES = [
@@ -107,6 +116,9 @@ const DEVICE_TYPES = [
   ['light', 'Light'],
   ['sensor', 'Sensor'],
   ['controller', 'Controller'],
+  ['fan', 'Fan'],
+  ['tv', 'TV'],
+  ['media', 'Media device'],
   ['other', 'Other'],
 ];
 
@@ -117,12 +129,31 @@ const DEVICE_TYPES = [
  * nothing outside itself.
  */
 const TYPE_PATHS = {
-  light:
-    'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.2V17h6v-1.3c0-.8.4-1.6 1-2.2A6 6 0 0 0 12 3Z',
-  sensor: 'M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0ZM12 17.5v-4',
-  controller: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM8 9h8M8 15h8',
-  other:
-    'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM12 8v4M12 12l-5 4M12 12l5 4',
+  light: [
+    'M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.2V17h6v-1.3c0-.8.4-1.6 1-2.2A6 6 0 0 0 12 3Z',
+    'M9 18h6M10 21h4',
+  ],
+  sensor: ['M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z', 'M12 17.5v-4'],
+  // A wall switch: a plate with a rocker in it.
+  controller: [
+    'M7 2.5h10a1.5 1.5 0 0 1 1.5 1.5v16a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 20V4A1.5 1.5 0 0 1 7 2.5Z',
+    'M9.5 7h5v10h-5Z',
+    'M9.5 12h5',
+  ],
+  fan: [
+    'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z',
+    'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z',
+    'M12 10.5V4.5M13.3 13.2l5.2 3M10.7 13.2l-5.2 3',
+  ],
+  tv: [
+    'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z',
+    'M12 17v4M8 21h8',
+  ],
+  media: ['M4 9.5h3.5L12 6v12l-4.5-3.5H4Z', 'M15.5 9.5a4 4 0 0 1 0 5', 'M18 7a7.5 7.5 0 0 1 0 10'],
+  other: [
+    'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+    'M12 8v4M12 12l-5 4M12 12l5 4',
+  ],
 };
 
 function typeIcon(device) {
@@ -134,14 +165,16 @@ function typeIcon(device) {
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('class', `type-icon ${type}`);
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(SVG, 'path');
-  path.setAttribute('d', TYPE_PATHS[type]);
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '1.6');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.append(path);
+  for (const drawing of TYPE_PATHS[type]) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', drawing);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+  }
   const title = document.createElementNS(SVG, 'title');
   title.textContent = DEVICE_TYPES.find(([value]) => value === type)?.[1] ?? type;
   svg.append(title);
@@ -518,7 +551,6 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['room', 'Room'],
-      ['target', 'Device'],
     ],
     placeholder: 'Filter...',
   },
@@ -613,7 +645,7 @@ function render() {
     for (const [heading, devices] of intoGroups(visible, grouping)) {
       el.devices.append(groupHeading(heading));
       for (const device of devices) {
-        el.devices.append(renderDevice(device, byRoom));
+        el.devices.append(renderDevice(device, byRoom ? heading : undefined));
       }
     }
     return;
@@ -637,7 +669,7 @@ function render() {
   }
 }
 
-function renderDevice(device, grouped = false) {
+function renderDevice(device, inRoom) {
   const card = document.createElement('details');
   card.className = 'device';
   card.open = state.open.has(key(device));
@@ -652,7 +684,7 @@ function renderDevice(device, grouped = false) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = displayName(device, grouped);
+  name.textContent = displayName(device, inRoom);
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
@@ -1363,7 +1395,7 @@ function renderRuleList(kind, container, emptyText) {
     for (const [heading, grouped] of ordered) {
       container.append(groupHeading(heading));
       for (const rule of grouped) {
-        container.append(renderRule(rule, undefined, true));
+        container.append(renderRule(rule, undefined, heading === UNGROUPED ? '' : heading));
       }
     }
     return;
@@ -1440,7 +1472,7 @@ function renderByTrigger(container, rules) {
   }
 }
 
-function renderRule(rule, occurrence, grouped = false) {
+function renderRule(rule, occurrence, inRoom) {
   const card = document.createElement('details');
   card.className = 'device rule';
   // One rule can be listed under several of its triggers, and opening it in
@@ -1458,7 +1490,7 @@ function renderRule(rule, occurrence, grouped = false) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = ruleTitle(rule, grouped || Boolean(occurrence));
+  name.textContent = ruleTitle(rule, inRoom !== undefined || Boolean(occurrence));
   const detail = document.createElement('span');
   detail.className = 'device-meta';
   // Under a trigger heading the rule is named first and what sets it off
@@ -1466,7 +1498,7 @@ function renderRule(rule, occurrence, grouped = false) {
   if (occurrence) {
     detail.textContent = describeTrigger(occurrence.trigger);
   } else {
-    detail.replaceChildren(...summarise(rule, grouped));
+    detail.replaceChildren(...summarise(rule, inRoom));
   }
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
@@ -1479,13 +1511,14 @@ function renderRule(rule, occurrence, grouped = false) {
 }
 
 /** A device as it is named here, with its kind drawn in front of it. */
-function deviceParts(ref, suffix = '', grouped = false) {
-  const device = ref && findDevice(ref);
+function deviceParts(ref, suffix = '', inRoom) {
+  // A device or a reference to one, since the log already holds the device.
+  const device = ref && (ref.properties ? ref : findDevice(ref));
   if (!device) {
     return [document.createTextNode(`a removed device${suffix}`)];
   }
   const icon = typeIcon(device);
-  const text = document.createTextNode(`${displayName(device, grouped)}${suffix}`);
+  const text = document.createTextNode(`${displayName(device, inRoom)}${suffix}`);
   return icon ? [icon, text] : [text];
 }
 
@@ -1504,7 +1537,7 @@ function distinctDevices(refs) {
  * Devices only: which function of a lamp a rule writes is in the rule, and
  * repeating "state" on every line said nothing anybody was reading for.
  */
-function summarise(rule, grouped = false) {
+function summarise(rule, inRoom) {
   const words = (text) => document.createTextNode(text);
 
   if (rule.kind === 'slider') {
@@ -1512,7 +1545,7 @@ function summarise(rule, grouped = false) {
       Array.isArray(rule[key]) ? rule[key].length > 0 : Boolean(rule[key]),
     ).length;
     return [
-      ...deviceParts(rule.target, '', grouped),
+      ...deviceParts(rule.target, '', inRoom),
       words(` · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`),
     ];
   }
@@ -1529,7 +1562,7 @@ function summarise(rule, grouped = false) {
       if (parts.length > 0) {
         parts.push(words(' ↔ '));
       }
-      parts.push(...deviceParts(ref, '', grouped));
+      parts.push(...deviceParts(ref, '', inRoom));
     }
     const fields = rule.groups?.length ?? 0;
     parts.push(words(` · ${fields} field${fields === 1 ? '' : 's'}`));
@@ -1541,9 +1574,9 @@ function summarise(rule, grouped = false) {
   const outcomes = rule.branches?.length ?? 1;
 
   return [
-    ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), grouped),
+    ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
     words(' → '),
-    ...deviceParts(actions[0], andMore(distinctDevices(actions)), grouped),
+    ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
     words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
   ];
 }
@@ -2656,11 +2689,15 @@ function renderLog() {
 
     const what = document.createElement('span');
     if (entry.ruleKind === 'action') {
-      // Not a rule: a device saying a button was pressed. Named the way it is
-      // named everywhere else, which is not what the engine stored.
+      // Not a rule: a device saying a button was pressed. Named and drawn the
+      // way it is everywhere else, which is not what the engine stored.
       const [sourceId, deviceId] = entry.ruleId.split(':');
       const device = findDevice({ sourceId, deviceId });
-      what.textContent = `${device ? displayName(device) : entry.ruleName} → ${entry.detail}`;
+      what.replaceChildren(
+        ...(device
+          ? deviceParts(device, ` → ${entry.detail}`)
+          : [document.createTextNode(`${entry.ruleName} → ${entry.detail}`)]),
+      );
     } else {
       const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
       const named = rule ? ruleTitle(rule) : entry.ruleName;
