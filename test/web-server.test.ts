@@ -388,6 +388,25 @@ describe('sanitiseExposure', () => {
   });
 });
 
+describe('clearing the log', () => {
+  it('empties it and says so', async () => {
+    const { base } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const cleared = await signed('/api/log', { method: 'DELETE' });
+    expect(cleared.status).toBe(200);
+
+    const after = await signed('/api/log', { method: 'GET' });
+    expect(((await after.json()) as { entries: unknown[] }).entries).toEqual([]);
+  });
+
+  it('is behind the password like everything else', async () => {
+    const { base } = await harness();
+    const response = await fetch(`${base}/api/log`, { method: 'DELETE' });
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('running a rule by hand', () => {
   it('runs a stored automation and says so', async () => {
     const { base } = await harness();

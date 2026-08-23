@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Signing out and the build label move to a footer, and how the connection is doing becomes a word beside the title, green when live
+- Switching a rule on or off is a tick box in its header, saved as it is clicked
+- The "In HomeKit only" and "Enabled only" filters are gone
+- The activity log reads as columns with room to breathe, and can be emptied
+
 ## [0.15.0] - 2026-08-23
 
 ### Added
