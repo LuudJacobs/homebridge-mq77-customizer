@@ -324,10 +324,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
-    // Coming on from off lands where the slider was told to put it, since the
-    // first step is dim for a light somebody has just asked for.
-    const fromOff = step === 0 && rule.onLevel !== undefined;
-    const level = fromOff ? clampLevel(rule.onLevel as number, ladder) : levelAt(wanted, ladder);
+    // Coming on from off lands where the device says it should, since the
+    // first step is dim for a light somebody has just asked for. The slider
+    // can say instead, for a device that has no opinion.
+    const onLevel = rule.onLevel ?? this.deviceOnLevel(rule);
+    const fromOff = step === 0 && onLevel !== undefined;
+    const level = fromOff ? clampLevel(onLevel as number, ladder) : levelAt(wanted, ladder);
     const landed = fromOff ? stepFor(level, ladder) : wanted;
 
     // The light has to be told to come on as well. Many devices do that
@@ -383,6 +385,23 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // Rounded to the nearest step on purpose: a level set elsewhere snaps to
     // the ladder before it moves, which is easier to predict than landing
     // between steps.
+  }
+
+  /**
+   * The level the device itself comes on at, when it keeps one.
+   *
+   * Zigbee2MQTT calls it `level_config.on_level`. A device that has it set
+   * already knows the answer, so asking for it twice would only be a second
+   * place to keep it up to date.
+   */
+  private deviceOnLevel(rule: SliderRule): number | undefined {
+    const device = this.catalog.getDevice(rule.target.sourceId, rule.target.deviceId);
+    const property = device?.properties.find((candidate) => candidate.key.endsWith('on_level'));
+    if (!property) {
+      return undefined;
+    }
+    const value = this.catalog.getState(rule.target.sourceId, rule.target.deviceId)?.[property.key];
+    return typeof value === 'number' ? value : undefined;
   }
 
   private remember(rule: SliderRule, step: number): void {
