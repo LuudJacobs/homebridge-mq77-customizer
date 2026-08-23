@@ -79,7 +79,7 @@ describe('the timers tab', () => {
     const ui = await openTimers();
     const meta = ui.document.querySelector('#timers .device-meta')?.textContent;
     // A room alone does not change a name, so both read as the source names.
-    expect(meta).toBe('hall_lamp → 1m 30s → porch_lamp');
+    expect(meta).toBe('hall_lamp → 01:30 → porch_lamp');
   });
 
   it('is named by the room it acts in', async () => {
@@ -89,19 +89,49 @@ describe('the timers tab', () => {
     );
   });
 
-  it('splits the wait into minutes and seconds', async () => {
+  it('reads as a clock, two digits each', async () => {
     const ui = await openTimers();
-    // The action row has a delay box of its own, so ask the wait row only.
-    const boxes = [
-      ...ui.document.querySelectorAll('#timers .option input.delay'),
+    const boxes = [...ui.document.querySelectorAll('#timers .wait-box')] as HTMLInputElement[];
+    expect(boxes.map((box) => box.value)).toEqual(['01', '30']);
+    expect(ui.document.querySelector('#timers .wait-colon')?.textContent).toBe(':');
+  });
+
+  it('takes one trigger and no more', async () => {
+    const ui = await openTimers();
+    expect(ui.document.querySelectorAll('#timers .triggers')).toHaveLength(0);
+    expect(ui.byText('button.add-row', '+ trigger', '#timers')).toBeNull();
+  });
+
+  it('will not take more than fifty nine seconds', async () => {
+    const ui = await openTimers();
+    const [, seconds] = [
+      ...ui.document.querySelectorAll('#timers .wait-box'),
     ] as HTMLInputElement[];
-    expect(boxes.map((box) => box.value)).toEqual(['1', '30']);
+
+    seconds!.value = '90';
+    seconds!.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+
+    // Sixty seconds is a minute, and the box beside it is for those.
+    expect(seconds!.value).toBe('59');
+  });
+
+  it('fills an empty box back in as none', async () => {
+    const ui = await openTimers();
+    const [minutes] = [...ui.document.querySelectorAll('#timers .wait-box')] as HTMLInputElement[];
+
+    minutes!.value = '';
+    minutes!.dispatchEvent(new ui.window.Event('input'));
+    minutes!.dispatchEvent(new ui.window.Event('blur'));
+    await ui.settle();
+
+    expect(minutes!.value).toBe('00');
   });
 
   it('sends the wait in milliseconds when saved', async () => {
     const ui = await openTimers();
     const [minutes, seconds] = [
-      ...ui.document.querySelectorAll('#timers .option input.delay'),
+      ...ui.document.querySelectorAll('#timers .wait-box'),
     ] as HTMLInputElement[];
 
     minutes!.value = '2';
@@ -122,7 +152,7 @@ describe('the timers tab', () => {
   it('never sends a wait of nothing', async () => {
     const ui = await openTimers();
     const [minutes, seconds] = [
-      ...ui.document.querySelectorAll('#timers .option input.delay'),
+      ...ui.document.querySelectorAll('#timers .wait-box'),
     ] as HTMLInputElement[];
 
     minutes!.value = '0';
