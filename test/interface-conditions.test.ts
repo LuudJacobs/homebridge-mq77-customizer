@@ -173,13 +173,12 @@ describe('the trigger list', () => {
     expect(ui.document.querySelectorAll('#view-automation .rule-row')).toHaveLength(before + 1);
   });
 
-  it('puts the or after the remove button of the row it follows', async () => {
+  it('leaves the triggers unjoined, since the heading says what they are', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
 
-    const tail = ui.document.querySelector('.triggers .rule-row .rule-tail')!;
-    const parts = [...tail.children].map((node) => node.textContent);
-    expect(parts.slice(-2)).toEqual(['✕', 'or']);
+    expect(ui.byText('span.joiner', 'or', '.triggers')).toBeNull();
+    expect(ui.document.querySelectorAll('.triggers .rule-row')).toHaveLength(2);
   });
 
   it('sends a list of triggers when saved', async () => {

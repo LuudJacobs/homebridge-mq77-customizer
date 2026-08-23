@@ -354,6 +354,61 @@ describe('naming a rule by where it acts', () => {
   });
 });
 
+describe('what the line under a rule says', () => {
+  const meta = (ui: { document: Document }) =>
+    ui.document.querySelector('#automation .device-meta')?.textContent;
+
+  it('names the devices and nothing about their functions', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    // Which function it writes is in the rule. Saying "state" here said
+    // nothing anybody was reading for.
+    expect(meta(ui)).toBe('hall_lamp → porch_lamp');
+  });
+
+  it('counts the rest rather than listing them', async () => {
+    const many = automation('r1', 'Evening', '0xa', '0xb', {
+      triggers: [
+        { sourceId: 'zigbee', deviceId: '0xa', propertyKey: 'state', match: { kind: 'changedTo', value: 'ON' } },
+        { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', match: { kind: 'changedTo', value: 'ON' } },
+      ],
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+        { actions: [{ sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'OFF' }] },
+      ],
+    });
+    const ui = await openTab('Automation', [many]);
+    expect(meta(ui)).toBe('hall_lamp (+1) → porch_lamp (+1) - 2 outcomes');
+  });
+
+  it('says nothing about outcomes when there is only one', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    expect(meta(ui)).not.toContain('outcome');
+  });
+
+  it('drops the room from the names once the list is grouped by room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study', label: 'Lamp' } : {}) },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Nightlight', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+
+    expect(meta(ui)).toContain('Study Lamp');
+    await sortBy(ui, 'room');
+    // The heading says Study, so the name need not say it twice.
+    expect(meta(ui)).toContain('Lamp');
+    expect(meta(ui)).not.toContain('Study Lamp');
+  });
+});
+
 describe('a rule just added', () => {
   it('sits at the top until it is saved, whatever it is called', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');

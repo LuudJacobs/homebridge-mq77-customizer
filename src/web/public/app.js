@@ -91,13 +91,15 @@ const key = (device) => `${device.sourceId}:${device.deviceId}`;
  * a device called "Kitchen" in Zigbee2MQTT would otherwise read "Kitchen
  * Kitchen".
  */
-const displayName = (device) => {
+const displayName = (device, grouped = false) => {
   const name = device.exposure.label?.trim();
   const room = device.exposure.room?.trim();
   if (!name) {
     return device.name;
   }
-  return room ? `${room} ${name}` : name;
+  // Under a room heading the room is already said, so saying it again in
+  // every name reads as a stutter.
+  return room && !grouped ? `${room} ${name}` : name;
 };
 
 const DEVICE_TYPES = [
@@ -606,10 +608,12 @@ function render() {
 
   const grouping = GROUP_KEYS[state.sorts.devices];
   if (grouping && visible.length > 0) {
+    // Only a room heading has said the room. Grouping by kind has not.
+    const byRoom = state.sorts.devices === 'room';
     for (const [heading, devices] of intoGroups(visible, grouping)) {
       el.devices.append(groupHeading(heading));
       for (const device of devices) {
-        el.devices.append(renderDevice(device));
+        el.devices.append(renderDevice(device, byRoom));
       }
     }
     return;
@@ -633,7 +637,7 @@ function render() {
   }
 }
 
-function renderDevice(device) {
+function renderDevice(device, grouped = false) {
   const card = document.createElement('details');
   card.className = 'device';
   card.open = state.open.has(key(device));
@@ -648,7 +652,7 @@ function renderDevice(device) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = displayName(device);
+  name.textContent = displayName(device, grouped);
   const meta = document.createElement('span');
   meta.className = 'device-meta';
   meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
@@ -1462,7 +1466,7 @@ function renderRule(rule, occurrence, grouped = false) {
   if (occurrence) {
     detail.textContent = describeTrigger(occurrence.trigger);
   } else {
-    detail.replaceChildren(...summarise(rule));
+    detail.replaceChildren(...summarise(rule, grouped));
   }
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
@@ -1475,27 +1479,40 @@ function renderRule(rule, occurrence, grouped = false) {
 }
 
 /** A device as it is named here, with its kind drawn in front of it. */
-function deviceParts(ref, suffix = '') {
+function deviceParts(ref, suffix = '', grouped = false) {
   const device = ref && findDevice(ref);
   if (!device) {
-    return [document.createTextNode(`a removed function${suffix}`)];
+    return [document.createTextNode(`a removed device${suffix}`)];
   }
   const icon = typeIcon(device);
-  const text = document.createTextNode(`${displayName(device)}${suffix}`);
+  const text = document.createTextNode(`${displayName(device, grouped)}${suffix}`);
   return icon ? [icon, text] : [text];
 }
 
+/** " (+2)" when a rule reaches more than one device on that side. */
+const andMore = (count) => (count > 1 ? ` (+${count - 1})` : '');
+
+/** The devices a list of refs touches, counted once each. */
+function distinctDevices(refs) {
+  return new Set(refs.filter(Boolean).map((ref) => `${ref.sourceId}|${ref.deviceId}`)).size;
+}
+
 /** The line under a rule's name, saying what it works on. Returns nodes. */
-function summarise(rule) {
+/**
+ * The line under a rule's name, saying which devices it works on.
+ *
+ * Devices only: which function of a lamp a rule writes is in the rule, and
+ * repeating "state" on every line said nothing anybody was reading for.
+ */
+function summarise(rule, grouped = false) {
   const words = (text) => document.createTextNode(text);
 
   if (rule.kind === 'slider') {
-    const property = findProperty(rule.target);
     const buttons = ['up', 'down', 'on', 'off'].filter((key) =>
       Array.isArray(rule[key]) ? rule[key].length > 0 : Boolean(rule[key]),
     ).length;
     return [
-      ...deviceParts(rule.target, property ? ` ${property.label}` : ''),
+      ...deviceParts(rule.target, '', grouped),
       words(` · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`),
     ];
   }
@@ -1512,27 +1529,22 @@ function summarise(rule) {
       if (parts.length > 0) {
         parts.push(words(' ↔ '));
       }
-      parts.push(...deviceParts(ref));
+      parts.push(...deviceParts(ref, '', grouped));
     }
     const fields = rule.groups?.length ?? 0;
     parts.push(words(` · ${fields} field${fields === 1 ? '' : 's'}`));
     return parts;
   }
 
-  const first = ruleTriggers(rule)[0];
-  const source = first && findProperty(first);
-  const firstAction = ruleActions(rule)[0];
-  const target = firstAction && findProperty(firstAction);
-  const triggers = ruleTriggers(rule).length;
-  const more = triggers > 1 ? ` and ${triggers - 1} more` : '';
+  const triggers = ruleTriggers(rule);
+  const actions = ruleActions(rule);
   const outcomes = rule.branches?.length ?? 1;
-  const extra = outcomes > 1 ? ` and ${outcomes - 1} more outcome${outcomes > 2 ? 's' : ''}` : '';
 
   return [
-    ...deviceParts(first, source ? ` ${source.label}${more}` : ''),
+    ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), grouped),
     words(' → '),
-    ...deviceParts(firstAction, target ? ` ${target.label}` : ''),
-    words(extra),
+    ...deviceParts(actions[0], andMore(distinctDevices(actions)), grouped),
+    words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
   ];
 }
 function renderRuleBody(rule) {
@@ -1670,7 +1682,8 @@ function drawWhenThen(body, draft) {
                   drawTriggers();
                 }
               : undefined,
-          joiner: last ? undefined : 'or',
+          // Nothing joining them: the heading says what the run of rows is
+          // for, and any of them fires the rule.
           trailing: last
             ? addButton('+ trigger', () => {
                 draft.triggers.push({
@@ -1865,7 +1878,12 @@ function drawSlider(body, draft) {
       : `${ladder} Nothing on this device switches on and off, so the ends cannot.`;
   };
 
-  body.append(
+  const targetRow = document.createElement('div');
+  targetRow.className = 'option';
+  const targetLabel = document.createElement('label');
+  targetLabel.textContent = 'Device';
+  targetRow.append(targetLabel);
+  targetRow.append(
     refRow(draft.target, {
       pick: slidable,
       onChange: () => {
@@ -1875,6 +1893,7 @@ function drawSlider(body, draft) {
       },
     }),
   );
+  body.append(targetRow);
 
   const settings = document.createElement('div');
   settings.className = 'option';
@@ -2637,12 +2656,15 @@ function renderLog() {
 
     const what = document.createElement('span');
     if (entry.ruleKind === 'action') {
-      // Not a rule: a device saying a button was pressed.
-      what.textContent = `${entry.ruleName}: ${entry.detail}`;
+      // Not a rule: a device saying a button was pressed. Named the way it is
+      // named everywhere else, which is not what the engine stored.
+      const [sourceId, deviceId] = entry.ruleId.split(':');
+      const device = findDevice({ sourceId, deviceId });
+      what.textContent = `${device ? displayName(device) : entry.ruleName} → ${entry.detail}`;
     } else {
       const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
       const named = rule ? ruleTitle(rule) : entry.ruleName;
-      what.textContent = `${named}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
+      what.textContent = `${named} - ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome} → ${entry.detail}`;
     }
     line.append(when, kind, what);
     container.append(line);
