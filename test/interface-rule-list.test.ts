@@ -512,6 +512,87 @@ describe('a rule just added', () => {
   });
 });
 
+describe('running a rule by hand', () => {
+  const apple = automation('r1', 'Apple', '0xa', '0xb');
+
+  async function openSaved(rules: unknown[] = [apple]) {
+    const ui = await openTab('Automation', rules);
+    const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
+    card.open = true;
+    card.dispatchEvent(new ui.window.Event('toggle'));
+    await ui.settle();
+    return ui;
+  }
+
+  const trigger = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#automation .rule-footer button')].find(
+      (node) => node.textContent === 'Trigger',
+    ) as HTMLButtonElement;
+
+  it('sits beside Save and asks the server to run it', async () => {
+    const ui = await openSaved();
+    expect(trigger(ui).disabled).toBe(false);
+
+    await ui.click(trigger(ui));
+    expect(ui.requests.some((request) => request.path === '/api/rules/r1/run')).toBe(true);
+  });
+
+  it('goes out of use once the rule has been edited', async () => {
+    const ui = await openSaved();
+    const name = ui.document.querySelector('#automation .device-body input') as HTMLInputElement;
+
+    name.value = 'Something else';
+    // Typing bubbles, which is how the panel notices at all.
+    name.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    await ui.settle();
+
+    // The engine reads what is stored, so running now would run something
+    // other than what is on the screen.
+    expect(trigger(ui).disabled).toBe(true);
+  });
+
+  it('is out of use on a rule that has only just been added', async () => {
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
+    card.open = true;
+    card.dispatchEvent(new ui.window.Event('toggle'));
+    await ui.settle();
+
+    expect(trigger(ui).disabled).toBe(true);
+  });
+
+  it('is not offered on a mirror rule', async () => {
+    const ui = await openInterface({
+      state: { devices },
+      rules: [
+        {
+          id: 'm1',
+          kind: 'mirror',
+          name: 'Together',
+          enabled: true,
+          groups: [[ref('0xa'), ref('0xb')]],
+        },
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Mirror devices'));
+    const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
+    card.open = true;
+    card.dispatchEvent(new ui.window.Event('toggle'));
+    await ui.settle();
+
+    // Every member of a mirror is a trigger, so there is nothing to press.
+    const buttons = [...ui.document.querySelectorAll('#mirror .rule-footer button')].map(
+      (node) => node.textContent,
+    );
+    expect(buttons).not.toContain('Trigger');
+  });
+});
+
 describe('deleting a rule', () => {
   const apple = automation('r1', 'Apple', '0xa', '0xb');
 

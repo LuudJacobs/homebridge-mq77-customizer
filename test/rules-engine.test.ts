@@ -242,6 +242,51 @@ describe('retained messages', () => {
   });
 });
 
+describe('running a rule by hand', () => {
+  it('runs it even when it is switched off', async () => {
+    const rule = buttonRule({ enabled: false });
+    const { engine, mqtt } = await harness([rule]);
+
+    // Trying a rule is exactly what happens before it is switched on.
+    expect(engine.runNow(rule.id)).toBe(true);
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('says no to a rule it cannot set off', async () => {
+    const { engine } = await harness([]);
+    expect(engine.runNow('nothing')).toBe(false);
+  });
+
+  it('still respects the conditions', async () => {
+    const rule = buttonRule({
+      conditions: undefined,
+      actions: undefined,
+      branches: [
+        {
+          when: {
+            kind: 'test',
+            sourceId: 'zigbee',
+            deviceId: SWITCH.id,
+            propertyKey: 'state_l2',
+            match: { kind: 'equals', value: 'ON' },
+          },
+          actions: [
+            { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l1', value: 'ON' },
+          ],
+        },
+      ],
+    });
+    const { engine, mqtt } = await harness([rule]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+
+    // A rule that does nothing under the conditions in force is telling you
+    // something worth knowing.
+    engine.runNow(rule.id);
+    expect(mqtt.published).toEqual([]);
+    expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
+  });
+});
+
 describe('watching a controller', () => {
   it('notes a press on a device marked as one', async () => {
     const { engine, mqtt, store } = await harness([]);
