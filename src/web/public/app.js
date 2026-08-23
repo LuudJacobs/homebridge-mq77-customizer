@@ -1758,8 +1758,9 @@ function ruleFooter(rule, draft, body) {
  *
  * Only what has been saved can be run, since the engine reads the stored
  * rule and not the half filled in one on the screen. Rather than quietly
- * running something other than what is shown, the button goes out of use
- * until the two agree again.
+ * running something other than what is shown, the button goes away until the
+ * two agree again: a button that has gone is unmistakable, where a greyed
+ * one is a shade nobody notices.
  */
 function triggerButton(rule, draft, body, error) {
   const button = document.createElement('button');
@@ -1769,11 +1770,7 @@ function triggerButton(rule, draft, body, error) {
 
   const saved = JSON.stringify(draft);
   const check = () => {
-    const unsaved = rule.id === state.pinned || JSON.stringify(draft) !== saved;
-    button.disabled = unsaved;
-    button.title = unsaved
-      ? 'Save first: this runs the rule as it is stored'
-      : 'Run this rule now, whether or not it is switched on';
+    button.hidden = rule.id === state.pinned || JSON.stringify(draft) !== saved;
   };
   check();
 
