@@ -150,7 +150,7 @@ A dimmer driven from buttons. Pick the level, say how many steps it has, and set
 
 Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
 
-Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. It then carries on from the nearest step to wherever it landed.
+Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. That is also what happens in the moments after a restart, before the device has reported anything: the first press goes to the first step, and once it has spoken the level it keeps is used. It then carries on from the nearest step to wherever it landed.
 
 Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
 
