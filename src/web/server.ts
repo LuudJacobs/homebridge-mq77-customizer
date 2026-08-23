@@ -9,7 +9,15 @@ import type { WebConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import { buttonsFrom, isPublishable, roleFor } from '../homekit/roles.js';
-import { DEVICE_ENDPOINT, TILE_TYPES, type DeviceExposure, type Store, type TileType } from '../store.js';
+import {
+  DEVICE_ENDPOINT,
+  DEVICE_TYPES,
+  TILE_TYPES,
+  type DeviceExposure,
+  type DeviceType,
+  type Store,
+  type TileType,
+} from '../store.js';
 import { randomUUID } from 'node:crypto';
 
 import type { RulesEngine } from '../rules/engine.js';
@@ -403,6 +411,8 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
   }
 
   const label = typeof input.label === 'string' ? input.label.trim().slice(0, 64) : '';
+  const room = typeof input.room === 'string' ? input.room.trim().slice(0, 64) : '';
+  const type = DEVICE_TYPES.includes(input.type as DeviceType) ? (input.type as DeviceType) : undefined;
 
   const names: Record<string, string> = {};
   for (const [endpoint, name] of Object.entries(input.names ?? {})) {
@@ -433,6 +443,8 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     splitEndpoints: input.splitEndpoints === true,
     // An empty name means "use the source's name", not an empty accessory.
     ...(label ? { label } : {}),
+    ...(room ? { room } : {}),
+    ...(type ? { type } : {}),
     names,
     buttons,
   };

@@ -496,7 +496,9 @@ function defaultName(
   endpoint: string,
   split: boolean,
 ): string {
-  const base = exposure.label?.trim() || device.name;
+  // Zigbee2MQTT names its own devices, so a name set here is for the
+  // interface alone. Where nothing names them, it is all there is.
+  const base = (device.renameable && exposure.label?.trim()) || device.name;
   if (!split || endpoint === DEVICE_ENDPOINT) {
     return base;
   }
