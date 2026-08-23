@@ -254,6 +254,106 @@ describe('listing automations under their trigger', () => {
   });
 });
 
+describe('naming a rule by where it acts', () => {
+  const placed = (room?: string, deviceId = '0xb') =>
+    devices.map((entry) =>
+      entry.deviceId === deviceId
+        ? { ...entry, exposure: { properties: [], ...(room ? { room } : {}) } }
+        : { ...entry, exposure: { properties: [] } },
+    );
+
+  const titles = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#automation .device-name')].map((node) => node.textContent);
+
+  it('says the room the rule acts in, not the one it is set off from', async () => {
+    // The trigger is on 0xa, the action on 0xb.
+    const ui = await openInterface({
+      state: { devices: placed('Study') },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Study: Nightlight toggle']);
+  });
+
+  it('lists every room it reaches', async () => {
+    const two = automation('r1', 'Evening', '0xa', '0xb', {
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+      ],
+    });
+    const spread = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}),
+        ...(entry.deviceId === '0xc' ? { room: 'Kitchen' } : {}),
+      },
+    }));
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [two] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Kitchen / Study: Evening']);
+  });
+
+  it('says nothing extra when no device it touches has a room', async () => {
+    const ui = await openInterface({
+      state: { devices: placed(undefined) },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Nightlight toggle']);
+  });
+
+  it('drops the room once the list is grouped by it', async () => {
+    const ui = await openInterface({
+      state: { devices: placed('Study') },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    // The heading has said it already.
+    expect(titles(ui)).toEqual(['Nightlight toggle']);
+  });
+
+  it('lists a rule under every room it reaches', async () => {
+    const two = automation('r1', 'Evening', '0xa', '0xb', {
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+      ],
+    });
+    const spread = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}),
+        ...(entry.deviceId === '0xc' ? { room: 'Kitchen' } : {}),
+      },
+    }));
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [two] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
+      (node) => node.textContent,
+    );
+    // It is the answer in both rooms, so it is listed in both.
+    expect(headings).toEqual(['Kitchen', 'Study']);
+    expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
+  });
+});
+
 describe('a rule just added', () => {
   it('sits at the top until it is saved, whatever it is called', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
@@ -414,10 +514,12 @@ describe('the mirror list', () => {
     expect(named(ui, '#mirror')).toEqual(['Zebra']);
   });
 
-  it('sorts by the first device of the group', async () => {
+  it('offers name and room only, since its two sides are the same thing', async () => {
     const ui = await openTab('Mirror devices', rules);
-    await sortBy(ui, 'trigger');
-    expect(named(ui, '#mirror')).toEqual(['Zebra', 'Apple']);
+    const options = [...ui.document.querySelectorAll('#sort option')].map(
+      (node) => (node as HTMLOptionElement).value,
+    );
+    expect(options).toEqual(['name', 'room']);
   });
 });
 
