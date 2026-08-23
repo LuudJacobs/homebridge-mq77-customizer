@@ -1640,7 +1640,8 @@ function enabledToggle(rule) {
     }
   });
 
-  wrap.append(box, words);
+  // The word first, then the box: read as a sentence rather than a form.
+  wrap.append(words, box);
   return wrap;
 }
 
@@ -1853,7 +1854,7 @@ function drawWhenThen(body, draft) {
       branches.append(renderBranch(branch, index, draft.branches, drawBranches));
     });
     branches.append(
-      addButton('Add outcome', () => {
+      addButton('+ outcome', () => {
         draft.branches.push({ actions: [{ ...blankRef(writable), value: '' }] });
         drawBranches();
       }),
