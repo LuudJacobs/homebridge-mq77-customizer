@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.13.0
+# MQ77 Customizer 0.14.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
