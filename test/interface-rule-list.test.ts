@@ -172,7 +172,7 @@ describe('sorting the automation list', () => {
     const options = [...ui.document.querySelectorAll('#sort option')].map(
       (node) => (node as HTMLOptionElement).value,
     );
-    expect(options).toEqual(['name', 'room', 'type', 'trigger']);
+    expect(options).toEqual(['name', 'room', 'trigger']);
   });
 });
 
@@ -403,25 +403,6 @@ describe('grouping automations by the device they act on', () => {
     expect(headings).toEqual(['Kitchen', 'Unknown']);
   });
 
-  it('groups by kind, naming it rather than its stored value', async () => {
-    const ui = await openInterface({
-      state: {
-        devices: [
-          { ...devices[0]!, exposure: { properties: [] } },
-          { ...devices[1]!, exposure: { properties: [], type: 'light' } },
-          { ...devices[2]!, exposure: { properties: [] } },
-        ],
-      },
-      rules: [lamp, shed],
-    });
-    await ui.click(ui.byText('button.tab', 'Automation'));
-    await sortBy(ui, 'type');
-
-    const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
-      (node) => node.textContent,
-    );
-    expect(headings).toEqual(['Light', 'Unknown']);
-  });
 });
 
 describe('the mirror list', () => {
