@@ -302,7 +302,16 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const ladder = stepsOf(rule, target);
     const step = this.stepNow(rule, target, ladder);
-    const wanted = button === 'up' ? Math.min(step + 1, ladder.steps) : Math.max(step - 1, 0);
+
+    // Down from off comes on at the bottom of the range. Somebody pressing a
+    // button at a dark light wants light, and the dimmest step is what down
+    // means when there is nothing below it.
+    const wanted =
+      button === 'up'
+        ? Math.min(step + 1, ladder.steps)
+        : step === 0
+          ? 1
+          : step - 1;
 
     if (wanted === step && step === ladder.steps) {
       this.record(rule, 'skipped', `${target.label} is already at the top`);
@@ -328,7 +337,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // first step is dim for a light somebody has just asked for. The slider
     // can say instead, for a device that has no opinion.
     const onLevel = rule.onLevel ?? this.deviceOnLevel(rule);
-    const fromOff = step === 0 && onLevel !== undefined;
+    // Only stepping up lands on the level the device keeps. Down asked for
+    // the bottom of the range, not for the light it comes on at.
+    const fromOff = button === 'up' && step === 0 && onLevel !== undefined;
     const level = fromOff ? clampLevel(onLevel as number, ladder) : levelAt(wanted, ladder);
     const landed = fromOff ? stepFor(level, ladder) : wanted;
 

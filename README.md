@@ -146,7 +146,7 @@ Rules never run on retained messages, so reconnecting to the broker cannot repla
 
 ### Sliders
 
-A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step; up from off switches on, and down from the first step switches off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
+A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step. Either button switches the device on when it is off: up goes to the level it comes on at, down to the bottom of the range, since a button pressed at a dark light is a request for light. Down from the first step switches it off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
 
 Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
 
