@@ -186,6 +186,87 @@ describe('waiting', () => {
   });
 });
 
+describe('a timer that acts on what it watches', () => {
+  const anyChange = timerRule({
+    triggers: [
+      {
+        sourceId: 'zigbee',
+        deviceId: LAMP.id,
+        propertyKey: 'state',
+        match: { kind: 'changed' },
+      },
+    ],
+  });
+
+  it('does not start itself again on hearing its own doing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([anyChange]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // The light answers that it is off, which is a change, and used to be
+      // read as a reason to start counting all over again.
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mqtt.published).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still starts on a change somebody made afterwards', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([anyChange]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+
+      // Long enough afterwards to be somebody rather than the device.
+      await vi.advanceTimersByTimeAsync(5_000);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(mqtt.published).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves another rule watching the same device alone', async () => {
+    vi.useFakeTimers();
+    try {
+      const second = timerRule({
+        id: 't2',
+        name: 'Second',
+        actions: [{ sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state', value: 'OFF' }],
+        triggers: [
+          {
+            sourceId: 'zigbee',
+            deviceId: LAMP.id,
+            propertyKey: 'state',
+            match: { kind: 'changed' },
+          },
+        ],
+      });
+      const { mqtt } = await harness([anyChange, second]);
+
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      // Both fired. Only the one that wrote the state disregards the answer.
+      expect(mqtt.published).toHaveLength(2);
+
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(mqtt.published).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('a timer watching a number', () => {
   const warm = timerRule({
     triggers: [

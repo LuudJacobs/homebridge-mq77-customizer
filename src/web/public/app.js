@@ -1572,15 +1572,11 @@ function deviceParts(ref, suffix = '', inRoom) {
   return icon ? [icon, text] : [text];
 }
 
-/** A wait as somebody would say it: "30s", "2m", "1m 30s". */
+/** A wait as a clock says it, minutes and seconds. */
 function describeWait(waitMs) {
   const total = Math.round((waitMs ?? 0) / 1000);
   const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  if (minutes === 0) {
-    return `${seconds}s`;
-  }
-  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+  return `${String(minutes).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /** " (+2)" when a rule reaches more than one device on that side. */
@@ -1935,79 +1931,72 @@ function powerOf(ref) {
 }
 
 function drawTimer(body, draft) {
+  // One trigger. A wait is about one thing happening, and several would each
+  // want their own clock.
   draft.triggers = draft.triggers?.length
-    ? draft.triggers
+    ? [draft.triggers[0]]
     : [{ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } }];
   draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
   draft.waitMs = draft.waitMs ?? 30_000;
 
   body.append(sectionTitle('When'));
+  body.append(refRow(draft.triggers[0], { pick: watchable, withMatch: true }));
 
-  const triggers = document.createElement('div');
-  triggers.className = 'triggers';
-  const drawTriggers = () => {
-    triggers.replaceChildren();
-    draft.triggers.forEach((trigger, index) => {
-      const last = index === draft.triggers.length - 1;
-      triggers.append(
-        refRow(trigger, {
-          pick: watchable,
-          withMatch: true,
-          // Any of them starts the clock, so the last cannot be removed.
-          onRemove:
-            draft.triggers.length > 1
-              ? () => {
-                  draft.triggers.splice(index, 1);
-                  drawTriggers();
-                }
-              : undefined,
-          trailing: last
-            ? addButton('+ trigger', () => {
-                draft.triggers.push({
-                  ...blankRef(watchable),
-                  match: { kind: 'changedTo', value: '' },
-                });
-                drawTriggers();
-              })
-            : undefined,
-        }),
-      );
-    });
-  };
-  drawTriggers();
-  body.append(triggers);
-
-  body.append(sectionTitle('Wait'));
   const waitRow = document.createElement('div');
-  waitRow.className = 'option';
+  waitRow.className = 'option wait';
+  const waitLabel = document.createElement('label');
+  waitLabel.textContent = 'Wait';
+  waitRow.append(waitLabel);
 
   const total = Math.round(draft.waitMs / 1000);
-  const minutesLabel = document.createElement('label');
-  minutesLabel.textContent = 'Minutes';
-  const minutes = document.createElement('input');
-  minutes.type = 'number';
-  minutes.className = 'delay';
-  minutes.min = 0;
-  minutes.value = Math.floor(total / 60);
 
-  const secondsLabel = document.createElement('label');
-  secondsLabel.textContent = 'Seconds';
-  const seconds = document.createElement('input');
-  seconds.type = 'number';
-  seconds.className = 'delay';
-  seconds.min = 0;
-  seconds.max = 59;
-  seconds.value = total % 60;
+  /** Two digits at least, since a clock reads 01:05 rather than 1:5. */
+  const pad = (value) => String(value).padStart(2, '0');
+
+  const box = (value, limit) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'wait-box';
+    input.maxLength = limit;
+    input.value = pad(value);
+    return input;
+  };
+
+  // Minutes run as long as you like, up to the day the server allows.
+  const minutes = box(Math.floor(total / 60), 4);
+  const seconds = box(total % 60, 2);
 
   const readWait = () => {
     const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
-    // A timer of nothing is an automation, and there is a tab for those.
+    // A wait of nothing is an automation, and there is a tab for those.
     draft.waitMs = Math.max(1, both) * 1000;
   };
-  minutes.addEventListener('input', readWait);
-  seconds.addEventListener('input', readWait);
 
-  waitRow.append(minutesLabel, minutes, secondsLabel, seconds);
+  for (const input of [minutes, seconds]) {
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '');
+      // Sixty seconds is a minute, and the box beside it is for those.
+      if (input === seconds && Number(input.value) > 59) {
+        input.value = '59';
+      }
+      readWait();
+    });
+    // An empty box means none of that, said as a clock says it.
+    input.addEventListener('blur', () => {
+      input.value = pad(Number(input.value) || 0);
+      readWait();
+    });
+  }
+
+  const colon = document.createElement('span');
+  colon.className = 'wait-colon';
+  colon.textContent = ':';
+  const unit = document.createElement('span');
+  unit.className = 'wait-unit';
+  unit.textContent = 'minutes';
+
+  waitRow.append(minutes, colon, seconds, unit);
   body.append(waitRow);
 
   body.append(sectionTitle('Then'));
