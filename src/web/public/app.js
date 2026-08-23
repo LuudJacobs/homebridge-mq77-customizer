@@ -2264,11 +2264,16 @@ function drawMirror(body, draft) {
     return candidates.filter((device) => chosen.has(`${device.sourceId}|${device.deviceId}`));
   }
 
-  /** Drops members of a device that is no longer ticked. */
+  /**
+   * Drops members of a device that is no longer ticked.
+   *
+   * A group left with one device mirrors nothing, and keeping it only meant
+   * the save was refused later for a reason nobody could see on the screen.
+   */
   function pruneGroups() {
     draft.groups = draft.groups
       .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
-      .filter((group) => group.length > 0);
+      .filter((group) => group.length > 1);
   }
 
   /** Meanings every selected device has something for. */
@@ -2384,6 +2389,14 @@ function drawMirror(body, draft) {
       }
 
       box.addEventListener('change', commit);
+
+      // Written back as the row is drawn, not only when something is
+      // clicked. Adding a device rebuilds these rows, and without this the
+      // group kept the members it had and the new device was never saved.
+      if (box.checked) {
+        commit();
+      }
+
       fields.append(row);
     }
   }
