@@ -202,12 +202,12 @@ describe('branches', () => {
     // Nothing to number or remove when there is only one.
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
     expect(ui.document.querySelector('.branch-head button[title^="Remove outcome"]')).toBeNull();
-    expect(ui.byText('button.add-row', 'Add outcome')).not.toBeNull();
+    expect(ui.byText('button.add-row', '+ outcome')).not.toBeNull();
   });
 
   it('adds an outcome that can take its own condition', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
 
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(2);
     // Every outcome gets a condition editor, the last one included.
@@ -216,13 +216,13 @@ describe('branches', () => {
 
   it('gives every outcome its own actions', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
     expect(ui.document.querySelectorAll('.branch .actions')).toHaveLength(2);
   });
 
   it('says which outcome the remove button removes, without spelling it out', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
 
     const buttons = [...ui.document.querySelectorAll('.branch-head-right button.add-row')];
     // A plain cross, with the number kept in the tooltip.
@@ -284,7 +284,7 @@ describe('branches', () => {
 
   it('sends a list of branches when saved', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
     await ui.click(ui.byText('button.primary', 'Save'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
@@ -303,7 +303,7 @@ describe('branches', () => {
 
   it('removes an outcome again', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add outcome'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
     // The tooltip says which one is going.
     await ui.click(ui.document.querySelector('.branch-head button[title="Remove outcome 2"]'));
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
