@@ -144,6 +144,16 @@ Two things guard against a pair of rules setting each other off:
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
+### Timers
+
+A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
+
+The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
+
+A timer counting when Homebridge restarts is forgotten. Whatever it was going to do stays undone until something starts it again.
+
+An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
+
 ### Sliders
 
 A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step. Either button switches the device on when it is off: up goes to the level it comes on at, down to the bottom of the range, since a button pressed at a dark light is a request for light. Down from the first step switches it off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.

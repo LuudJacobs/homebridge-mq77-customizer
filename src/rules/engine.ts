@@ -8,13 +8,17 @@ import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
-import { describeMatch, matches } from './match.js';
+import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
   isSlider,
+  isTimer,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
   DEFAULT_STEPS,
+  DEFAULT_WAIT_MS,
+  MAX_WAIT_MS,
+  MIN_WAIT_MS,
   MAX_STEPS,
   MIN_STEPS,
   RUNAWAY_FIRINGS,
@@ -29,6 +33,7 @@ import {
   type PropertyRef,
   type Rule,
   type SliderRule,
+  type TimerRule,
   type Trigger,
 } from './types.js';
 
@@ -58,6 +63,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
   private readonly steps = new Map<string, { step: number; at: number }>();
+  /** Timers counting, by rule, with what set each one off. */
+  private readonly waiting = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; trigger: Trigger; startedWith: unknown }
+  >();
   private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(
@@ -115,6 +125,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       if (isSlider(rule)) {
         this.slide(rule, update, previously);
+        continue;
+      }
+
+      if (isTimer(rule)) {
+        this.tick(rule, update, previously);
         continue;
       }
 
@@ -429,6 +444,82 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Starts, restarts or calls off a timer.
+   *
+   * Calling off comes first: a message that takes the value away from what
+   * started the wait has ended it, whatever else that message says.
+   */
+  private tick(rule: TimerRule, update: StateUpdate, previously: Map<string, unknown>): void {
+    const running = this.waiting.get(rule.id);
+    if (running && refersTo(running.trigger, update, running.trigger.propertyKey)) {
+      const value = update.changes[running.trigger.propertyKey];
+      if (value !== undefined && !holds(running.trigger.match, value, running.startedWith)) {
+        clearTimeout(running.timer);
+        this.timers.delete(running.timer);
+        this.waiting.delete(rule.id);
+        this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+      }
+    }
+
+    for (const trigger of triggersOf(rule)) {
+      if (!(trigger.propertyKey in update.changes)) {
+        continue;
+      }
+      if (!refersTo(trigger, update, trigger.propertyKey)) {
+        continue;
+      }
+      const value = update.changes[trigger.propertyKey];
+      if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
+        continue;
+      }
+      this.startWaiting(rule, trigger, value);
+      return;
+    }
+  }
+
+  private startWaiting(rule: TimerRule, trigger: Trigger, value: unknown): void {
+    // The clock starts again rather than running on: a sensor seeing
+    // somebody a second time means another full wait, not a shorter one.
+    const running = this.waiting.get(rule.id);
+    if (running) {
+      clearTimeout(running.timer);
+      this.timers.delete(running.timer);
+    }
+
+    const wait = clampWait(rule.waitMs);
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      this.waiting.delete(rule.id);
+      this.fireTimer(rule, trigger, value);
+    }, wait);
+    this.timers.add(timer);
+    this.waiting.set(rule.id, { timer, trigger, startedWith: value });
+
+    this.record(rule, running ? 'started' : 'started', `waiting ${Math.round(wait / 1000)}s`);
+  }
+
+  private fireTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
+    if (!this.allowed(rule)) {
+      return;
+    }
+
+    const problems: string[] = [];
+    for (const action of rule.actions ?? []) {
+      const problem = this.run(action, { property: trigger, value });
+      if (problem) {
+        problems.push(problem);
+      }
+    }
+
+    if (problems.length > 0) {
+      this.record(rule, 'failed', problems.join('; '));
+      return;
+    }
+    const count = rule.actions?.length ?? 0;
+    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`);
+  }
+
+  /**
    * Records a press on a device somebody has marked as a controller.
    *
    * Only those: a marked device is one whose presses are worth watching, and
@@ -638,7 +729,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       at: Date.now(),
       ruleId: rule.id,
       ruleName: rule.name,
-      ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
+      ruleKind: isMirror(rule)
+        ? 'mirror'
+        : isSlider(rule)
+          ? 'slider'
+          : isTimer(rule)
+            ? 'timer'
+            : 'standard',
       outcome,
       detail,
     };
@@ -653,6 +750,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
+}
+
+/** Keeps a wait inside what the interface offers, whatever was stored. */
+function clampWait(waitMs: unknown): number {
+  const wanted = typeof waitMs === 'number' ? waitMs : DEFAULT_WAIT_MS;
+  return Math.min(MAX_WAIT_MS, Math.max(MIN_WAIT_MS, Math.round(wanted)));
 }
 
 type SliderButton = 'up' | 'down' | 'on' | 'off';
@@ -719,9 +822,12 @@ function nameOf(branch: Branch, index: number): string {
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
-function triggersOf(rule: Rule): Trigger[] {
+function triggersOf(rule: Rule | TimerRule): Trigger[] {
   if (rule.triggers?.length) {
     return rule.triggers;
+  }
+  if (!('trigger' in rule)) {
+    return [];
   }
   return rule.trigger ? [rule.trigger] : [];
 }
