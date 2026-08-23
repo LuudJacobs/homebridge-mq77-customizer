@@ -149,7 +149,7 @@ describe('the sliders tab', () => {
     expect(rows()).toBe(3);
   });
 
-  it('takes several triggers on one button, joined with or', async () => {
+  it('takes several triggers on one button', async () => {
     const ui = await openSliders();
     const upRow = ui.document.querySelectorAll('#sliders .rule-row')[1]!;
     const another = [...upRow.querySelectorAll('button.add-row')].find(
@@ -158,7 +158,8 @@ describe('the sliders tab', () => {
 
     // One slider, several remotes.
     await ui.click(another);
-    expect(ui.byText('span.joiner', 'or', '#sliders')).not.toBeNull();
+    // Nothing joining them: the heading says what the run of rows is for.
+    expect(ui.byText('span.joiner', 'or', '#sliders')).toBeNull();
 
     // Saving reloads the list, so the check above has to come first.
     await ui.click(ui.byText('button.primary', 'Save', '#sliders'));
