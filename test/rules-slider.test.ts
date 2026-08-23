@@ -124,6 +124,34 @@ describe('stepping a dimmer', () => {
     expect(sent(mqtt)).toEqual(['{"state":"OFF"}']);
   });
 
+  it('comes on at the bottom when stepping down from off', async () => {
+    const { mqtt } = await harness([sliderRule()]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_right');
+    // A button pressed at a dark light is a request for light.
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}', '{"brightness":64}']);
+  });
+
+  it('ignores the on level when coming on that way', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_right');
+    // Down asked for the bottom, not for the level it usually comes on at.
+    expect(sent(mqtt).at(-1)).toBe('{"brightness":64}');
+  });
+
+  it('carries on down from there', async () => {
+    const { mqtt } = await harness([sliderRule()]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_right');
+    pressed(mqtt, 'single_right');
+    // On at the bottom, and the next press down is off again.
+    expect(sent(mqtt).at(-1)).toBe('{"state":"OFF"}');
+  });
+
   it('steps down without switching off when there is room', async () => {
     const { mqtt } = await harness([sliderRule()]);
     mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 254 });
