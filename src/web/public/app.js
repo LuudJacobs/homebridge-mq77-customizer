@@ -118,6 +118,7 @@ const DEVICE_TYPES = [
   ['controller', 'Controller'],
   ['fan', 'Fan'],
   ['tv', 'TV'],
+  ['audio', 'Audio device'],
   ['media', 'Media device'],
   ['other', 'Other'],
 ];
@@ -128,6 +129,9 @@ const DEVICE_TYPES = [
  * Drawn here rather than fetched: the page is self contained and reaches
  * nothing outside itself.
  */
+/** One fan blade, from the hub outwards. Turned to make the other two. */
+const BLADE = 'M12 12C12 8 13 5.4 15.1 5.4c1.8 0 2.7 2.1 1.2 3.8C15 10.6 13.6 11.6 12 12Z';
+
 const TYPE_PATHS = {
   light: [
     'M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.2V17h6v-1.3c0-.8.4-1.6 1-2.2A6 6 0 0 0 12 3Z',
@@ -140,16 +144,26 @@ const TYPE_PATHS = {
     'M9.5 7h5v10h-5Z',
     'M9.5 12h5',
   ],
+  // One blade, turned twice. A ring with spokes in it read as a steering
+  // wheel, which is what a fan drawn that way always looks like.
   fan: [
-    'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z',
-    'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z',
-    'M12 10.5V4.5M13.3 13.2l5.2 3M10.7 13.2l-5.2 3',
+    { d: BLADE },
+    { d: BLADE, rotate: 120 },
+    { d: BLADE, rotate: 240 },
+    'M12 10.7a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z',
   ],
   tv: [
     'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z',
     'M12 17v4M8 21h8',
   ],
-  media: ['M4 9.5h3.5L12 6v12l-4.5-3.5H4Z', 'M15.5 9.5a4 4 0 0 1 0 5', 'M18 7a7.5 7.5 0 0 1 0 10'],
+  audio: ['M4 9.5h3.5L12 6v12l-4.5-3.5H4Z', 'M15.5 9.5a4 4 0 0 1 0 5', 'M18 7a7.5 7.5 0 0 1 0 10'],
+  // A receiver: a wide box with a display and two knobs.
+  media: [
+    'M3 7h18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z',
+    'M5 10.5h6v3H5Z',
+    'M15.6 13.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z',
+    'M19.1 13.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z',
+  ],
   other: [
     'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
     'M12 8v4M12 12l-5 4M12 12l5 4',
@@ -167,7 +181,10 @@ function typeIcon(device) {
   svg.setAttribute('aria-hidden', 'true');
   for (const drawing of TYPE_PATHS[type]) {
     const path = document.createElementNS(SVG, 'path');
-    path.setAttribute('d', drawing);
+    path.setAttribute('d', typeof drawing === 'string' ? drawing : drawing.d);
+    if (typeof drawing !== 'string' && drawing.rotate) {
+      path.setAttribute('transform', `rotate(${drawing.rotate} 12 12)`);
+    }
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke', 'currentColor');
     path.setAttribute('stroke-width', '1.6');
