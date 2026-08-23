@@ -33,10 +33,10 @@ function sliderRule(overrides: Partial<SliderRule> = {}): SliderRule {
     target: { sourceId: 'zigbee', deviceId: DIMMER.id, propertyKey: 'brightness' },
     power: { sourceId: 'zigbee', deviceId: DIMMER.id, propertyKey: 'state' },
     steps: 4,
-    up: press('single_left'),
-    down: press('single_right'),
-    on: press('double_left'),
-    off: press('double_right'),
+    up: [press('single_left')],
+    down: [press('single_right')],
+    on: [press('double_left')],
+    off: [press('double_right')],
     ...overrides,
   };
 }
@@ -148,6 +148,75 @@ describe('stepping a dimmer', () => {
     pressed(mqtt, 'single_left');
     pressed(mqtt, 'single_left');
     expect(sent(mqtt).at(-1)).toBe('{"brightness":127}');
+  });
+});
+
+describe('coming on from off', () => {
+  it('lands where it was told to, not at the first step', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_left');
+    // The first step is dim for a light somebody has just asked for.
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}', '{"brightness":200}']);
+  });
+
+  it('carries on from there rather than from the step it skipped', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_left');
+    pressed(mqtt, 'single_left');
+    // 200 is nearest step three of four, so the next press is step four.
+    expect(sent(mqtt).at(-1)).toBe('{"brightness":254}');
+  });
+
+  it('keeps the level inside what the device takes', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 9999 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt).at(-1)).toBe('{"brightness":254}');
+  });
+
+  it('still steps normally once it is on', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 64 });
+
+    pressed(mqtt, 'single_left');
+    // On already, so the on level has nothing to do with it.
+    expect(sent(mqtt)).toEqual(['{"brightness":127}']);
+  });
+});
+
+describe('several buttons doing the same thing', () => {
+  it('takes a press from any of them', async () => {
+    const { mqtt } = await harness([
+      sliderRule({ up: [press('single_left'), press('single_both')] }),
+    ]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127 });
+
+    pressed(mqtt, 'single_both');
+    expect(sent(mqtt)).toEqual(['{"brightness":191}']);
+  });
+
+  it('counts a message satisfying two of them as one press', async () => {
+    const { mqtt } = await harness([
+      sliderRule({ up: [press('single_left'), press('single_left')] }),
+    ]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127 });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt)).toEqual(['{"brightness":191}']);
+  });
+
+  it('still reads a slider stored with one trigger per button', async () => {
+    // Written by the version before buttons took lists.
+    const { mqtt } = await harness([sliderRule({ up: press('single_left') as never })]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 127 });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt)).toEqual(['{"brightness":191}']);
   });
 });
 

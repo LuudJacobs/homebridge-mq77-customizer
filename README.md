@@ -150,6 +150,10 @@ A dimmer driven from buttons. Pick the level, say how many steps it has, and set
 
 Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
 
+Set "On at" and the slider comes on there rather than at the first step, which is dim for a light somebody has just asked for. It then carries on from the nearest step to it.
+
+Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
+
 Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 
 ### Map
