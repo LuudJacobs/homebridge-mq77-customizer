@@ -122,20 +122,59 @@ export interface MirrorRule {
   settleMs?: number;
 }
 
-export type AnyRule = Rule | MirrorRule;
+/**
+ * A dimmer driven by buttons.
+ *
+ * The same thing written as automations is four to six rules that only make
+ * sense together, so it is one object: the level to drive, how many steps it
+ * has, and the buttons that move it. The device itself stays an ordinary
+ * device, usable in automations and mirror groups as before.
+ */
+export interface SliderRule {
+  id: string;
+  kind: 'slider';
+  name: string;
+  enabled: boolean;
+  /** The numeric property being driven, brightness or speed. */
+  target: PropertyRef;
+  /** The on/off property of the same device, for the ends of the range. */
+  power?: PropertyRef;
+  /** How many steps from off to full. */
+  steps: number;
+  /** Caps the range below what the device allows. */
+  max?: number;
+  up?: Trigger;
+  down?: Trigger;
+  on?: Trigger;
+  off?: Trigger;
+  rateLimitMs?: number;
+}
+
+export type AnyRule = Rule | MirrorRule | SliderRule;
+
+export function isSlider(rule: AnyRule): rule is SliderRule {
+  return (rule as SliderRule).kind === 'slider';
+}
 
 export function isMirror(rule: AnyRule): rule is MirrorRule {
   return rule.kind === 'mirror';
 }
 
-export type LogOutcome = 'fired' | 'rateLimited' | 'conditionsFailed' | 'failed' | 'disabled';
+export type LogOutcome =
+  | 'fired'
+  | 'rateLimited'
+  | 'conditionsFailed'
+  | 'failed'
+  | 'disabled'
+  /** Nothing to do: a slider already at the end of its range. */
+  | 'skipped';
 
 export interface LogEntry {
   at: number;
   ruleId: string;
   ruleName: string;
   /** Which list the rule lives in, so the run log can be split the same way. */
-  ruleKind: 'standard' | 'mirror';
+  ruleKind: 'standard' | 'mirror' | 'slider';
   outcome: LogOutcome;
   /** Why, in a sentence, for the run log in the interface. */
   detail: string;
@@ -157,6 +196,20 @@ export const DEFAULT_SETTLE_MS = 1500;
  * Below this a pair of devices that disagree can trade places fast enough to
  * look like a runaway, which is the fault this window exists to prevent.
  */
+/** Fewest steps a slider can have, since one step is a switch. */
+export const MIN_STEPS = 2;
+export const MAX_STEPS = 20;
+export const DEFAULT_STEPS = 5;
+
+/**
+ * How long a press keeps stepping from where the last one left it.
+ *
+ * A held button sends faster than a light reports back, so reading the
+ * device each time would compute every press from the same value and move
+ * one step in total.
+ */
+export const STEP_MEMORY_MS = 2500;
+
 export const MIN_SETTLE_MS = 250;
 export const MAX_SETTLE_MS = 60_000;
 
