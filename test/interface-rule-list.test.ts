@@ -172,7 +172,7 @@ describe('sorting the automation list', () => {
     const options = [...ui.document.querySelectorAll('#sort option')].map(
       (node) => (node as HTMLOptionElement).value,
     );
-    expect(options).toEqual(['name', 'trigger']);
+    expect(options).toEqual(['name', 'room', 'trigger']);
   });
 });
 

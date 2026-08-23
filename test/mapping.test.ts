@@ -142,6 +142,16 @@ describe('lights', () => {
 });
 
 describe('renaming', () => {
+  it('leaves a source that names its own devices alone', () => {
+    // Zigbee2MQTT owns its names, so one given here is for the interface and
+    // does not quietly rename the accessory as well.
+    const plans = planAccessories(device([property()], { renameable: false }), {
+      properties: ['state'],
+      label: 'Reading lamp',
+    });
+    expect(plans[0]?.name).toBe('Living room');
+  });
+
   it('corrects a name HomeKit would refuse, without changing the accessory', () => {
     const plans = planAccessories(device([property()], { name: 'Gang Licht (voordeur)' }), {
       properties: ['state'],
@@ -153,7 +163,7 @@ describe('renaming', () => {
   });
 
   it('corrects a name the user typed as well', () => {
-    const plans = planAccessories(device([property()]), {
+    const plans = planAccessories(device([property()], { renameable: true }), {
       properties: ['state'],
       label: 'Lamp (hal)',
     });
@@ -171,7 +181,7 @@ describe('renaming', () => {
   });
 
   it('uses the given name for the accessory', () => {
-    const plans = planAccessories(device([property()]), {
+    const plans = planAccessories(device([property()], { renameable: true }), {
       properties: ['state'],
       label: 'Reading lamp',
     });
@@ -179,12 +189,12 @@ describe('renaming', () => {
   });
 
   it('falls back to the source name when the given one is blank', () => {
-    const plans = planAccessories(device([property()]), { properties: ['state'], label: '  ' });
+    const plans = planAccessories(device([property()], { renameable: true }), { properties: ['state'], label: '  ' });
     expect(plans[0]?.name).toBe('Living room');
   });
 
   it('carries the given name into split endpoint accessories', () => {
-    const plans = planAccessories(device(dualEndpoint), {
+    const plans = planAccessories(device(dualEndpoint, { renameable: true }), {
       properties: ['state_l1', 'state_l2'],
       splitEndpoints: true,
       label: 'Hallway',
@@ -193,7 +203,7 @@ describe('renaming', () => {
   });
 
   it('lets a per endpoint name still win', () => {
-    const plans = planAccessories(device(dualEndpoint), {
+    const plans = planAccessories(device(dualEndpoint, { renameable: true }), {
       properties: ['state_l1', 'state_l2'],
       splitEndpoints: true,
       label: 'Hallway',
