@@ -172,7 +172,7 @@ describe('the timers tab', () => {
   it('adds one from the tab, off to begin with', async () => {
     const ui = await openInterface({ state: { devices }, rules: [] });
     await ui.click(ui.byText('button.tab', 'Timers'));
-    await ui.click(ui.byText('button', 'Add timer'));
+    await ui.click(ui.byText('button', '+ timer'));
 
     const created = ui.requests.find((request) => request.body !== undefined)?.body as {
       kind: string;

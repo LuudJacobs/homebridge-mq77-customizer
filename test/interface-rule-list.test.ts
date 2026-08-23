@@ -461,7 +461,7 @@ describe('a rule just added', () => {
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
 
-    await ui.click(ui.byText('button', 'Add automation'));
+    await ui.click(ui.byText('button', '+ automation'));
 
     // By name it would be second and easy to miss on a long list.
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
@@ -476,23 +476,10 @@ describe('a rule just added', () => {
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', 'Add automation'));
+    await ui.click(ui.byText('button', '+ automation'));
 
     // Adding something that then vanishes is worse than a filter being ignored.
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
-  });
-
-  it('shows even with enabled only ticked, since it starts switched off', async () => {
-    const apple = automation('r1', 'Apple', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
-    await ui.click(ui.document.querySelector('#enabled-only'));
-
-    const added = { ...automation('r2', 'New automation', '0xa', '0xb'), enabled: false };
-    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
-    ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', 'Add automation'));
-
-    expect(named(ui, '#automation')).toContain('New automation');
   });
 
   it('takes its place in the order once saved', async () => {
@@ -502,13 +489,85 @@ describe('a rule just added', () => {
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', 'Add automation'));
+    await ui.click(ui.byText('button', '+ automation'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     expect(card).not.toBeNull();
     expect(named(ui, '#automation')).toEqual(['Apple', 'New automation']);
+  });
+});
+
+describe('switching a rule on and off', () => {
+  const apple = automation('r1', 'Apple', '0xa', '0xb');
+
+  it('sits in the header and says which it is', async () => {
+    const ui = await openTab('Automation', [{ ...apple, enabled: false }]);
+    const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
+
+    expect(toggle.textContent).toContain('disabled');
+    expect((toggle.querySelector('input') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('saves as it is clicked, without touching the panel', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
+
+    box.checked = false;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      id: string;
+      enabled: boolean;
+    };
+    // The stored rule with one thing changed, not whatever is on the screen.
+    expect(saved).toMatchObject({ id: 'r1', enabled: false });
+  });
+
+  it('changes its word when it is switched', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
+    expect(
+      (ui.document.querySelector('#automation .rule-enabled') as HTMLElement).textContent,
+    ).toContain('enabled');
+
+    // What the server holds after the change, since the list is reloaded.
+    ui.responses['/api/rules'] = { rules: [{ ...apple, enabled: false }] };
+    box.checked = false;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+
+    const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
+    expect(toggle.textContent).toContain('disabled');
+    expect((toggle.querySelector('input') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('puts the word back if the save is refused', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
+
+    ui.failures['PUT /api/rules'] = { status: 500, body: { error: 'no' } };
+    box.checked = false;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+
+    // Saying it is off when it is not would be worse than saying nothing.
+    expect(
+      (ui.document.querySelector('#automation .rule-enabled') as HTMLElement).textContent,
+    ).toContain('enabled');
+  });
+
+  it('does not open the panel when clicked', async () => {
+    const ui = await openTab('Automation', [apple]);
+    const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
+    const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
+
+    toggle.dispatchEvent(new ui.window.MouseEvent('click', { bubbles: true }));
+    await ui.settle();
+
+    expect(card.open).toBe(false);
   });
 });
 
@@ -557,7 +616,7 @@ describe('running a rule by hand', () => {
     const ui = await openTab('Automation', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', 'Add automation'));
+    await ui.click(ui.byText('button', '+ automation'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     card.open = true;
@@ -642,7 +701,7 @@ describe('deleting a rule', () => {
     const ui = await openTab('Automation', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, automation('r2', 'New automation', '0xa', '0xb')] };
-    await ui.click(ui.byText('button', 'Add automation'));
+    await ui.click(ui.byText('button', '+ automation'));
 
     // Nothing has been written into it yet, so asking twice is in the way.
     const button = ui.document.querySelector(

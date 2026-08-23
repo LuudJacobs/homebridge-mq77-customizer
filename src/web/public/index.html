@@ -23,20 +23,12 @@
       <header>
         <h1>
           <img class="logo" src="/favicon.svg" alt="" width="26" height="26" />MQ77 Customizer<span
-            id="build"
-            class="build"
-          ></span>
+            id="status"
+            class="status"
+            >connecting</span
+          >
         </h1>
         <div class="header-actions">
-          <span id="status" class="status">connecting</span>
-          <label class="toggle" id="only-exposed" for="exposed-only">
-            <input id="exposed-only" type="checkbox" />
-            In HomeKit only
-          </label>
-          <label class="toggle" id="only-enabled" for="enabled-only" hidden>
-            <input id="enabled-only" type="checkbox" />
-            Enabled only
-          </label>
           <span id="kind-filters" class="kind-filters" hidden>
             <label class="toggle" for="kind-automation">
               <input id="kind-automation" type="checkbox" checked />
@@ -61,7 +53,6 @@
           </span>
           <select id="sort" title="Sort the list"></select>
           <input id="filter" type="search" />
-          <button id="logout" type="button">Sign out</button>
         </div>
       </header>
 
@@ -90,55 +81,47 @@
 
       <section id="view-devices">
         <p class="hint">
-          Tick what should appear in HomeKit. Changes apply immediately, no restart.
-          Everything else stays available to the rules engine.
+          Tick what should appear in HomeKit. Changes apply immediately.
         </p>
         <main id="devices"></main>
       </section>
 
       <section id="view-automation" hidden>
         <p class="hint">
-          When something happens on one device, send something to another. An action can
-          send a fixed value or match whatever set the rule off. Works across sources, and
-          applies immediately.
+          When something happens on one device, send something to another.
         </p>
         <div class="rules-actions">
-          <button id="add-automation" type="button">Add automation</button>
+          <button id="add-automation" type="button">+ automation</button>
         </div>
         <main id="automation"></main>
       </section>
 
       <section id="view-mirror" hidden>
         <p class="hint">
-          Keep the same function on several devices in step. Every device is both a
-          trigger and a target, so changing any one of them brings the rest into line.
+          Keep the same function on several devices in step.
         </p>
         <div class="rules-actions">
-          <button id="add-mirror" type="button">Add mirror</button>
+          <button id="add-mirror" type="button">+ mirror</button>
         </div>
         <main id="mirror"></main>
       </section>
 
       <section id="view-sliders" hidden>
         <p class="hint">
-          Drive a dimmer or a fan from buttons. The level is cut into steps, and a press moves
-          it one step: up from off switches on, down from the first step switches off. The
-          device stays an ordinary device, still usable in automations and mirror groups.
+          Control a slider via buttons. The slider is cut into steps, and a press moves it one step.
         </p>
         <div class="rules-actions">
-          <button id="add-slider" type="button">Add slider</button>
+          <button id="add-slider" type="button">+ slider</button>
         </div>
         <main id="sliders"></main>
       </section>
 
       <section id="view-timers" hidden>
         <p class="hint">
-          Wait between one thing and another. The clock starts again if the same thing happens
-          again, and is called off the moment what started it stops being so: a light told to
-          go out in thirty seconds does not go out if you switched it off yourself.
+          Wait between one thing and another.
         </p>
         <div class="rules-actions">
-          <button id="add-timer" type="button">Add timer</button>
+          <button id="add-timer" type="button">+ timer</button>
         </div>
         <main id="timers"></main>
       </section>
@@ -157,12 +140,16 @@
       </section>
 
       <section id="view-activity" hidden>
-        <p class="hint">
-          What the rules have been doing, newest first, including the ones that decided not
-          to run and why.
-        </p>
+        <div class="hint-row">
+          <p class="hint">Log what has been ran and what triggered it.</p>
+          <button id="clear-log" type="button" class="add-row">Clear</button>
+        </div>
         <div id="activity-log" class="log"></div>
       </section>
+      <footer class="page-footer">
+        <button id="logout" type="button" class="link">Sign out</button>
+        <span id="build" class="build"></span>
+      </footer>
     </div>
 
     <script src="/app.js" type="module"></script>

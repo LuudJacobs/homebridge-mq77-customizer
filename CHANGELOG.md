@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.16.0] - 2026-08-24
+
+### Changed
+
+- Signing out and the build label move to a footer at the foot of the page, and how the connection is doing becomes a word beside the title, green when live
+- Switching a rule on or off is a tick box in its header, saved as it is clicked. It writes the stored rule with one thing changed, so turning something off does not push half written panel edits out with it
+- The "In HomeKit only" and "Enabled only" filters are gone: a rule switched off is still a rule you are looking for
+- The activity log reads as three columns with room to breathe, so every description starts in the same place, and can be emptied
+- The add buttons read "+ automation", "+ outcome" and the like, and each tab's description says what it is for in one line
+- Inputs and selects state their height, since the same padding on both left them a few pixels apart on one row
+
 ## [0.15.0] - 2026-08-23
 
 ### Added

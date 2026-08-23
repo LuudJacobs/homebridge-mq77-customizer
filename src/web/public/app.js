@@ -6,9 +6,7 @@ const state = {
   tileTypes: [],
   filter: '',
   /** Hides everything that is not currently published to HomeKit. */
-  exposedOnly: false,
   /** Hides rules that are switched off. */
-  enabledOnly: false,
   /** Which kinds the activity list shows. */
   activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: true },
   // Kept per tab, so switching away and back does not lose what was typed and
@@ -42,10 +40,6 @@ const el = {
   devices: document.getElementById('devices'),
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
-  exposedOnly: document.getElementById('exposed-only'),
-  enabledOnly: document.getElementById('enabled-only'),
-  onlyExposed: document.getElementById('only-exposed'),
-  onlyEnabled: document.getElementById('only-enabled'),
   kindFilters: document.getElementById('kind-filters'),
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
@@ -77,6 +71,7 @@ const el = {
   sliders: document.getElementById('sliders'),
   timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
+  clearLog: document.getElementById('clear-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
@@ -453,13 +448,7 @@ function save(device) {
           exposure: device.exposure,
         }),
       })
-        .then(() => {
-          refreshBadge(device);
-          if (state.exposedOnly) {
-            // Unticking a device's last function should take it off the list.
-            safeRender();
-          }
-        })
+        .then(() => refreshBadge(device))
         .catch((error) => setStatus(error.message, 'lost'));
     }, 250),
   );
@@ -592,11 +581,7 @@ const TAB_CONTROLS = {
 function paintControls() {
   const view = state.view;
   const controls = TAB_CONTROLS[view];
-  const rules =
-    view === 'automation' || view === 'mirror' || view === 'sliders' || view === 'timers';
 
-  el.onlyExposed.hidden = view !== 'devices';
-  el.onlyEnabled.hidden = !rules;
   el.kindFilters.hidden = view !== 'activity';
 
   el.sort.hidden = controls.sorts.length === 0;
@@ -663,7 +648,7 @@ function render() {
   const term = currentFilter();
   const visible = sortDevices(
     state.devices.filter(
-      (device) => matchesFilter(device, term) && (!state.exposedOnly || exposedCount(device) > 0),
+      (device) => matchesFilter(device, term),
     ),
   );
 
@@ -686,11 +671,7 @@ function render() {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent =
-      state.devices.length === 0
-        ? 'No devices discovered yet.'
-        : state.exposedOnly
-          ? 'Nothing is published to HomeKit yet.'
-          : 'No matches.';
+      state.devices.length === 0 ? 'No devices discovered yet.' : 'No matches.';
     el.devices.append(empty);
     return;
   }
@@ -1113,16 +1094,6 @@ el.sort.addEventListener('change', () => {
   repaint();
 });
 
-el.exposedOnly.addEventListener('change', () => {
-  state.exposedOnly = el.exposedOnly.checked;
-  safeRender();
-});
-
-el.enabledOnly.addEventListener('change', () => {
-  state.enabledOnly = el.enabledOnly.checked;
-  renderRules();
-});
-
 el.kindAutomation.addEventListener('change', () => {
   state.activityKinds.standard = el.kindAutomation.checked;
   renderLog();
@@ -1392,7 +1363,6 @@ function renderRuleList(kind, container, emptyText) {
 
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
-    .filter((rule) => justAdded(rule) || !state.enabledOnly || rule.enabled)
     .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
     .sort(
       (a, b) =>
@@ -1550,10 +1520,7 @@ function renderRule(rule, occurrence, inRoom) {
   } else {
     detail.replaceChildren(...summarise(rule, inRoom));
   }
-  const badge = document.createElement('span');
-  badge.className = rule.enabled ? 'badge' : 'badge none';
-  badge.textContent = rule.enabled ? 'on' : 'off';
-  summary.append(name, detail, badge);
+  summary.append(name, detail, enabledToggle(rule));
   card.append(summary);
 
   card.append(renderRuleBody(rule));
@@ -1637,6 +1604,47 @@ function summarise(rule, inRoom) {
     words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
   ];
 }
+/**
+ * Switching a rule on or off, in its header rather than inside it.
+ *
+ * Saved as it is clicked, and on the stored rule rather than the one being
+ * edited: turning something off should not push half written changes out
+ * with it.
+ */
+function enabledToggle(rule) {
+  const wrap = document.createElement('label');
+  wrap.className = 'toggle rule-enabled';
+
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = rule.enabled;
+
+  const words = document.createElement('span');
+  words.textContent = rule.enabled ? 'enabled' : 'disabled';
+
+  const swallow = (event) => event.stopPropagation();
+  wrap.addEventListener('click', swallow);
+
+  box.addEventListener('change', async () => {
+    words.textContent = box.checked ? 'enabled' : 'disabled';
+    try {
+      await api('/api/rules', {
+        method: 'PUT',
+        body: JSON.stringify({ ...rule, enabled: box.checked }),
+      });
+      await loadRules();
+    } catch (problem) {
+      box.checked = !box.checked;
+      words.textContent = box.checked ? 'enabled' : 'disabled';
+      setStatus(problem.message, 'lost');
+    }
+  });
+
+  // The word first, then the box: read as a sentence rather than a form.
+  wrap.append(words, box);
+  return wrap;
+}
+
 function renderRuleBody(rule) {
   const body = document.createElement('div');
   body.className = 'device-body';
@@ -1653,15 +1661,6 @@ function renderRuleBody(rule) {
   nameInput.addEventListener('input', () => (draft.name = nameInput.value));
   nameRow.append(nameLabel, nameInput);
 
-  const enabled = document.createElement('label');
-  enabled.className = 'toggle';
-  const enabledBox = document.createElement('input');
-  enabledBox.type = 'checkbox';
-  enabledBox.checked = draft.enabled;
-  enabledBox.addEventListener('change', () => (draft.enabled = enabledBox.checked));
-  enabled.append(enabledBox, document.createTextNode('Enabled'));
-
-  nameRow.append(enabled);
   body.append(nameRow);
 
   // The tab a rule lives in settles what it is, so there is nothing to choose
@@ -1855,7 +1854,7 @@ function drawWhenThen(body, draft) {
       branches.append(renderBranch(branch, index, draft.branches, drawBranches));
     });
     branches.append(
-      addButton('Add outcome', () => {
+      addButton('+ outcome', () => {
         draft.branches.push({ actions: [{ ...blankRef(writable), value: '' }] });
         drawBranches();
       }),
@@ -3205,6 +3204,16 @@ el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
+
+el.clearLog.addEventListener('click', async () => {
+  try {
+    await api('/api/log', { method: 'DELETE' });
+    state.log = [];
+    renderLog();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());

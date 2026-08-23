@@ -205,7 +205,7 @@ describe('the sliders tab', () => {
   it('adds one from the tab, off to begin with', async () => {
     const ui = await openInterface({ state: { devices }, rules: [] });
     await ui.click(ui.byText('button.tab', 'Sliders'));
-    await ui.click(ui.byText('button', 'Add slider'));
+    await ui.click(ui.byText('button', '+ slider'));
 
     const created = ui.requests.find((request) => request.body !== undefined)?.body as {
       kind: string;

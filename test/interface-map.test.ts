@@ -28,6 +28,60 @@ async function openMap(map: unknown = SCAN) {
 const names = (ui: { document: Document }) =>
   [...ui.document.querySelectorAll('#map .map-node text')].map((node) => node.textContent);
 
+describe('the page around it', () => {
+  it('says which build this is, and offers a way out, at the foot', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    const footer = ui.document.querySelector('.page-footer')!;
+
+    expect(footer.querySelector('#build')).not.toBeNull();
+    expect(footer.querySelector('#logout')?.textContent).toBe('Sign out');
+  });
+
+  it('says how it is doing beside the title', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    // Next to the name rather than a pill of its own among the controls.
+    expect(ui.document.querySelector('h1 #status')).not.toBeNull();
+    expect(ui.document.querySelector('.header-actions #status')).toBeNull();
+  });
+
+  it('signs out when the footer link is pressed', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    await ui.click(ui.document.querySelector('#logout'));
+
+    expect(ui.requests.some((request) => request.path === '/api/logout')).toBe(true);
+    // And the way back in is offered rather than an empty page.
+    expect((ui.document.querySelector('#login') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('empties the log when Clear is pressed', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    ui.responses['/api/log'] = {
+      entries: [
+        {
+          at: Date.now(),
+          ruleId: 'r1',
+          ruleName: 'Something',
+          ruleKind: 'standard',
+          outcome: 'fired',
+          detail: '1 action sent',
+        },
+      ],
+    };
+    await ui.click(ui.byText('button.tab', 'Activity'));
+    expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
+
+    await ui.click(ui.document.querySelector('#clear-log'));
+    expect(ui.requests.some((request) => request.path === '/api/log')).toBe(true);
+    expect(ui.document.querySelector('#activity-log')!.textContent).toContain('Nothing has run');
+  });
+
+  it('has no in HomeKit only or enabled only filters', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    expect(ui.document.querySelector('#exposed-only')).toBeNull();
+    expect(ui.document.querySelector('#enabled-only')).toBeNull();
+  });
+});
+
 describe('the map tab', () => {
   it('scans nothing until it is asked to', async () => {
     const ui = await openMap();
