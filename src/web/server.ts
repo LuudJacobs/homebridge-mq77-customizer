@@ -152,6 +152,10 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
+      if (path === '/api/log' && request.method === 'DELETE') {
+        this.deps.rules.clearLog();
+        return send(response, 200, { ok: true });
+      }
       if (path === '/api/log' && request.method === 'GET') {
         return send(response, 200, { entries: this.deps.rules.getLog() });
       }
