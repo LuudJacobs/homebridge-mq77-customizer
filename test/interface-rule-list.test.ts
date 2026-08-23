@@ -172,7 +172,7 @@ describe('sorting the automation list', () => {
     const options = [...ui.document.querySelectorAll('#sort option')].map(
       (node) => (node as HTMLOptionElement).value,
     );
-    expect(options).toEqual(['name', 'trigger']);
+    expect(options).toEqual(['name', 'room', 'trigger']);
   });
 });
 
@@ -251,6 +251,204 @@ describe('listing automations under their trigger', () => {
     const ui = await openTab('Automation', [orphan, shelly]);
     await sortBy(ui, 'trigger');
     expect(headings(ui)).toEqual(['hall_lamp', 'No device']);
+  });
+});
+
+describe('naming a rule by where it acts', () => {
+  const placed = (room?: string, deviceId = '0xb') =>
+    devices.map((entry) =>
+      entry.deviceId === deviceId
+        ? { ...entry, exposure: { properties: [], ...(room ? { room } : {}) } }
+        : { ...entry, exposure: { properties: [] } },
+    );
+
+  const titles = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#automation .device-name')].map((node) => node.textContent);
+
+  it('says the room the rule acts in, not the one it is set off from', async () => {
+    // The trigger is on 0xa, the action on 0xb.
+    const ui = await openInterface({
+      state: { devices: placed('Study') },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Study: Nightlight toggle']);
+  });
+
+  it('lists every room it reaches', async () => {
+    const two = automation('r1', 'Evening', '0xa', '0xb', {
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+      ],
+    });
+    const spread = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}),
+        ...(entry.deviceId === '0xc' ? { room: 'Kitchen' } : {}),
+      },
+    }));
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [two] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Kitchen / Study: Evening']);
+  });
+
+  it('says nothing extra when no device it touches has a room', async () => {
+    const ui = await openInterface({
+      state: { devices: placed(undefined) },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    expect(titles(ui)).toEqual(['Nightlight toggle']);
+  });
+
+  it('keeps the room when the heading is a device rather than a room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}) },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'trigger');
+
+    // The heading names the remote, which says nothing about where it acts.
+    expect(titles(ui)).toEqual(['Study: Nightlight toggle']);
+  });
+
+  it('drops the room once the list is grouped by it', async () => {
+    const ui = await openInterface({
+      state: { devices: placed('Study') },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    // The heading has said it already.
+    expect(titles(ui)).toEqual(['Nightlight toggle']);
+  });
+
+  it('lists a rule under every room it reaches', async () => {
+    const two = automation('r1', 'Evening', '0xa', '0xb', {
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+      ],
+    });
+    const spread = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}),
+        ...(entry.deviceId === '0xc' ? { room: 'Kitchen' } : {}),
+      },
+    }));
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [two] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
+      (node) => node.textContent,
+    );
+    // It is the answer in both rooms, so it is listed in both.
+    expect(headings).toEqual(['Kitchen', 'Study']);
+    expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
+
+    // And it still says both under either, since the other room is news.
+    const titles = [...ui.document.querySelectorAll('#automation .device-name')].map(
+      (node) => node.textContent,
+    );
+    expect(titles).toEqual(['Kitchen / Study: Evening', 'Kitchen / Study: Evening']);
+  });
+});
+
+describe('what the line under a rule says', () => {
+  const meta = (ui: { document: Document }) =>
+    ui.document.querySelector('#automation .device-meta')?.textContent;
+
+  it('names the devices and nothing about their functions', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    // Which function it writes is in the rule. Saying "state" here said
+    // nothing anybody was reading for.
+    expect(meta(ui)).toBe('hall_lamp → porch_lamp');
+  });
+
+  it('counts the rest rather than listing them', async () => {
+    const many = automation('r1', 'Evening', '0xa', '0xb', {
+      triggers: [
+        { sourceId: 'zigbee', deviceId: '0xa', propertyKey: 'state', match: { kind: 'changedTo', value: 'ON' } },
+        { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', match: { kind: 'changedTo', value: 'ON' } },
+      ],
+      branches: [
+        {
+          actions: [
+            { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'ON' },
+            { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+          ],
+        },
+        { actions: [{ sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'OFF' }] },
+      ],
+    });
+    const ui = await openTab('Automation', [many]);
+    expect(meta(ui)).toBe('hall_lamp (+1) → porch_lamp (+1) - 2 outcomes');
+  });
+
+  it('says nothing about outcomes when there is only one', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    expect(meta(ui)).not.toContain('outcome');
+  });
+
+  it('keeps the room on a device from somewhere else', async () => {
+    // A remote in the living room switching a kitchen light is listed under
+    // Kitchen, and which remote it is still matters.
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xa' ? { room: 'Living room', label: 'Remote' } : {}),
+        ...(entry.deviceId === '0xb' ? { room: 'Kitchen', label: 'Light' } : {}),
+      },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Kitchen light', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    expect(meta(ui)).toBe('Living room Remote → Light');
+  });
+
+  it('drops the room from the names once the list is grouped by room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study', label: 'Lamp' } : {}) },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Nightlight', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+
+    expect(meta(ui)).toContain('Study Lamp');
+    await sortBy(ui, 'room');
+    // The heading says Study, so the name need not say it twice.
+    expect(meta(ui)).toContain('Lamp');
+    expect(meta(ui)).not.toContain('Study Lamp');
   });
 });
 
@@ -379,6 +577,32 @@ describe('deleting a rule', () => {
   });
 });
 
+describe('grouping automations by the device they act on', () => {
+  const lamp = automation('r1', 'Kitchen light', '0xa', '0xb');
+  const shed = automation('r2', 'Shed light', '0xa', '0xc');
+
+  it('groups by room, with the unset ones last', async () => {
+    const ui = await openInterface({
+      state: {
+        devices: [
+          { ...devices[0]!, exposure: { properties: [] } },
+          { ...devices[1]!, exposure: { properties: [], room: 'Kitchen' } },
+          { ...devices[2]!, exposure: { properties: [] } },
+        ],
+      },
+      rules: [lamp, shed],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
+      (node) => node.textContent,
+    );
+    expect(headings).toEqual(['Kitchen', 'Unknown']);
+  });
+
+});
+
 describe('the mirror list', () => {
   const rules = [mirror('m1', 'Zebra', '0xa', '0xc'), mirror('m2', 'Apple', '0xb', '0xb')];
 
@@ -388,10 +612,12 @@ describe('the mirror list', () => {
     expect(named(ui, '#mirror')).toEqual(['Zebra']);
   });
 
-  it('sorts by the first device of the group', async () => {
+  it('offers name and room only, since its two sides are the same thing', async () => {
     const ui = await openTab('Mirror devices', rules);
-    await sortBy(ui, 'trigger');
-    expect(named(ui, '#mirror')).toEqual(['Zebra', 'Apple']);
+    const options = [...ui.document.querySelectorAll('#sort option')].map(
+      (node) => (node as HTMLOptionElement).value,
+    );
+    expect(options).toEqual(['name', 'room']);
   });
 });
 

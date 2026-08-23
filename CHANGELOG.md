@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.14.0] - 2026-08-23
+
+### Added
+
+- Every device takes a name, a room and a kind of its own, set in its panel. They are for the interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them. The name reaches HomeKit only where the source names nothing itself
+- Eight kinds, each drawing an icon: Light, Sensor, Controller, Fan, TV, Audio device, Media device and Other
+- The device list sorts into groups by room or by kind, and the rule lists by room, meaning the rooms a rule acts in. A rule reaching two rooms is listed under both
+- Button presses from a device marked as a Controller appear in the Activity tab, with a filter of their own
+
+### Changed
+
+- A rule is named by the rooms it acts in rather than the room it is set off from: "Study: Nightlight toggle". The rooms come off only under a heading that has said all of them
+- The line under a rule's name names devices and counts the rest, rather than spelling out which function of each it writes
+- Under a room heading a device from another room keeps its room in its name, since which one it is still matters
+- The activity log reads as a sentence, with the outcome and then what happened, and names devices the way every other list does
+- Automation triggers and slider buttons are no longer joined by "or"
+- The pencil rename button is gone: the name is one of the three fields now, and offered on every device
+- Mirror and slider lists sort by name or room only
+
 ## [0.13.0] - 2026-08-23
 
 ### Added

@@ -19,6 +19,19 @@ export const TILE_TYPES: TileType[] = ['Switch', 'Outlet', 'Lightbulb', 'Fan'];
 export const DEVICE_ENDPOINT = '';
 
 /** What the user ticked for one device. */
+/** The kinds a device can be marked as, for grouping it in the interface. */
+export const DEVICE_TYPES = [
+  'light',
+  'sensor',
+  'controller',
+  'fan',
+  'tv',
+  'audio',
+  'media',
+  'other',
+] as const;
+export type DeviceType = (typeof DEVICE_TYPES)[number];
+
 export interface DeviceExposure {
   /** Property keys published to HomeKit. Everything else stays rules only. */
   properties: string[];
@@ -32,6 +45,15 @@ export interface DeviceExposure {
    * themselves.
    */
   label?: string;
+  /**
+   * Where the device is, for grouping in the interface.
+   *
+   * The interface only: HomeKit rooms belong to the Home app, which no
+   * accessory can set or read.
+   */
+  room?: string;
+  /** What sort of thing it is, for grouping and an icon in the interface. */
+  type?: DeviceType;
   /** Accessory name overrides, keyed by endpoint. */
   names?: Record<string, string>;
   /**
