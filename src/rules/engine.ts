@@ -462,6 +462,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    * A timer starts counting rather than acting at once, since starting is
    * what its trigger does.
    */
+  /** Empties the run log, for when it is more history than anybody wants. */
+  clearLog(): void {
+    this.entries.length = 0;
+  }
+
   runNow(ruleId: string): boolean {
     const rule = this.store.data.rules.find((candidate) => candidate.id === ruleId);
     if (!rule || isMirror(rule) || isSlider(rule)) {
