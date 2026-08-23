@@ -500,6 +500,7 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['room', 'Room'],
+      ['type', 'Type'],
       ['trigger', 'Trigger device'],
     ],
     placeholder: 'Filter...',
@@ -508,6 +509,7 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['room', 'Room'],
+      ['type', 'Type'],
       ['trigger', 'First device'],
       ['target', 'Second device'],
     ],
@@ -517,6 +519,7 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['room', 'Room'],
+      ['type', 'Type'],
       ['target', 'Device'],
     ],
     placeholder: 'Filter...',
@@ -1220,9 +1223,20 @@ function roomOf(rule) {
   return device?.exposure?.room?.trim() ?? '';
 }
 
+/** The kind of the device a rule acts on, for grouping a list by it. */
+function typeOf(rule) {
+  const sides = ruleSides(rule);
+  const ref = sides.target ?? sides.trigger;
+  const device = ref && findDevice(ref);
+  return DEVICE_TYPES.find(([value]) => value === device?.exposure?.type)?.[1] ?? '';
+}
+
 function ruleSortKey(rule, sort) {
   if (sort === 'room') {
     return roomOf(rule) || '\uffff';
+  }
+  if (sort === 'type') {
+    return typeOf(rule) || '\uffff';
   }
   if (sort === 'trigger' || sort === 'target') {
     const ref = ruleSides(rule)[sort];
@@ -1300,10 +1314,11 @@ function renderRuleList(kind, container, emptyText) {
     return;
   }
 
-  // By room means by the room of the device a rule acts on, which is the one
-  // somebody is standing in when they wonder what runs there.
-  if (sort === 'room') {
-    for (const [heading, grouped] of intoGroups(rules, roomOf)) {
+  // By room or kind means by the device a rule acts on: the room somebody is
+  // standing in when they wonder what runs there, or what sort of thing it is.
+  if (sort === 'room' || sort === 'type') {
+    const heading0f = sort === 'room' ? roomOf : typeOf;
+    for (const [heading, grouped] of intoGroups(rules, heading0f)) {
       container.append(groupHeading(heading));
       for (const rule of grouped) {
         container.append(renderRule(rule));
