@@ -390,6 +390,27 @@ describe('what the line under a rule says', () => {
     expect(meta(ui)).not.toContain('outcome');
   });
 
+  it('keeps the room on a device from somewhere else', async () => {
+    // A remote in the living room switching a kitchen light is listed under
+    // Kitchen, and which remote it is still matters.
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: {
+        properties: [],
+        ...(entry.deviceId === '0xa' ? { room: 'Living room', label: 'Remote' } : {}),
+        ...(entry.deviceId === '0xb' ? { room: 'Kitchen', label: 'Light' } : {}),
+      },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Kitchen light', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    expect(meta(ui)).toBe('Living room Remote → Light');
+  });
+
   it('drops the room from the names once the list is grouped by room', async () => {
     const placed = devices.map((entry) => ({
       ...entry,

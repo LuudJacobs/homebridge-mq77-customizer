@@ -20,7 +20,15 @@ export const DEVICE_ENDPOINT = '';
 
 /** What the user ticked for one device. */
 /** The kinds a device can be marked as, for grouping it in the interface. */
-export const DEVICE_TYPES = ['light', 'sensor', 'controller', 'other'] as const;
+export const DEVICE_TYPES = [
+  'light',
+  'sensor',
+  'controller',
+  'fan',
+  'tv',
+  'media',
+  'other',
+] as const;
 export type DeviceType = (typeof DEVICE_TYPES)[number];
 
 export interface DeviceExposure {
