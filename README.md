@@ -160,7 +160,7 @@ Stepping counts from what the slider was last told for a couple of seconds, rath
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
 
-A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header and offers Room and Type as ways to sort, which group the list under headings with anything unset last.
+A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. Room and Type are offered as ways to sort on every list, grouping it under headings with anything unset last. On the rule tabs they go by the device a rule acts on.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
 
