@@ -367,6 +367,12 @@ describe('naming a rule by where it acts', () => {
     // It is the answer in both rooms, so it is listed in both.
     expect(headings).toEqual(['Kitchen', 'Study']);
     expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
+
+    // And it still says both under either, since the other room is news.
+    const titles = [...ui.document.querySelectorAll('#automation .device-name')].map(
+      (node) => node.textContent,
+    );
+    expect(titles).toEqual(['Kitchen / Study: Evening', 'Kitchen / Study: Evening']);
   });
 });
 
