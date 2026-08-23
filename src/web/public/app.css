@@ -740,10 +740,6 @@ button.danger.armed {
   font-weight: 600;
 }
 
-.wait .wait-unit {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
 
 .rule-group {
   margin: 1.2rem 0 0.4rem;
