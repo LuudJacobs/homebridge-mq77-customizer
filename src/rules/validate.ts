@@ -122,25 +122,37 @@ function parseSlider(
     MAX_STEPS,
   );
 
-  const buttons: Partial<Record<'up' | 'down' | 'on' | 'off', Trigger>> = {};
+  const buttons: Partial<Record<'up' | 'down' | 'on' | 'off', Trigger[]>> = {};
   for (const button of ['up', 'down', 'on', 'off'] as const) {
     if (raw[button] === undefined || raw[button] === null) {
       continue;
     }
-    const ref = parseRef(raw[button]);
-    if (!ref) {
-      return { error: `The ${button} button needs a device and a function` };
+    // Stored as a list. Earlier versions kept one, which reads as a list of
+    // one and is written back as such on the next save.
+    const given = Array.isArray(raw[button]) ? raw[button] : [raw[button]];
+    const triggers: Trigger[] = [];
+
+    for (const entry of given) {
+      const ref = parseRef(entry);
+      if (!ref) {
+        return { error: `The ${button} button needs a device and a function` };
+      }
+      const match = parseMatch(isObject(entry) ? entry.match : undefined);
+      if ('error' in match) {
+        return { error: `The ${button} button: ${match.error}` };
+      }
+      triggers.push({ ...ref, match: match.match });
     }
-    const match = parseMatch(isObject(raw[button]) ? (raw[button] as Record<string, unknown>).match : undefined);
-    if ('error' in match) {
-      return { error: `The ${button} button: ${match.error}` };
+
+    if (triggers.length > 0) {
+      buttons[button] = triggers;
     }
-    buttons[button] = { ...ref, match: match.match };
   }
 
   const rateLimitMs =
     typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
   const max = typeof raw.max === 'number' ? raw.max : undefined;
+  const onLevel = typeof raw.onLevel === 'number' ? raw.onLevel : undefined;
 
   return {
     rule: {
@@ -152,6 +164,7 @@ function parseSlider(
       ...(power ? { power } : {}),
       steps,
       ...(max === undefined ? {} : { max }),
+      ...(onLevel === undefined ? {} : { onLevel }),
       ...buttons,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },

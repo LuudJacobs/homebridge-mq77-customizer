@@ -143,10 +143,20 @@ export interface SliderRule {
   steps: number;
   /** Caps the range below what the device allows. */
   max?: number;
-  up?: Trigger;
-  down?: Trigger;
-  on?: Trigger;
-  off?: Trigger;
+  /**
+   * Where it lands when it comes on from off.
+   *
+   * Without one it comes on at the first step, which is dim for a light
+   * somebody wanted on. A device with a level of its own to fall back on is
+   * a different thing: this is what the slider sends, not what the device
+   * does when a wall switch is used.
+   */
+  onLevel?: number;
+  /** Any of these presses moves it, so one slider can take several remotes. */
+  up?: Trigger[];
+  down?: Trigger[];
+  on?: Trigger[];
+  off?: Trigger[];
   rateLimitMs?: number;
 }
 

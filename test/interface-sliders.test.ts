@@ -139,21 +139,33 @@ describe('the sliders tab', () => {
     expect(hints.some((text) => text?.includes('2 steps of about 127'))).toBe(true);
   });
 
-  it('starts a button that is not set with a button to set it', async () => {
+  it('starts a button that is not set with something to set it', async () => {
     const ui = await openSliders();
-    const waiting = () =>
-      [...ui.document.querySelectorAll('#sliders button.add-row')].filter(
-        (node) => node.textContent === '+ button',
-      ).length;
     const rows = () => ui.document.querySelectorAll('#sliders .rule-row').length;
+    expect(rows()).toBe(2); // the level, and the one button that is set
 
-    // Brighter is set on this one, the other three are waiting.
-    expect(waiting()).toBe(3);
-    const before = rows();
+    // The first one is on Dimmer, which has nothing yet.
+    await ui.click(ui.byText('button.add-row', '+ trigger', '#sliders'));
+    expect(rows()).toBe(3);
+  });
 
-    await ui.click(ui.byText('button.add-row', '+ button', '#sliders'));
-    expect(waiting()).toBe(2);
-    expect(rows()).toBe(before + 1);
+  it('takes several triggers on one button, joined with or', async () => {
+    const ui = await openSliders();
+    const upRow = ui.document.querySelectorAll('#sliders .rule-row')[1]!;
+    const another = [...upRow.querySelectorAll('button.add-row')].find(
+      (node) => node.textContent === '+ trigger',
+    )!;
+
+    // One slider, several remotes.
+    await ui.click(another);
+    expect(ui.byText('span.joiner', 'or', '#sliders')).not.toBeNull();
+
+    // Saving reloads the list, so the check above has to come first.
+    await ui.click(ui.byText('button.primary', 'Save', '#sliders'));
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      up: unknown[];
+    };
+    expect(saved.up).toHaveLength(2);
   });
 
   it('takes a button off again', async () => {
@@ -177,14 +189,15 @@ describe('the sliders tab', () => {
       steps: number;
       target: { propertyKey: string };
       power: { propertyKey: string };
-      up: { match: { value: string } };
+      up: { match: { value: string } }[];
     };
     expect(saved.kind).toBe('slider');
     expect(saved.steps).toBe(4);
     expect(saved.target.propertyKey).toBe('brightness');
     // The switch is worked out from the device rather than asked for.
     expect(saved.power.propertyKey).toBe('state');
-    expect(saved.up.match.value).toBe('single_left');
+    // Buttons are lists now, so one slider can take several remotes.
+    expect(saved.up[0]!.match.value).toBe('single_left');
   });
 
   it('adds one from the tab, off to begin with', async () => {

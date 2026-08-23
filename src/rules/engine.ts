@@ -258,23 +258,26 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     for (const button of ['up', 'down', 'on', 'off'] as const) {
-      const trigger = rule[button];
-      if (!trigger || !(trigger.propertyKey in update.changes)) {
-        continue;
-      }
-      if (!refersTo(trigger, update, trigger.propertyKey)) {
-        continue;
-      }
-      const value = update.changes[trigger.propertyKey];
-      if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
-        continue;
-      }
+      // Any of a button's triggers presses it, and one message satisfying two
+      // of them is still one press.
+      for (const trigger of buttonTriggers(rule, button)) {
+        if (!(trigger.propertyKey in update.changes)) {
+          continue;
+        }
+        if (!refersTo(trigger, update, trigger.propertyKey)) {
+          continue;
+        }
+        const value = update.changes[trigger.propertyKey];
+        if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
+          continue;
+        }
 
-      if (!this.allowed(rule)) {
+        if (!this.allowed(rule)) {
+          return;
+        }
+        this.press(rule, target, button);
         return;
       }
-      this.press(rule, target, button);
-      return;
     }
   }
 
@@ -321,16 +324,27 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
-    const level = levelAt(wanted, ladder);
-    // Coming up from off, the light has to be told to come on as well. Many
-    // devices do that themselves on a brightness write, and the ones that do
-    // not would otherwise take the level and stay dark.
+    // Coming on from off lands where the slider was told to put it, since the
+    // first step is dim for a light somebody has just asked for.
+    const fromOff = step === 0 && rule.onLevel !== undefined;
+    const level = fromOff ? clampLevel(rule.onLevel as number, ladder) : levelAt(wanted, ladder);
+    const landed = fromOff ? stepFor(level, ladder) : wanted;
+
+    // The light has to be told to come on as well. Many devices do that
+    // themselves on a brightness write, and the ones that do not would
+    // otherwise take the level and stay dark.
     if (step === 0 && power?.setTopic) {
       this.send(power, power.onValue);
     }
     this.send(target, level);
-    this.remember(rule, wanted);
-    this.record(rule, 'fired', `${target.label} ${button} to step ${wanted} of ${ladder.steps}`);
+    this.remember(rule, landed);
+    this.record(
+      rule,
+      'fired',
+      fromOff
+        ? `${target.label} on at ${level}`
+        : `${target.label} ${button} to step ${landed} of ${ladder.steps}`,
+    );
   }
 
   /**
@@ -366,6 +380,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const above = (current - ladder.min) / (ladder.max - ladder.min || 1);
     return Math.max(0, Math.min(ladder.steps, Math.round(above * ladder.steps)));
+    // Rounded to the nearest step on purpose: a level set elsewhere snaps to
+    // the ladder before it moves, which is easier to predict than landing
+    // between steps.
   }
 
   private remember(rule: SliderRule, step: number): void {
@@ -587,6 +604,25 @@ function stepsOf(rule: SliderRule, target: NormalisedProperty): Ladder {
 function levelAt(step: number, ladder: Ladder): number {
   const span = ladder.max - ladder.min;
   return Math.round(ladder.min + (span * step) / ladder.steps);
+}
+
+/** A button's triggers, reading what earlier versions stored as a single one. */
+function buttonTriggers(rule: SliderRule, button: SliderButton): Trigger[] {
+  const given = rule[button] as Trigger[] | Trigger | undefined;
+  if (!given) {
+    return [];
+  }
+  return Array.isArray(given) ? given : [given];
+}
+
+function clampLevel(level: number, ladder: Ladder): number {
+  return Math.round(Math.max(ladder.min, Math.min(ladder.max, level)));
+}
+
+/** The nearest step to a level, so a press from there carries on sensibly. */
+function stepFor(level: number, ladder: Ladder): number {
+  const above = (level - ladder.min) / (ladder.max - ladder.min || 1);
+  return Math.max(1, Math.min(ladder.steps, Math.round(above * ladder.steps)));
 }
 
 /** A rule's branches, reading what earlier versions stored as a single one. */

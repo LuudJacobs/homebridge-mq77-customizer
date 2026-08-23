@@ -979,6 +979,7 @@ const OUTCOME_LABELS = {
   conditionsFailed: 'conditions not met',
   failed: 'failed',
   disabled: 'turned off',
+  skipped: 'nothing to do',
 };
 
 /** By display name, for the pickers a rule is built from. */
@@ -1063,7 +1064,10 @@ function ruleRefs(rule) {
     return (rule.groups ?? []).flat();
   }
   if (rule.kind === 'slider') {
-    return [rule.target, rule.up, rule.down, rule.on, rule.off].filter(Boolean);
+    const buttons = ['up', 'down', 'on', 'off'].flatMap((key) =>
+      Array.isArray(rule[key]) ? rule[key] : [rule[key]],
+    );
+    return [rule.target, ...buttons].filter(Boolean);
   }
   return [...ruleTriggers(rule), ...ruleActions(rule)];
 }
@@ -1077,7 +1081,8 @@ function ruleSides(rule) {
   if (rule.kind === 'slider') {
     // The device being driven is what a slider is about, whichever button
     // happens to be set.
-    return { trigger: rule.up ?? rule.on, target: rule.target };
+    const first = (key) => (Array.isArray(rule[key]) ? rule[key][0] : rule[key]);
+    return { trigger: first('up') ?? first('on'), target: rule.target };
   }
   return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
@@ -1257,7 +1262,9 @@ function summarise(rule) {
     const property = findProperty(rule.target);
     const device = findDevice(rule.target);
     const where = property ? `${device?.name} ${property.label}` : 'a removed function';
-    const buttons = ['up', 'down', 'on', 'off'].filter((key) => rule[key]).length;
+    const buttons = ['up', 'down', 'on', 'off'].filter(
+      (key) => (Array.isArray(rule[key]) ? rule[key].length : rule[key]) ? true : false,
+    ).length;
     return `${where} · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`;
   }
   if (rule.kind === 'mirror') {
@@ -1588,9 +1595,14 @@ function drawSlider(body, draft) {
     const min = property.min ?? 0;
     const top = Math.min(draft.max ?? property.max ?? 100, property.max ?? 100);
     const size = Math.round((top - min) / draft.steps);
+    const ladder = `${draft.steps} steps of about ${size}, from ${min} to ${top}.`;
+    const coming =
+      draft.onLevel === undefined
+        ? 'Comes on at the first step.'
+        : `Comes on at ${draft.onLevel}.`;
     hint.textContent = draft.power
-      ? `${draft.steps} steps of about ${size}, from ${min} to ${top}. Off is a step of its own.`
-      : `${draft.steps} steps of about ${size}, from ${min} to ${top}. Nothing on this device switches on and off, so the ends cannot.`;
+      ? `${ladder} ${coming} Off is a step of its own.`
+      : `${ladder} Nothing on this device switches on and off, so the ends cannot.`;
   };
 
   body.append(
@@ -1634,7 +1646,20 @@ function drawSlider(body, draft) {
     describeLadder();
   });
 
-  settings.append(stepsLabel, steps, maxLabel, max);
+  const onLevelLabel = document.createElement('label');
+  onLevelLabel.textContent = 'On at';
+  const onLevel = document.createElement('input');
+  onLevel.type = 'number';
+  onLevel.className = 'delay';
+  onLevel.placeholder = 'first step';
+  onLevel.value = draft.onLevel ?? '';
+  onLevel.addEventListener('input', () => {
+    const level = Number(onLevel.value);
+    draft.onLevel = onLevel.value !== '' && Number.isFinite(level) ? level : undefined;
+    describeLadder();
+  });
+
+  settings.append(stepsLabel, steps, maxLabel, max, onLevelLabel, onLevel);
   body.append(settings, hint);
   describeLadder();
 
@@ -1647,26 +1672,38 @@ function drawSlider(body, draft) {
       ['on', 'Switch on'],
       ['off', 'Switch off'],
     ]) {
+      // Stored as a list. A slider written before that carries one, which is
+      // read as a list of one and written back as such on the next save.
+      draft[key] = Array.isArray(draft[key]) ? draft[key] : draft[key] ? [draft[key]] : [];
+      const triggers = draft[key];
+
       buttons.append(sectionTitle(label));
-      if (!draft[key]) {
-        buttons.append(
-          addButton('+ button', () => {
-            draft[key] = { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } };
-            drawButtons();
-          }),
-        );
+
+      const add = () => {
+        triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
+        drawButtons();
+      };
+
+      if (triggers.length === 0) {
+        buttons.append(addButton('+ trigger', add));
         continue;
       }
-      buttons.append(
-        refRow(draft[key], {
-          pick: watchable,
-          withMatch: true,
-          onRemove: () => {
-            delete draft[key];
-            drawButtons();
-          },
-        }),
-      );
+
+      triggers.forEach((trigger, index) => {
+        const last = index === triggers.length - 1;
+        buttons.append(
+          refRow(trigger, {
+            pick: watchable,
+            withMatch: true,
+            onRemove: () => {
+              triggers.splice(index, 1);
+              drawButtons();
+            },
+            joiner: last ? undefined : 'or',
+            trailing: last ? addButton('+ trigger', add) : undefined,
+          }),
+        );
+      });
     }
   };
   drawButtons();
@@ -2302,7 +2339,7 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
-const KIND_LABELS = { standard: 'automation', mirror: 'mirror' };
+const KIND_LABELS = { standard: 'automation', mirror: 'mirror', slider: 'slider' };
 
 function renderLog() {
   const container = el.activityLog;
