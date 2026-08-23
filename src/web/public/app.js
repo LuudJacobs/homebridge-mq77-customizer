@@ -1507,7 +1507,9 @@ function renderRule(rule, occurrence, inRoom) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = ruleTitle(rule, inRoom !== undefined || Boolean(occurrence));
+  // Only a room heading has said the room. A heading naming the device that
+  // sets a rule off has said nothing about where the rule acts.
+  name.textContent = ruleTitle(rule, inRoom !== undefined);
   const detail = document.createElement('span');
   detail.className = 'device-meta';
   // Under a trigger heading the rule is named first and what sets it off
