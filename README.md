@@ -144,6 +144,14 @@ Two things guard against a pair of rules setting each other off:
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
+### Sliders
+
+A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step; up from off switches on, and down from the first step switches off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
+
+Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
+
+Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
+
 ### Map
 
 The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
