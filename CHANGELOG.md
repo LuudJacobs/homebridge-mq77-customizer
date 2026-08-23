@@ -6,16 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- The step down button on a slider switches the device on at the bottom of its range when it is off, rather than doing nothing
+## [0.13.0] - 2026-08-23
 
-- Fixed: a rule just added disappeared when the list was filtered, or when "Enabled only" was ticked, since it starts with a placeholder name and switched off
+### Added
 
-- A slider comes on at the level the device itself keeps, with a setting of its own for a device that has none, rather than always starting at the first step
+- A Sliders tab drives a dimmer or a fan from buttons. The level is cut into steps and a press moves it one step, which as automations would be four to six rules that only make sense together. Either button switches the device on when it is off: step up goes to the level the device itself keeps, step down to the bottom of the range. Step down from the first step switches it off rather than leaving a light at zero brightness and still on
 - Each slider button takes several triggers, so one slider can be driven by more than one remote
-- Fixed: slider entries in the activity log had an empty kind pill, and a slider with nothing to do said "skipped"
-- A Sliders tab drives a dimmer or a fan from buttons: a level cut into steps, with a press moving it one step and the ends switching the device on and off
 
-- Delete on a rule sits at the far end of the footer, is red, and asks once before deleting anything that has been saved. It goes back to asking after two seconds
+### Changed
+
+- Delete on a rule sits at the far end of the footer, is red, and asks once before deleting anything that has been saved, going back to asking after two seconds. A rule only just added still goes on the first click
+
+### Fixed
+
+- A rule just added disappeared when the list was filtered, or when "Enabled only" was ticked, since it is saved the moment it is added and so starts with a placeholder name and switched off
 
 ## [0.12.0] - 2026-08-22
 
