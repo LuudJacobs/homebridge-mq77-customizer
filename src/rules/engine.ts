@@ -452,6 +452,42 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Runs a rule because somebody asked, rather than because something moved.
+   *
+   * Whether it is switched on does not come into it: the point is to try a
+   * rule while building it, which is exactly when it is not yet on. The
+   * conditions still hold sway, since a rule that does nothing under the
+   * conditions in force is telling you something worth knowing.
+   *
+   * A timer starts counting rather than acting at once, since starting is
+   * what its trigger does.
+   */
+  runNow(ruleId: string): boolean {
+    const rule = this.store.data.rules.find((candidate) => candidate.id === ruleId);
+    if (!rule || isMirror(rule) || isSlider(rule)) {
+      return false;
+    }
+
+    // Pretends to be the rule's own trigger holding whatever that device
+    // says now, so an action copying the trigger has something to copy.
+    const trigger = triggersOf(rule)[0];
+    const value = trigger
+      ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
+      : undefined;
+
+    if (isTimer(rule)) {
+      if (!trigger) {
+        return false;
+      }
+      this.startWaiting(rule, trigger, value);
+      return true;
+    }
+
+    this.fire(rule, { property: trigger ?? { sourceId: '', deviceId: '', propertyKey: '' }, value });
+    return true;
+  }
+
+  /**
    * Starts, restarts or calls off a timer.
    *
    * Calling off comes first: a message that takes the value away from what

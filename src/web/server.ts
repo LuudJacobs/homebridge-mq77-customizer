@@ -142,6 +142,13 @@ export class WebServer {
       if (path === '/api/rules' && request.method === 'PUT') {
         return this.saveRule(request, response);
       }
+      if (path.endsWith('/run') && request.method === 'POST') {
+        const id = decodeURIComponent(path.slice('/api/rules/'.length, -'/run'.length));
+        if (!this.deps.rules.runNow(id)) {
+          return send(response, 404, { error: 'No rule of that kind to run' });
+        }
+        return send(response, 200, { ok: true });
+      }
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }

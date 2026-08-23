@@ -388,6 +388,53 @@ describe('sanitiseExposure', () => {
   });
 });
 
+describe('running a rule by hand', () => {
+  it('runs a stored automation and says so', async () => {
+    const { base } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const created = await signed('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: 'By hand',
+        enabled: false,
+        trigger: {
+          sourceId: 'zigbee',
+          deviceId: '0xf044d3fffe024659',
+          propertyKey: 'state_l1',
+          match: { kind: 'equals', value: 'ON' },
+        },
+        actions: [
+          {
+            sourceId: 'zigbee',
+            deviceId: '0xf044d3fffe024659',
+            propertyKey: 'state_l1',
+            value: 'ON',
+          },
+        ],
+      }),
+    });
+    const { rule } = (await created.json()) as { rule: { id: string } };
+
+    const response = await signed(`/api/rules/${rule.id}/run`, { method: 'POST' });
+    expect(response.status).toBe(200);
+  });
+
+  it('says no to a rule that is not there', async () => {
+    const { base } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const response = await signed('/api/rules/nothing/run', { method: 'POST' });
+    expect(response.status).toBe(404);
+  });
+
+  it('is behind the password like everything else', async () => {
+    const { base } = await harness();
+    const response = await fetch(`${base}/api/rules/anything/run`, { method: 'POST' });
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('the network map', () => {
   const SCAN = {
     status: 'ok',

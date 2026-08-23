@@ -1678,11 +1678,11 @@ function renderRuleBody(rule) {
   }
 
   body.append(shape);
-  body.append(ruleFooter(rule, draft));
+  body.append(ruleFooter(rule, draft, body));
   return body;
 }
 
-function ruleFooter(rule, draft) {
+function ruleFooter(rule, draft, body) {
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
   const error = document.createElement('span');
@@ -1741,8 +1741,59 @@ function ruleFooter(rule, draft) {
     });
   }
 
-  footer.append(save, error, remove);
+  footer.append(save);
+
+  // Mirrors and sliders have no single thing to set off: every member of a
+  // mirror is a trigger, and a slider has four buttons doing four things.
+  if (rule.kind !== 'mirror' && rule.kind !== 'slider') {
+    footer.append(triggerButton(rule, draft, body, error));
+  }
+
+  footer.append(error, remove);
   return footer;
+}
+
+/**
+ * Runs the rule as it stands on disk, switched on or not.
+ *
+ * Only what has been saved can be run, since the engine reads the stored
+ * rule and not the half filled in one on the screen. Rather than quietly
+ * running something other than what is shown, the button goes out of use
+ * until the two agree again.
+ */
+function triggerButton(rule, draft, body, error) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Trigger';
+  button.title = 'Run this rule now, whether or not it is switched on';
+
+  const saved = JSON.stringify(draft);
+  const check = () => {
+    const unsaved = rule.id === state.pinned || JSON.stringify(draft) !== saved;
+    button.disabled = unsaved;
+    button.title = unsaved
+      ? 'Save first: this runs the rule as it is stored'
+      : 'Run this rule now, whether or not it is switched on';
+  };
+  check();
+
+  // Anything at all in the panel might have moved the draft on, and the
+  // handlers that do run before this does.
+  for (const kind of ['input', 'change', 'click']) {
+    body.addEventListener(kind, () => setTimeout(check, 0));
+  }
+
+  button.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api(`/api/rules/${encodeURIComponent(rule.id)}/run`, { method: 'POST' });
+      await loadRules();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  return button;
 }
 
 /** The ordinary trigger, conditions and actions form. */
