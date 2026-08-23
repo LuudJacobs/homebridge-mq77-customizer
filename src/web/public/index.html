@@ -50,6 +50,10 @@
               <input id="kind-slider" type="checkbox" checked />
               Slider
             </label>
+            <label class="toggle" for="kind-timer">
+              <input id="kind-timer" type="checkbox" checked />
+              Timer
+            </label>
             <label class="toggle" for="kind-action">
               <input id="kind-action" type="checkbox" checked />
               Action
@@ -66,6 +70,7 @@
         <button id="tab-automation" type="button" class="tab">Automation</button>
         <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
         <button id="tab-sliders" type="button" class="tab">Sliders</button>
+        <button id="tab-timers" type="button" class="tab">Timers</button>
         <button id="tab-activity" type="button" class="tab">Activity</button>
         <button id="tab-map" type="button" class="tab">Map</button>
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
@@ -124,6 +129,18 @@
           <button id="add-slider" type="button">Add slider</button>
         </div>
         <main id="sliders"></main>
+      </section>
+
+      <section id="view-timers" hidden>
+        <p class="hint">
+          Wait between one thing and another. The clock starts again if the same thing happens
+          again, and is called off the moment what started it stops being so: a light told to
+          go out in thirty seconds does not go out if you switched it off yourself.
+        </p>
+        <div class="rules-actions">
+          <button id="add-timer" type="button">Add timer</button>
+        </div>
+        <main id="timers"></main>
       </section>
 
       <section id="view-map" hidden>

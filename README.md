@@ -1,4 +1,4 @@
-# MQ77 Customizer 0.14.0
+# MQ77 Customizer 0.15.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -142,7 +142,19 @@ Two things guard against a pair of rules setting each other off:
 - a rule will not run more often than its rate limit, one second by default
 - a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
 
+An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button is absent until the panel and the stored rule agree again.
+
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+
+### Timers
+
+A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
+
+The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. Starting is an event: a light saying it is still on is not somebody turning it on, so `is ON` starts a wait when the light comes on and not on every message that mentions it. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
+
+A timer counting when Homebridge restarts is forgotten. Whatever it was going to do stays undone until something starts it again.
+
+An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
 
 ### Sliders
 
@@ -150,7 +162,7 @@ A dimmer driven from buttons. Pick the level, say how many steps it has, and set
 
 Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
 
-Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. It then carries on from the nearest step to wherever it landed.
+Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. That is also what happens in the moments after a restart, before the device has reported anything: the first press goes to the first step, and once it has spoken the level it keeps is used. It then carries on from the nearest step to wherever it landed.
 
 Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
 

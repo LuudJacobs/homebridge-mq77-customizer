@@ -730,6 +730,17 @@ button.danger.armed {
   vertical-align: text-bottom;
 }
 
+/* A clock face: two boxes of one size with a colon between them. */
+.wait .wait-box {
+  width: 3.2rem;
+  text-align: center;
+}
+
+.wait .wait-colon {
+  font-weight: 600;
+}
+
+
 .rule-group {
   margin: 1.2rem 0 0.4rem;
   font-size: 0.92rem;

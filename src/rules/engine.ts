@@ -8,13 +8,17 @@ import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
-import { describeMatch, matches } from './match.js';
+import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
   isSlider,
+  isTimer,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
   DEFAULT_STEPS,
+  DEFAULT_WAIT_MS,
+  MAX_WAIT_MS,
+  MIN_WAIT_MS,
   MAX_STEPS,
   MIN_STEPS,
   RUNAWAY_FIRINGS,
@@ -27,8 +31,10 @@ import {
   type Branch,
   type MirrorRule,
   type PropertyRef,
+  type Match,
   type Rule,
   type SliderRule,
+  type TimerRule,
   type Trigger,
 } from './types.js';
 
@@ -58,6 +64,18 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
   private readonly steps = new Map<string, { step: number; at: number }>();
+  /**
+   * What each timer last sent, so its own doing does not start it again.
+   *
+   * A timer watching for any change and switching a light off hears the
+   * light say it is off, reads that as a change, and starts over.
+   */
+  private readonly echoes = new Map<string, { at: number; keys: Set<string> }>();
+  /** Timers counting, by rule, with what set each one off. */
+  private readonly waiting = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; trigger: Trigger; startedWith: unknown }
+  >();
   private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(
@@ -115,6 +133,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       if (isSlider(rule)) {
         this.slide(rule, update, previously);
+        continue;
+      }
+
+      if (isTimer(rule)) {
+        this.tick(rule, update, previously);
         continue;
       }
 
@@ -429,6 +452,147 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Runs a rule because somebody asked, rather than because something moved.
+   *
+   * Whether it is switched on does not come into it: the point is to try a
+   * rule while building it, which is exactly when it is not yet on. The
+   * conditions still hold sway, since a rule that does nothing under the
+   * conditions in force is telling you something worth knowing.
+   *
+   * A timer starts counting rather than acting at once, since starting is
+   * what its trigger does.
+   */
+  runNow(ruleId: string): boolean {
+    const rule = this.store.data.rules.find((candidate) => candidate.id === ruleId);
+    if (!rule || isMirror(rule) || isSlider(rule)) {
+      return false;
+    }
+
+    // Pretends to be the rule's own trigger holding whatever that device
+    // says now, so an action copying the trigger has something to copy.
+    const trigger = triggersOf(rule)[0];
+    const value = trigger
+      ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
+      : undefined;
+
+    if (isTimer(rule)) {
+      if (!trigger) {
+        return false;
+      }
+      this.startWaiting(rule, trigger, value);
+      return true;
+    }
+
+    this.fire(rule, { property: trigger ?? { sourceId: '', deviceId: '', propertyKey: '' }, value });
+    return true;
+  }
+
+  /**
+   * Starts, restarts or calls off a timer.
+   *
+   * Calling off comes first: a message that takes the value away from what
+   * started the wait has ended it, whatever else that message says.
+   */
+  private tick(rule: TimerRule, update: StateUpdate, previously: Map<string, unknown>): void {
+    const running = this.waiting.get(rule.id);
+    if (running && refersTo(running.trigger, update, running.trigger.propertyKey)) {
+      const value = update.changes[running.trigger.propertyKey];
+      if (value !== undefined && !holds(running.trigger.match, value, running.startedWith)) {
+        clearTimeout(running.timer);
+        this.timers.delete(running.timer);
+        this.waiting.delete(rule.id);
+        this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+      }
+    }
+
+    for (const trigger of triggersOf(rule)) {
+      if (!(trigger.propertyKey in update.changes)) {
+        continue;
+      }
+      if (!refersTo(trigger, update, trigger.propertyKey)) {
+        continue;
+      }
+      const value = update.changes[trigger.propertyKey];
+      const before = previously.get(trigger.propertyKey);
+      if (!matches(trigger.match, value, before)) {
+        continue;
+      }
+      if (!justBecameTrue(trigger.match, before)) {
+        continue;
+      }
+      if (this.isOwnDoing(rule, trigger)) {
+        continue;
+      }
+      this.startWaiting(rule, trigger, value);
+      return;
+    }
+  }
+
+  /** True when this timer wrote to that property a moment ago. */
+  private isOwnDoing(rule: TimerRule, trigger: Trigger): boolean {
+    const echo = this.echoes.get(rule.id);
+    if (!echo || Date.now() - echo.at > SELF_ECHO_MS) {
+      return false;
+    }
+    return echo.keys.has(`${trigger.sourceId}:${trigger.deviceId}:${trigger.propertyKey}`);
+  }
+
+  private startWaiting(rule: TimerRule, trigger: Trigger, value: unknown): void {
+    // The clock starts again rather than running on: a sensor seeing
+    // somebody a second time means another full wait, not a shorter one.
+    const running = this.waiting.get(rule.id);
+    if (running) {
+      clearTimeout(running.timer);
+      this.timers.delete(running.timer);
+    }
+
+    const wait = clampWait(rule.waitMs);
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      this.waiting.delete(rule.id);
+      this.fireTimer(rule, trigger, value);
+    }, wait);
+    this.timers.add(timer);
+    this.waiting.set(rule.id, { timer, trigger, startedWith: value });
+
+    const total = Math.round(wait / 1000);
+    const clock = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    this.record(rule, 'started', `waiting ${clock}`);
+  }
+
+  private fireTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
+    if (!this.allowed(rule)) {
+      return;
+    }
+
+    const problems: string[] = [];
+    for (const action of rule.actions ?? []) {
+      const problem = this.run(action, { property: trigger, value });
+      if (problem) {
+        problems.push(problem);
+      }
+    }
+
+    if (problems.length > 0) {
+      this.record(rule, 'failed', problems.join('; '));
+      return;
+    }
+    // Noted before the devices answer, so their answer is not read as a new
+    // reason to start.
+    this.echoes.set(rule.id, {
+      at: Date.now(),
+      keys: new Set(
+        (rule.actions ?? []).map(
+          (action) => `${action.sourceId}:${action.deviceId}:${action.propertyKey}`,
+        ),
+      ),
+    });
+
+    const count = rule.actions?.length ?? 0;
+    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`);
+  }
+
+  /**
    * Records a press on a device somebody has marked as a controller.
    *
    * Only those: a marked device is one whose presses are worth watching, and
@@ -638,7 +802,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       at: Date.now(),
       ruleId: rule.id,
       ruleName: rule.name,
-      ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
+      ruleKind: isMirror(rule)
+        ? 'mirror'
+        : isSlider(rule)
+          ? 'slider'
+          : isTimer(rule)
+            ? 'timer'
+            : 'standard',
       outcome,
       detail,
     };
@@ -653,6 +823,40 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
     this.emit('log', entry);
   }
+}
+
+/**
+ * Whether a match has only just come true, rather than being true again.
+ *
+ * A light saying it is still on is not somebody turning it on. Starting a
+ * wait is an event, so `is ON` starts one when the light comes on and not on
+ * every message that mentions it, and a stale report after the wait ran does
+ * not set the whole thing going a second time.
+ */
+function justBecameTrue(match: Match, before: unknown): boolean {
+  // Nothing known yet, so this is the first anybody has heard of it.
+  if (before === undefined) {
+    return true;
+  }
+  // These describe a change already: there is no state to have held.
+  if (match.kind === 'changed' || match.kind === 'changedTo') {
+    return true;
+  }
+  return !holds(match, before, before);
+}
+
+/**
+ * How long a timer disregards its own writes coming back.
+ *
+ * Long enough for a device to answer, short enough that a person flicking a
+ * switch straight afterwards still counts.
+ */
+const SELF_ECHO_MS = 2000;
+
+/** Keeps a wait inside what the interface offers, whatever was stored. */
+function clampWait(waitMs: unknown): number {
+  const wanted = typeof waitMs === 'number' ? waitMs : DEFAULT_WAIT_MS;
+  return Math.min(MAX_WAIT_MS, Math.max(MIN_WAIT_MS, Math.round(wanted)));
 }
 
 type SliderButton = 'up' | 'down' | 'on' | 'off';
@@ -719,9 +923,12 @@ function nameOf(branch: Branch, index: number): string {
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
-function triggersOf(rule: Rule): Trigger[] {
+function triggersOf(rule: Rule | TimerRule): Trigger[] {
   if (rule.triggers?.length) {
     return rule.triggers;
+  }
+  if (!('trigger' in rule)) {
+    return [];
   }
   return rule.trigger ? [rule.trigger] : [];
 }

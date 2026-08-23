@@ -10,11 +10,11 @@ const state = {
   /** Hides rules that are switched off. */
   enabledOnly: false,
   /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true, action: true },
+  activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: true },
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
-  sorts: { devices: 'name', automation: 'name', mirror: 'name', sliders: 'name' },
+  sorts: { devices: 'name', automation: 'name', mirror: 'name', sliders: 'name', timers: 'name' },
   /**
    * A rule just added, kept at the top of its list.
    *
@@ -50,6 +50,7 @@ const el = {
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
   kindSlider: document.getElementById('kind-slider'),
+  kindTimer: document.getElementById('kind-timer'),
   kindAction: document.getElementById('kind-action'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
@@ -57,12 +58,14 @@ const el = {
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
   tabSliders: document.getElementById('tab-sliders'),
+  tabTimers: document.getElementById('tab-timers'),
   tabActivity: document.getElementById('tab-activity'),
   tabMap: document.getElementById('tab-map'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
   viewSliders: document.getElementById('view-sliders'),
+  viewTimers: document.getElementById('view-timers'),
   viewActivity: document.getElementById('view-activity'),
   viewMap: document.getElementById('view-map'),
   map: document.getElementById('map'),
@@ -72,10 +75,12 @@ const el = {
   automation: document.getElementById('automation'),
   mirror: document.getElementById('mirror'),
   sliders: document.getElementById('sliders'),
+  timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
+  addTimer: document.getElementById('add-timer'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
   build: document.getElementById('build'),
 };
@@ -571,6 +576,14 @@ const TAB_CONTROLS = {
     ],
     placeholder: 'Filter...',
   },
+  timers: {
+    sorts: [
+      ['name', 'Name'],
+      ['room', 'Room'],
+      ['trigger', 'Trigger device'],
+    ],
+    placeholder: 'Filter...',
+  },
   activity: { sorts: [], placeholder: 'Filter...' },
   map: { sorts: [], placeholder: 'Filter...' },
 };
@@ -579,7 +592,8 @@ const TAB_CONTROLS = {
 function paintControls() {
   const view = state.view;
   const controls = TAB_CONTROLS[view];
-  const rules = view === 'automation' || view === 'mirror' || view === 'sliders';
+  const rules =
+    view === 'automation' || view === 'mirror' || view === 'sliders' || view === 'timers';
 
   el.onlyExposed.hidden = view !== 'devices';
   el.onlyEnabled.hidden = !rules;
@@ -1124,6 +1138,11 @@ el.kindSlider.addEventListener('change', () => {
   renderLog();
 });
 
+el.kindTimer.addEventListener('change', () => {
+  state.activityKinds.timer = el.kindTimer.checked;
+  renderLog();
+});
+
 el.kindAction.addEventListener('change', () => {
   state.activityKinds.action = el.kindAction.checked;
   renderLog();
@@ -1163,6 +1182,8 @@ const OUTCOME_LABELS = {
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'nothing to do',
+  started: 'started',
+  cancelled: 'called off',
 };
 
 /** By display name, for the pickers a rule is built from. */
@@ -1195,13 +1216,18 @@ async function loadRules() {
 }
 
 /** Whether a stored rule belongs to the mirror tab or the automation one. */
-const kindOf = (rule) =>
-  rule.kind === 'mirror' ? 'mirror' : rule.kind === 'slider' ? 'slider' : 'standard';
+const kindOf = (rule) => {
+  if (rule.kind === 'mirror' || rule.kind === 'slider' || rule.kind === 'timer') {
+    return rule.kind;
+  }
+  return 'standard';
+};
 
 function renderRules() {
   safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
   safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
+  safely(() => renderRuleList('timer', el.timers, 'No timers yet.'));
 }
 
 /**
@@ -1389,7 +1415,7 @@ function renderRuleList(kind, container, emptyText) {
   // Sorting automations by trigger is really a question about a remote: what
   // does each of its buttons do. That reads better as a list per device than
   // as one long list in trigger order.
-  if (kind === 'standard' && sort === 'trigger') {
+  if ((kind === 'standard' || kind === 'timer') && sort === 'trigger') {
     renderByTrigger(container, rules);
     return;
   }
@@ -1546,6 +1572,13 @@ function deviceParts(ref, suffix = '', inRoom) {
   return icon ? [icon, text] : [text];
 }
 
+/** A wait as a clock says it, minutes and seconds. */
+function describeWait(waitMs) {
+  const total = Math.round((waitMs ?? 0) / 1000);
+  const minutes = Math.floor(total / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 /** " (+2)" when a rule reaches more than one device on that side. */
 const andMore = (count) => (count > 1 ? ` (+${count - 1})` : '');
 
@@ -1599,9 +1632,9 @@ function summarise(rule, inRoom) {
 
   return [
     ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
-    words(' → '),
+    words(rule.kind === 'timer' ? ` → ${describeWait(rule.waitMs)} → ` : ' → '),
     ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
-    words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
+    words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
   ];
 }
 function renderRuleBody(rule) {
@@ -1638,16 +1671,18 @@ function renderRuleBody(rule) {
     drawMirror(shape, draft);
   } else if (draft.kind === 'slider') {
     drawSlider(shape, draft);
+  } else if (draft.kind === 'timer') {
+    drawTimer(shape, draft);
   } else {
     drawWhenThen(shape, draft);
   }
 
   body.append(shape);
-  body.append(ruleFooter(rule, draft));
+  body.append(ruleFooter(rule, draft, body));
   return body;
 }
 
-function ruleFooter(rule, draft) {
+function ruleFooter(rule, draft, body) {
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
   const error = document.createElement('span');
@@ -1706,8 +1741,56 @@ function ruleFooter(rule, draft) {
     });
   }
 
-  footer.append(save, error, remove);
+  footer.append(save);
+
+  // Mirrors and sliders have no single thing to set off: every member of a
+  // mirror is a trigger, and a slider has four buttons doing four things.
+  if (rule.kind !== 'mirror' && rule.kind !== 'slider') {
+    footer.append(triggerButton(rule, draft, body, error));
+  }
+
+  footer.append(error, remove);
   return footer;
+}
+
+/**
+ * Runs the rule as it stands on disk, switched on or not.
+ *
+ * Only what has been saved can be run, since the engine reads the stored
+ * rule and not the half filled in one on the screen. Rather than quietly
+ * running something other than what is shown, the button goes away until the
+ * two agree again: a button that has gone is unmistakable, where a greyed
+ * one is a shade nobody notices.
+ */
+function triggerButton(rule, draft, body, error) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Trigger';
+  button.title = 'Run this rule now, whether or not it is switched on';
+
+  const saved = JSON.stringify(draft);
+  const check = () => {
+    button.hidden = rule.id === state.pinned || JSON.stringify(draft) !== saved;
+  };
+  check();
+
+  // Anything at all in the panel might have moved the draft on, and the
+  // handlers that do run before this does.
+  for (const kind of ['input', 'change', 'click']) {
+    body.addEventListener(kind, () => setTimeout(check, 0));
+  }
+
+  button.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api(`/api/rules/${encodeURIComponent(rule.id)}/run`, { method: 'POST' });
+      await loadRules();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  return button;
 }
 
 /** The ordinary trigger, conditions and actions form. */
@@ -1893,6 +1976,76 @@ function powerOf(ref) {
     (property) => property.role === 'power' && property.writable,
   );
   return power ? { sourceId: ref.sourceId, deviceId: ref.deviceId, propertyKey: power.key } : undefined;
+}
+
+function drawTimer(body, draft) {
+  // One trigger. A wait is about one thing happening, and several would each
+  // want their own clock.
+  draft.triggers = draft.triggers?.length
+    ? [draft.triggers[0]]
+    : [{ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } }];
+  draft.actions = draft.actions?.length ? draft.actions : [{ ...blankRef(writable), value: '' }];
+  draft.waitMs = draft.waitMs ?? 30_000;
+
+  body.append(sectionTitle('When'));
+  body.append(refRow(draft.triggers[0], { pick: watchable, withMatch: true }));
+
+  const waitRow = document.createElement('div');
+  waitRow.className = 'option wait';
+  const waitLabel = document.createElement('label');
+  // The shape of it said in the label, so nothing has to trail after.
+  waitLabel.textContent = 'Wait (mm:ss)';
+  waitRow.append(waitLabel);
+
+  const total = Math.round(draft.waitMs / 1000);
+
+  /** Two digits at least, since a clock reads 01:05 rather than 1:5. */
+  const pad = (value) => String(value).padStart(2, '0');
+
+  const box = (value, limit) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'wait-box';
+    input.maxLength = limit;
+    input.value = pad(value);
+    return input;
+  };
+
+  // Minutes run as long as you like, up to the day the server allows.
+  const minutes = box(Math.floor(total / 60), 4);
+  const seconds = box(total % 60, 2);
+
+  const readWait = () => {
+    const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
+    // A wait of nothing is an automation, and there is a tab for those.
+    draft.waitMs = Math.max(1, both) * 1000;
+  };
+
+  for (const input of [minutes, seconds]) {
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '');
+      // Sixty seconds is a minute, and the box beside it is for those.
+      if (input === seconds && Number(input.value) > 59) {
+        input.value = '59';
+      }
+      readWait();
+    });
+    // An empty box means none of that, said as a clock says it.
+    input.addEventListener('blur', () => {
+      input.value = pad(Number(input.value) || 0);
+      readWait();
+    });
+  }
+
+  const colon = document.createElement('span');
+  colon.className = 'wait-colon';
+  colon.textContent = ':';
+  waitRow.append(minutes, colon, seconds);
+  body.append(waitRow);
+
+  body.append(sectionTitle('Then'));
+  body.append(actionEditor(draft));
 }
 
 function drawSlider(body, draft) {
@@ -2679,6 +2832,7 @@ const KIND_LABELS = {
   standard: 'automation',
   mirror: 'mirror',
   slider: 'slider',
+  timer: 'timer',
   action: 'action',
 };
 
@@ -3018,12 +3172,14 @@ function showView(view) {
   el.viewAutomation.hidden = view !== 'automation';
   el.viewMirror.hidden = view !== 'mirror';
   el.viewSliders.hidden = view !== 'sliders';
+  el.viewTimers.hidden = view !== 'timers';
   el.viewActivity.hidden = view !== 'activity';
   el.viewMap.hidden = view !== 'map';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
   el.tabSliders.classList.toggle('active', view === 'sliders');
+  el.tabTimers.classList.toggle('active', view === 'timers');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabMap.classList.toggle('active', view === 'map');
   paintControls();
@@ -3041,12 +3197,14 @@ const showsRules = () =>
   state.view === 'automation' ||
   state.view === 'mirror' ||
   state.view === 'sliders' ||
+  state.view === 'timers' ||
   state.view === 'activity';
 
 el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabSliders.addEventListener('click', () => showView('sliders'));
+el.tabTimers.addEventListener('click', () => showView('timers'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
@@ -3073,6 +3231,17 @@ el.addAutomation.addEventListener('click', () =>
     enabled: false,
     trigger: { ...blankRef(watchable), match: { kind: 'changedTo', value: '' } },
     conditions: [],
+    actions: [{ ...blankRef(writable), value: '' }],
+  }),
+);
+
+el.addTimer.addEventListener('click', () =>
+  addRule({
+    name: 'New timer',
+    enabled: false,
+    kind: 'timer',
+    triggers: [{ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } }],
+    waitMs: 30_000,
     actions: [{ ...blankRef(writable), value: '' }],
   }),
 );
