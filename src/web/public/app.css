@@ -228,25 +228,6 @@ header {
   font-weight: 600;
 }
 
-/* Only offered once the card is open, where the intent is deliberate. */
-.rename-button {
-  display: none;
-  padding: 0 0.35rem;
-  line-height: 1.4;
-  font-size: 0.9rem;
-  color: var(--muted);
-  border-color: transparent;
-  background: transparent;
-}
-
-.device[open] > summary > .rename-button {
-  display: inline-block;
-}
-
-.rename-button:hover {
-  color: var(--accent);
-  border-color: var(--line);
-}
 
 .device-meta {
   color: var(--muted);
@@ -308,10 +289,6 @@ header {
   font-size: 0.87rem;
 }
 
-.device-rename {
-  min-width: 12rem;
-  font-weight: 600;
-}
 
 .group-title {
   font-size: 0.75rem;
@@ -397,7 +374,6 @@ header {
   color: var(--accent);
   border-color: var(--accent);
 }
-
 
 .empty {
   color: var(--muted);
@@ -486,7 +462,6 @@ button.primary {
   width: 6rem;
   min-width: 0;
 }
-
 
 .add-row {
   font-size: 0.82rem;
@@ -713,6 +688,38 @@ button.danger.armed {
 }
 
 /* The device a run of triggers belongs to, when listed that way. */
+/* Name, room and kind, in a line under the card header. */
+.device-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0 0 0.75rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.device-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.device-field input,
+.device-field select {
+  width: 11rem;
+}
+
+/* In the card header, so a list can be read by kind at a glance. */
+.type-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  color: var(--muted);
+}
+
 .rule-group {
   margin: 1.2rem 0 0.4rem;
   font-size: 0.92rem;

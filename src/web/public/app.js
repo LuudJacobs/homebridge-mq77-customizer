@@ -82,7 +82,68 @@ const el = {
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
 /** What the device is called here: the given name, or the source's own. */
-const displayName = (device) => device.exposure.label?.trim() || device.name;
+/**
+ * What a device is called here.
+ *
+ * A name of its own wins, with the room in front of it when both are set.
+ * A room on its own does not change the name: it is there for grouping, and
+ * a device called "Kitchen" in Zigbee2MQTT would otherwise read "Kitchen
+ * Kitchen".
+ */
+const displayName = (device) => {
+  const name = device.exposure.label?.trim();
+  const room = device.exposure.room?.trim();
+  if (!name) {
+    return device.name;
+  }
+  return room ? `${room} ${name}` : name;
+};
+
+const DEVICE_TYPES = [
+  ['', 'Not set'],
+  ['light', 'Light'],
+  ['sensor', 'Sensor'],
+  ['controller', 'Controller'],
+  ['other', 'Other'],
+];
+
+/**
+ * A small drawing for the kind of thing a device is.
+ *
+ * Drawn here rather than fetched: the page is self contained and reaches
+ * nothing outside itself.
+ */
+const TYPE_PATHS = {
+  light:
+    'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.2V17h6v-1.3c0-.8.4-1.6 1-2.2A6 6 0 0 0 12 3Z',
+  sensor: 'M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0ZM12 17.5v-4',
+  controller: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM8 9h8M8 15h8',
+  other:
+    'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM12 8v4M12 12l-5 4M12 12l5 4',
+};
+
+function typeIcon(device) {
+  const type = device.exposure.type;
+  if (!type || !TYPE_PATHS[type]) {
+    return undefined;
+  }
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', `type-icon ${type}`);
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG, 'path');
+  path.setAttribute('d', TYPE_PATHS[type]);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.6');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  const title = document.createElementNS(SVG, 'title');
+  title.textContent = DEVICE_TYPES.find(([value]) => value === type)?.[1] ?? type;
+  svg.append(title);
+  return svg;
+}
 
 /** Marks the one failure that means "show the login form", not "something broke". */
 const NOT_SIGNED_IN = 'not-signed-in';
@@ -380,43 +441,91 @@ const SORT_KEYS = {
   name: (device) => displayName(device),
   topic: (device) => device.topic ?? '',
   device: (device) => [device.manufacturer, device.model].filter(Boolean).join(' '),
+  room: (device) => device.exposure.room?.trim() ?? '',
+  type: (device) => device.exposure.type ?? '',
 };
+
+/** The heading a device belongs under, when the list is grouped. */
+const GROUP_KEYS = {
+  room: (device) => device.exposure.room?.trim() ?? '',
+  type: (device) =>
+    DEVICE_TYPES.find(([value]) => value === device.exposure.type)?.[1] ?? '',
+};
+
+/** Devices with nothing set go under this, at the end. */
+const UNGROUPED = 'Unknown';
+
+/**
+ * Splits a list into headed groups, keeping the order it came in.
+ *
+ * Anything with nothing to group by goes last under one heading, rather than
+ * being sorted in among the named ones under an empty title.
+ */
+function intoGroups(items, headingOf) {
+  const groups = new Map();
+  for (const item of items) {
+    const heading = headingOf(item) || UNGROUPED;
+    if (!groups.has(heading)) {
+      groups.set(heading, []);
+    }
+    groups.get(heading).push(item);
+  }
+  return [...groups.entries()].sort(
+    ([a], [b]) =>
+      Number(a === UNGROUPED) - Number(b === UNGROUPED) || compareNames(a, b),
+  );
+}
+
+function groupHeading(text) {
+  const heading = document.createElement('h3');
+  heading.className = 'rule-group';
+  heading.textContent = text;
+  return heading;
+}
 
 /** What each tab offers, and what it says it is filtering. */
 const TAB_CONTROLS = {
   devices: {
     sorts: [
       ['name', 'Name'],
+      ['room', 'Room'],
+      ['type', 'Type'],
       ['topic', 'Topic'],
       ['device', 'Device'],
       ['seen', 'Last seen'],
     ],
-    placeholder: 'Filter name, topic or model',
+    placeholder: 'Filter...',
   },
   automation: {
     sorts: [
       ['name', 'Name'],
+      ['room', 'Room'],
+      ['type', 'Type'],
       ['trigger', 'Trigger device'],
     ],
-    placeholder: 'Filter name, topic or model',
+    placeholder: 'Filter...',
   },
   mirror: {
     sorts: [
       ['name', 'Name'],
+      ['room', 'Room'],
+      ['type', 'Type'],
       ['trigger', 'First device'],
       ['target', 'Second device'],
     ],
-    placeholder: 'Filter name, topic or model',
+    placeholder: 'Filter...',
   },
   sliders: {
     sorts: [
       ['name', 'Name'],
+      ['room', 'Room'],
+      ['type', 'Type'],
       ['target', 'Device'],
     ],
-    placeholder: 'Filter name, topic or model',
+    placeholder: 'Filter...',
   },
-  activity: { sorts: [], placeholder: 'Filter by name' },
-  map: { sorts: [], placeholder: 'Filter by name' },
+  activity: { sorts: [], placeholder: 'Filter...' },
+  map: { sorts: [], placeholder: 'Filter...' },
 };
 
 /** Points the header controls at whatever the current tab is about. */
@@ -479,6 +588,7 @@ function matchesFilter(device, term) {
   return [
     displayName(device),
     device.name,
+    device.exposure.room,
     device.topic,
     device.model,
     device.manufacturer,
@@ -497,6 +607,17 @@ function render() {
   );
 
   el.devices.replaceChildren();
+
+  const grouping = GROUP_KEYS[state.sorts.devices];
+  if (grouping && visible.length > 0) {
+    for (const [heading, devices] of intoGroups(visible, grouping)) {
+      el.devices.append(groupHeading(heading));
+      for (const device of devices) {
+        el.devices.append(renderDevice(device));
+      }
+    }
+    return;
+  }
 
   if (visible.length === 0) {
     const empty = document.createElement('p');
@@ -545,16 +666,17 @@ function renderDevice(device) {
   topic.textContent = device.topic ?? '';
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
-  // Worth offering even on a rules only device: the name is what the device
-  // is called in this interface and in rules, not only in HomeKit.
-  if (device.renameable) {
-    summary.append(renameButton(device, name));
+  const icon = typeIcon(device);
+  if (icon) {
+    summary.append(icon);
   }
   summary.append(name, meta, seen, topic, badge);
   card.append(summary);
 
   const body = document.createElement('div');
   body.className = 'device-body';
+
+  body.append(renderDeviceInfo(device, name));
 
   const options = renderOptions(device);
   if (options.childElementCount > 0) {
@@ -577,62 +699,69 @@ function renderDevice(device) {
 }
 
 /**
- * The pencil in the card header, which swaps the name for a field.
+ * Name, room and kind, for grouping and reading in this interface.
  *
- * Everything in here has to stop the click reaching the summary, otherwise
- * editing the name would collapse the card under the cursor.
+ * None of it reaches HomeKit, which keeps rooms in the Home app where no
+ * accessory can set or read them. The name is the exception, and only where
+ * the source names nothing itself.
  */
-function renameButton(device, name) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'rename-button';
-  button.title = 'Rename this device';
-  button.setAttribute('aria-label', `Rename ${displayName(device)}`);
-  button.textContent = '\u270E';
+function renderDeviceInfo(device, heading) {
+  const row = document.createElement('div');
+  row.className = 'device-info';
 
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    startRename(device, name, button);
-  });
-
-  return button;
-}
-
-function startRename(device, name, button) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'device-rename';
-  input.value = device.exposure.label ?? '';
-  input.placeholder = device.name;
-  input.maxLength = 64;
-
-  const swallow = (event) => event.stopPropagation();
-  input.addEventListener('click', (event) => {
-    event.preventDefault();
-    swallow(event);
-  });
-  input.addEventListener('keydown', (event) => {
-    swallow(event);
-    if (event.key === 'Enter' || event.key === 'Escape') {
-      event.preventDefault();
-      input.blur();
-    }
-  });
-
-  const finish = () => {
-    device.exposure.label = input.value.trim();
-    name.textContent = displayName(device);
-    input.replaceWith(name);
-    button.hidden = false;
+  const repaint = () => {
+    heading.textContent = displayName(device);
     save(device);
+    // The icon lives in the header, which is not redrawn on its own.
+    safeRender();
   };
-  input.addEventListener('blur', finish, { once: true });
 
-  button.hidden = true;
-  name.replaceWith(input);
-  input.focus();
-  input.select();
+  const field = (label, value, placeholder, onChange) => {
+    const wrap = document.createElement('label');
+    wrap.className = 'device-field';
+    wrap.append(document.createTextNode(label));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value ?? '';
+    input.placeholder = placeholder;
+    input.maxLength = 64;
+    input.addEventListener('change', () => onChange(input.value.trim()));
+    wrap.append(input);
+    return wrap;
+  };
+
+  row.append(
+    field('Name', device.exposure.label, device.name, (value) => {
+      device.exposure.label = value || undefined;
+      repaint();
+    }),
+  );
+  row.append(
+    field('Room', device.exposure.room, 'none', (value) => {
+      device.exposure.room = value || undefined;
+      repaint();
+    }),
+  );
+
+  const typeWrap = document.createElement('label');
+  typeWrap.className = 'device-field';
+  typeWrap.append(document.createTextNode('Type'));
+  const type = document.createElement('select');
+  for (const [value, label] of DEVICE_TYPES) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = label;
+    type.append(choice);
+  }
+  type.value = device.exposure.type ?? '';
+  type.addEventListener('change', () => {
+    device.exposure.type = type.value || undefined;
+    repaint();
+  });
+  typeWrap.append(type);
+  row.append(typeWrap);
+
+  return row;
 }
 
 function renderOptions(device) {
@@ -1087,7 +1216,28 @@ function ruleSides(rule) {
   return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
 
+/** The room of the device a rule acts on, for grouping a list by it. */
+function roomOf(rule) {
+  const ref = ruleSides(rule).target ?? ruleSides(rule).trigger;
+  const device = ref && findDevice(ref);
+  return device?.exposure?.room?.trim() ?? '';
+}
+
+/** The kind of the device a rule acts on, for grouping a list by it. */
+function typeOf(rule) {
+  const sides = ruleSides(rule);
+  const ref = sides.target ?? sides.trigger;
+  const device = ref && findDevice(ref);
+  return DEVICE_TYPES.find(([value]) => value === device?.exposure?.type)?.[1] ?? '';
+}
+
 function ruleSortKey(rule, sort) {
+  if (sort === 'room') {
+    return roomOf(rule) || '\uffff';
+  }
+  if (sort === 'type') {
+    return typeOf(rule) || '\uffff';
+  }
   if (sort === 'trigger' || sort === 'target') {
     const ref = ruleSides(rule)[sort];
     const device = ref && findDevice(ref);
@@ -1110,7 +1260,14 @@ function matchesRuleFilter(rule, term) {
     const device = ref && findDevice(ref);
     return (
       device &&
-      [displayName(device), device.name, device.topic, device.model, device.manufacturer]
+      [
+        displayName(device),
+        device.name,
+        device.exposure?.room,
+        device.topic,
+        device.model,
+        device.manufacturer,
+      ]
         .filter(Boolean)
         .some((field) => field.toLowerCase().includes(term))
     );
@@ -1154,6 +1311,19 @@ function renderRuleList(kind, container, emptyText) {
   // as one long list in trigger order.
   if (kind === 'standard' && sort === 'trigger') {
     renderByTrigger(container, rules);
+    return;
+  }
+
+  // By room or kind means by the device a rule acts on: the room somebody is
+  // standing in when they wonder what runs there, or what sort of thing it is.
+  if (sort === 'room' || sort === 'type') {
+    const heading0f = sort === 'room' ? roomOf : typeOf;
+    for (const [heading, grouped] of intoGroups(rules, heading0f)) {
+      container.append(groupHeading(heading));
+      for (const rule of grouped) {
+        container.append(renderRule(rule));
+      }
+    }
     return;
   }
 

@@ -156,6 +156,14 @@ Each of the four buttons takes several triggers, so one slider can be driven by 
 
 Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 
+### Naming and grouping
+
+Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
+
+A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. Room and Type are offered as ways to sort on every list, grouping it under headings with anything unset last. On the rule tabs they go by the device a rule acts on.
+
+The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
+
 ### Map
 
 The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
