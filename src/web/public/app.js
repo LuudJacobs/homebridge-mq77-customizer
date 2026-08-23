@@ -1945,7 +1945,8 @@ function drawTimer(body, draft) {
   const waitRow = document.createElement('div');
   waitRow.className = 'option wait';
   const waitLabel = document.createElement('label');
-  waitLabel.textContent = 'Wait';
+  // The shape of it said in the label, so nothing has to trail after.
+  waitLabel.textContent = 'Wait (mm:ss)';
   waitRow.append(waitLabel);
 
   const total = Math.round(draft.waitMs / 1000);
@@ -1992,11 +1993,7 @@ function drawTimer(body, draft) {
   const colon = document.createElement('span');
   colon.className = 'wait-colon';
   colon.textContent = ':';
-  const unit = document.createElement('span');
-  unit.className = 'wait-unit';
-  unit.textContent = 'minutes';
-
-  waitRow.append(minutes, colon, seconds, unit);
+  waitRow.append(minutes, colon, seconds);
   body.append(waitRow);
 
   body.append(sectionTitle('Then'));
