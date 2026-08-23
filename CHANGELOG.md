@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A slider can be told what level to come on at, rather than starting at the first step
+- A slider comes on at the level the device itself keeps, with a setting of its own for a device that has none, rather than always starting at the first step
 - Each slider button takes several triggers, so one slider can be driven by more than one remote
 - Fixed: slider entries in the activity log had an empty kind pill, and a slider with nothing to do said "skipped"
 - A Sliders tab drives a dimmer or a fan from buttons: a level cut into steps, with a press moving it one step and the ends switching the device on and off

@@ -1586,20 +1586,33 @@ function drawSlider(body, draft) {
   const hint = document.createElement('p');
   hint.className = 'hint';
 
+  /** What the device itself comes on at, when it keeps such a setting. */
+  const deviceOnLevel = () => {
+    const device = findDevice(draft.target);
+    const property = device?.properties.find((candidate) => candidate.key.endsWith('on_level'));
+    const value = property && device.state?.[property.key];
+    return typeof value === 'number' ? value : undefined;
+  };
+
   const describeLadder = () => {
     const property = findProperty(draft.target);
     if (!property) {
       hint.textContent = 'Pick something with a level to drive.';
       return;
     }
+    const fromDevice = deviceOnLevel();
+    onLevel.placeholder = fromDevice === undefined ? 'first step' : String(fromDevice);
     const min = property.min ?? 0;
     const top = Math.min(draft.max ?? property.max ?? 100, property.max ?? 100);
     const size = Math.round((top - min) / draft.steps);
     const ladder = `${draft.steps} steps of about ${size}, from ${min} to ${top}.`;
+    const landing = draft.onLevel ?? fromDevice;
     const coming =
-      draft.onLevel === undefined
+      landing === undefined
         ? 'Comes on at the first step.'
-        : `Comes on at ${draft.onLevel}.`;
+        : draft.onLevel === undefined
+          ? `Comes on at ${landing}, which is what the device is set to.`
+          : `Comes on at ${landing}.`;
     hint.textContent = draft.power
       ? `${ladder} ${coming} Off is a step of its own.`
       : `${ladder} Nothing on this device switches on and off, so the ends cannot.`;
@@ -1651,7 +1664,6 @@ function drawSlider(body, draft) {
   const onLevel = document.createElement('input');
   onLevel.type = 'number';
   onLevel.className = 'delay';
-  onLevel.placeholder = 'first step';
   onLevel.value = draft.onLevel ?? '';
   onLevel.addEventListener('input', () => {
     const level = Number(onLevel.value);

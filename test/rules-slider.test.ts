@@ -189,6 +189,33 @@ describe('coming on from off', () => {
   });
 });
 
+describe('the level the device keeps', () => {
+  it('comes on where the device says, without being told', async () => {
+    const { mqtt } = await harness([sliderRule()]);
+    // Zigbee2MQTT reports it under level_config, as the device holds it.
+    mqtt.deliver(DIMMER.topic, { state: 'OFF', level_config: { on_level: 94 } });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}', '{"brightness":94}']);
+  });
+
+  it('lets the slider say otherwise', async () => {
+    const { mqtt } = await harness([sliderRule({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF', level_config: { on_level: 94 } });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt).at(-1)).toBe('{"brightness":200}');
+  });
+
+  it('falls back to the first step when neither says', async () => {
+    const { mqtt } = await harness([sliderRule()]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_left');
+    expect(sent(mqtt).at(-1)).toBe('{"brightness":64}');
+  });
+});
+
 describe('several buttons doing the same thing', () => {
   it('takes a press from any of them', async () => {
     const { mqtt } = await harness([
