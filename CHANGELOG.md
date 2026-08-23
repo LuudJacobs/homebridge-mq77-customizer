@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A Sliders tab drives a dimmer or a fan from buttons: a level cut into steps, with a press moving it one step and the ends switching the device on and off
+
 - Delete on a rule sits at the far end of the footer, is red, and asks once before deleting anything that has been saved. It goes back to asking after two seconds
 
 ## [0.12.0] - 2026-08-22
