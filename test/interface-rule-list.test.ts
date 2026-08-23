@@ -309,6 +309,22 @@ describe('naming a rule by where it acts', () => {
     expect(titles(ui)).toEqual(['Nightlight toggle']);
   });
 
+  it('keeps the room when the heading is a device rather than a room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}) },
+    }));
+    const ui = await openInterface({
+      state: { devices: placed },
+      rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'trigger');
+
+    // The heading names the remote, which says nothing about where it acts.
+    expect(titles(ui)).toEqual(['Study: Nightlight toggle']);
+  });
+
   it('drops the room once the list is grouped by it', async () => {
     const ui = await openInterface({
       state: { devices: placed('Study') },
