@@ -160,7 +160,11 @@ Stepping counts from what the slider was last told for a couple of seconds, rath
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
 
-A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. The device list can be sorted by Room or by Type, and the rule lists by Room, meaning the room of the device a rule acts on. Either groups the list under headings, with anything unset last.
+A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. The device list can be sorted by Room or by Type, and the rule lists by Room. Either groups the list under headings, with anything unset last.
+
+A rule is named by where it acts rather than where it is set off from: a button in the hall turning on a lamp in the study is a study rule. Its rooms are said in front of its name, `Study: Nightlight toggle`, or `Kitchen / Study: Evening` when it reaches several, and left off under a room heading which has said it already. A rule reaching two rooms is listed under both.
+
+Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
 

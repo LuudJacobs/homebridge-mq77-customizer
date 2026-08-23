@@ -717,6 +717,7 @@ button.danger.armed {
   width: 1.15rem;
   height: 1.15rem;
   flex: none;
+  align-self: center;
   color: var(--muted);
 }
 

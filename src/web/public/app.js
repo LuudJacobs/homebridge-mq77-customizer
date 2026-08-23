@@ -10,7 +10,7 @@ const state = {
   /** Hides rules that are switched off. */
   enabledOnly: false,
   /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true },
+  activityKinds: { standard: true, mirror: true, slider: true, action: true },
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -50,6 +50,7 @@ const el = {
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
   kindSlider: document.getElementById('kind-slider'),
+  kindAction: document.getElementById('kind-action'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   tabDevices: document.getElementById('tab-devices'),
@@ -508,8 +509,6 @@ const TAB_CONTROLS = {
     sorts: [
       ['name', 'Name'],
       ['room', 'Room'],
-      ['trigger', 'First device'],
-      ['target', 'Second device'],
     ],
     placeholder: 'Filter...',
   },
@@ -1072,6 +1071,11 @@ el.kindSlider.addEventListener('change', () => {
   renderLog();
 });
 
+el.kindAction.addEventListener('change', () => {
+  state.activityKinds.action = el.kindAction.checked;
+  renderLog();
+});
+
 async function start() {
   await load();
   listen();
@@ -1213,16 +1217,48 @@ function ruleSides(rule) {
   return { trigger: ruleTriggers(rule)[0], target: ruleActions(rule)[0] };
 }
 
-/** The room of the device a rule acts on, for grouping a list by it. */
-function roomOf(rule) {
-  const ref = ruleSides(rule).target ?? ruleSides(rule).trigger;
-  const device = ref && findDevice(ref);
-  return device?.exposure?.room?.trim() ?? '';
+/**
+ * The devices a rule acts on, which is not the same as the ones that set it
+ * off. What a rule does is where it matters: a button in the hall turning on
+ * a lamp in the study is a study rule.
+ */
+function affectedRefs(rule) {
+  if (rule.kind === 'mirror') {
+    // Every member is both sides of a mirror, so all of them are affected.
+    return (rule.groups ?? []).flat().filter(Boolean);
+  }
+  if (rule.kind === 'slider') {
+    return [rule.target].filter(Boolean);
+  }
+  return ruleActions(rule);
+}
+
+/** The rooms a rule reaches, in order, with unplaced devices passed over. */
+function affectedRooms(rule) {
+  const rooms = new Set();
+  for (const ref of affectedRefs(rule)) {
+    const room = findDevice(ref)?.exposure?.room?.trim();
+    if (room) {
+      rooms.add(room);
+    }
+  }
+  return [...rooms].sort(compareNames);
+}
+
+/**
+ * A rule's name, said with the rooms it reaches in front of it.
+ *
+ * Left off under a room heading, which has already said it, and off entirely
+ * for a rule that reaches nowhere named.
+ */
+function ruleTitle(rule, grouped = false) {
+  const rooms = grouped ? [] : affectedRooms(rule);
+  return rooms.length > 0 ? `${rooms.join(' / ')}: ${rule.name}` : rule.name;
 }
 
 function ruleSortKey(rule, sort) {
   if (sort === 'room') {
-    return roomOf(rule) || '\uffff';
+    return affectedRooms(rule)[0] || '\uffff';
   }
   if (sort === 'trigger' || sort === 'target') {
     const ref = ruleSides(rule)[sort];
@@ -1279,7 +1315,7 @@ function renderRuleList(kind, container, emptyText) {
         // A rule just added stays in sight, wherever its name would put it.
         Number(b.id === state.pinned) - Number(a.id === state.pinned) ||
         compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
-        compareNames(a.name, b.name),
+        compareNames(ruleTitle(a), ruleTitle(b)),
     );
 
   if (rules.length === 0) {
@@ -1300,14 +1336,30 @@ function renderRuleList(kind, container, emptyText) {
     return;
   }
 
-  // By room means by the room of the device a rule acts on, which is the one
-  // somebody is standing in when they wonder what runs there. Kind is not
-  // offered here: what runs on the lights is not a question anybody asks.
+  // By room means by the rooms a rule acts in, which is where somebody is
+  // standing when they wonder what runs there. A rule reaching two rooms is
+  // listed under both, since it is the answer in both. Kind is not offered
+  // here: what runs on the lights is not a question anybody asks.
   if (sort === 'room') {
-    for (const [heading, grouped] of intoGroups(rules, roomOf)) {
+    const groups = new Map();
+    for (const rule of rules) {
+      const rooms = affectedRooms(rule);
+      for (const room of rooms.length > 0 ? rooms : [UNGROUPED]) {
+        if (!groups.has(room)) {
+          groups.set(room, []);
+        }
+        groups.get(room).push(rule);
+      }
+    }
+
+    const ordered = [...groups.entries()].sort(
+      ([a], [b]) => Number(a === UNGROUPED) - Number(b === UNGROUPED) || compareNames(a, b),
+    );
+
+    for (const [heading, grouped] of ordered) {
       container.append(groupHeading(heading));
       for (const rule of grouped) {
-        container.append(renderRule(rule));
+        container.append(renderRule(rule, undefined, true));
       }
     }
     return;
@@ -1384,7 +1436,7 @@ function renderByTrigger(container, rules) {
   }
 }
 
-function renderRule(rule, occurrence) {
+function renderRule(rule, occurrence, grouped = false) {
   const card = document.createElement('details');
   card.className = 'device rule';
   // One rule can be listed under several of its triggers, and opening it in
@@ -1402,12 +1454,16 @@ function renderRule(rule, occurrence) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = rule.name;
+  name.textContent = ruleTitle(rule, grouped || Boolean(occurrence));
   const detail = document.createElement('span');
   detail.className = 'device-meta';
   // Under a trigger heading the rule is named first and what sets it off
   // second, since the heading has already said which device it is.
-  detail.textContent = occurrence ? describeTrigger(occurrence.trigger) : summarise(rule);
+  if (occurrence) {
+    detail.textContent = describeTrigger(occurrence.trigger);
+  } else {
+    detail.replaceChildren(...summarise(rule));
+  }
   const badge = document.createElement('span');
   badge.className = rule.enabled ? 'badge' : 'badge none';
   badge.textContent = rule.enabled ? 'on' : 'off';
@@ -1418,35 +1474,66 @@ function renderRule(rule, occurrence) {
   return card;
 }
 
+/** A device as it is named here, with its kind drawn in front of it. */
+function deviceParts(ref, suffix = '') {
+  const device = ref && findDevice(ref);
+  if (!device) {
+    return [document.createTextNode(`a removed function${suffix}`)];
+  }
+  const icon = typeIcon(device);
+  const text = document.createTextNode(`${displayName(device)}${suffix}`);
+  return icon ? [icon, text] : [text];
+}
+
+/** The line under a rule's name, saying what it works on. Returns nodes. */
 function summarise(rule) {
+  const words = (text) => document.createTextNode(text);
+
   if (rule.kind === 'slider') {
     const property = findProperty(rule.target);
-    const device = findDevice(rule.target);
-    const where = property ? `${device?.name} ${property.label}` : 'a removed function';
-    const buttons = ['up', 'down', 'on', 'off'].filter(
-      (key) => (Array.isArray(rule[key]) ? rule[key].length : rule[key]) ? true : false,
+    const buttons = ['up', 'down', 'on', 'off'].filter((key) =>
+      Array.isArray(rule[key]) ? rule[key].length > 0 : Boolean(rule[key]),
     ).length;
-    return `${where} · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`;
+    return [
+      ...deviceParts(rule.target, property ? ` ${property.label}` : ''),
+      words(` · ${rule.steps ?? 5} steps · ${buttons} button${buttons === 1 ? '' : 's'}`),
+    ];
   }
+
   if (rule.kind === 'mirror') {
-    const devices = new Set(
-      rule.groups.flat().map((ref) => findDevice(ref)?.name ?? 'a removed device'),
-    );
-    const fields = rule.groups.length;
-    return `${[...devices].join(' ↔ ')} · ${fields} field${fields === 1 ? '' : 's'}`;
+    const seen = new Set();
+    const parts = [];
+    for (const ref of (rule.groups ?? []).flat()) {
+      const id = `${ref.sourceId}|${ref.deviceId}`;
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      if (parts.length > 0) {
+        parts.push(words(' ↔ '));
+      }
+      parts.push(...deviceParts(ref));
+    }
+    const fields = rule.groups?.length ?? 0;
+    parts.push(words(` · ${fields} field${fields === 1 ? '' : 's'}`));
+    return parts;
   }
-  const first = rule.triggers?.[0] ?? rule.trigger;
+
+  const first = ruleTriggers(rule)[0];
   const source = first && findProperty(first);
-  const firstAction = rule.branches?.[0]?.actions?.[0] ?? rule.actions?.[0];
+  const firstAction = ruleActions(rule)[0];
   const target = firstAction && findProperty(firstAction);
-  const more = (rule.triggers?.length ?? 1) > 1 ? ` and ${rule.triggers.length - 1} more` : '';
-  const from = source
-    ? `${findDevice(first)?.name} ${source.label}${more}`
-    : 'a removed function';
-  const to = target ? `${findDevice(firstAction)?.name} ${target.label}` : 'a removed function';
+  const triggers = ruleTriggers(rule).length;
+  const more = triggers > 1 ? ` and ${triggers - 1} more` : '';
   const outcomes = rule.branches?.length ?? 1;
   const extra = outcomes > 1 ? ` and ${outcomes - 1} more outcome${outcomes > 2 ? 's' : ''}` : '';
-  return `${from} → ${to}${extra}`;
+
+  return [
+    ...deviceParts(first, source ? ` ${source.label}${more}` : ''),
+    words(' → '),
+    ...deviceParts(firstAction, target ? ` ${target.label}` : ''),
+    words(extra),
+  ];
 }
 function renderRuleBody(rule) {
   const body = document.createElement('div');
@@ -1743,7 +1830,6 @@ function drawSlider(body, draft) {
   draft.power = draft.power ?? powerOf(draft.target);
   draft.steps = draft.steps ?? 5;
 
-  body.append(sectionTitle('Level'));
   const hint = document.createElement('p');
   hint.className = 'hint';
 
@@ -2513,7 +2599,12 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
-const KIND_LABELS = { standard: 'automation', mirror: 'mirror', slider: 'slider' };
+const KIND_LABELS = {
+  standard: 'automation',
+  mirror: 'mirror',
+  slider: 'slider',
+  action: 'action',
+};
 
 function renderLog() {
   const container = el.activityLog;
@@ -2545,7 +2636,14 @@ function renderLog() {
     kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
 
     const what = document.createElement('span');
-    what.textContent = `${entry.ruleName}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
+    if (entry.ruleKind === 'action') {
+      // Not a rule: a device saying a button was pressed.
+      what.textContent = `${entry.ruleName}: ${entry.detail}`;
+    } else {
+      const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
+      const named = rule ? ruleTitle(rule) : entry.ruleName;
+      what.textContent = `${named}: ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome}, ${entry.detail}`;
+    }
     line.append(when, kind, what);
     container.append(line);
   }
