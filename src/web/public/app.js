@@ -1699,7 +1699,8 @@ function drawSlider(body, draft) {
               triggers.splice(index, 1);
               drawButtons();
             },
-            joiner: last ? undefined : 'or',
+            // No "or" between them: a heading of its own already says what
+            // this run of rows is for, and any of them presses it.
             trailing: last ? addButton('+ trigger', add) : undefined,
           }),
         );
