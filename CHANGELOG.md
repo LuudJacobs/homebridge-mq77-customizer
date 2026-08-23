@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed: a rule just added disappeared when the list was filtered, or when "Enabled only" was ticked, since it starts with a placeholder name and switched off
+
 - A slider comes on at the level the device itself keeps, with a setting of its own for a device that has none, rather than always starting at the first step
 - Each slider button takes several triggers, so one slider can be driven by more than one remote
 - Fixed: slider entries in the activity log had an empty kind pill, and a slider with nothing to do said "skipped"

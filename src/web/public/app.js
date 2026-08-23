@@ -1122,10 +1122,15 @@ function renderRuleList(kind, container, emptyText) {
   const term = currentFilter();
   const sort = state.sorts[state.view] ?? 'name';
 
+  // A rule just added is exempt from both. It is saved the moment it is
+  // added, so it starts with a placeholder name and switched off, and a list
+  // that was filtered or set to enabled only would swallow it on the spot.
+  const justAdded = (rule) => rule.id === state.pinned;
+
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
-    .filter((rule) => !state.enabledOnly || rule.enabled)
-    .filter((rule) => matchesRuleFilter(rule, term))
+    .filter((rule) => justAdded(rule) || !state.enabledOnly || rule.enabled)
+    .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
     .sort(
       (a, b) =>
         // A rule just added stays in sight, wherever its name would put it.

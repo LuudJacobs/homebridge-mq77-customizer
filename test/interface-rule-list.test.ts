@@ -269,6 +269,34 @@ describe('a rule just added', () => {
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
   });
 
+  it('shows through a filter that would otherwise hide it', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+    await filterFor(ui, 'apple');
+    expect(named(ui, '#automation')).toEqual(['Apple']);
+
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    // Adding something that then vanishes is worse than a filter being ignored.
+    expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
+  });
+
+  it('shows even with enabled only ticked, since it starts switched off', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+    await ui.click(ui.document.querySelector('#enabled-only'));
+
+    const added = { ...automation('r2', 'New automation', '0xa', '0xb'), enabled: false };
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', 'Add automation'));
+
+    expect(named(ui, '#automation')).toContain('New automation');
+  });
+
   it('takes its place in the order once saved', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
     const ui = await openTab('Automation', [apple]);
