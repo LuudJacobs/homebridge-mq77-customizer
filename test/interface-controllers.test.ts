@@ -126,15 +126,20 @@ describe('what every controller sets off', () => {
     ]);
   });
 
-  it('gives a button two rules answer a row each', async () => {
+  it('gives a button two rules answer a row each, saying the button once', async () => {
     const ui = await openControllers();
 
+    // The second row has no button cell of its own: the first spans them both.
     expect(table(ui)[1]?.rows).toEqual([
       ['1 Single', 'Woonkamer: Licht cycle'],
-      ['1 Single', 'Woonkamer: Alles uit'],
+      ['Woonkamer: Alles uit'],
       ['1 Double', 'none'],
       ['2 Single', 'none'],
     ]);
+
+    const spanning = ui.document.querySelector('#controllers td[rowspan]') as HTMLTableCellElement;
+    expect(spanning.textContent).toBe('1 Single');
+    expect(spanning.rowSpan).toBe(2);
   });
 
   it('leaves the free buttons out when they are not wanted', async () => {
@@ -146,7 +151,7 @@ describe('what every controller sets off', () => {
 
     expect(table(ui)[1]?.rows).toEqual([
       ['1 Single', 'Woonkamer: Licht cycle'],
-      ['1 Single', 'Woonkamer: Alles uit'],
+      ['Woonkamer: Alles uit'],
     ]);
   });
 
@@ -163,7 +168,7 @@ describe('what every controller sets off', () => {
     // Nothing says what else it could send, so what is bound is all there is.
     expect(table(ui)[0]?.rows).toEqual([
       ['1 Single', 'Woonkamer: Licht cycle'],
-      ['1 Single', 'Woonkamer: Alles uit'],
+      ['Woonkamer: Alles uit'],
     ]);
   });
 
@@ -194,6 +199,9 @@ describe('the overview as a file', () => {
     expect(markdown).toContain('## Woonkamer Bank');
     const lines = markdown.split('\n').map((line) => line.replace(/\s+\|/g, ' |'));
     expect(lines).toContain('| 1 Single | Woonkamer: Dimmen (up) |');
+    // A button with two answers is written once, and left blank under itself.
+    const shared = lines.findIndex((line) => line.includes('Woonkamer: Licht cycle'));
+    expect(lines[shared + 1]).toBe('| | Woonkamer: Alles uit |');
     expect(lines).toContain('| 2 Single | _none_ |');
   });
 

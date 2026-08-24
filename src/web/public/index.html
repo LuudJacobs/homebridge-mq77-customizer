@@ -51,6 +51,10 @@
               Action
             </label>
           </span>
+          <label id="unused-buttons-filter" class="toggle" for="unused-buttons" hidden>
+            <input id="unused-buttons" type="checkbox" checked />
+            Unused buttons
+          </label>
           <select id="sort" title="Sort the list"></select>
           <input id="filter" type="search" />
         </div>
@@ -143,12 +147,8 @@
       </section>
 
       <section id="view-controllers" hidden>
-        <div class="hint-row">
-          <label class="toggle" for="unused-buttons">
-            <input id="unused-buttons" type="checkbox" checked />
-            Unused buttons
-          </label>
-          <button id="download-controllers" type="button" class="link">download</button>
+        <div class="rules-actions">
+          <button id="download-controllers" type="button">Download</button>
         </div>
         <div id="controllers"></div>
       </section>

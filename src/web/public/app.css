@@ -617,17 +617,21 @@ button.link:hover {
   white-space: nowrap;
 }
 
-/* One remote, and what its buttons are bound to. */
+/* One remote, and what its buttons are bound to, drawn as the lists are. */
 .controller-card {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
 }
 
 .controller-card h2 {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
 }
 
 table.buttons {
@@ -638,28 +642,45 @@ table.buttons {
 
 table.buttons th {
   text-align: left;
-  font-weight: 600;
-  color: var(--muted);
-  font-size: 0.78rem;
+  font-weight: 500;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 
 table.buttons th,
 table.buttons td {
-  padding: 0.3rem 0.75rem 0.3rem 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.9rem;
 }
 
+/* Between the rows only: the edges are the card's own. */
+table.buttons tr + tr td,
+table.buttons th {
+  border-top: 1px solid var(--line);
+}
+
+table.buttons td[rowspan] {
+  vertical-align: top;
+}
+
+/* The button is the column read down, so it is the one that is weighted. */
 table.buttons td:first-child {
-  width: 12rem;
+  width: 11rem;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 /* A button nothing answers, which is what the list is read for. */
 table.buttons td.free {
   color: var(--muted);
   font-style: italic;
+}
+
+/* Where the download sits: at the end of the line above the tables. */
+#view-controllers .rules-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* A description with something to press at the end of it. */
@@ -1187,13 +1208,19 @@ table.buttons td.free {
   }
 
   /* Saving a file to a phone leads nowhere useful, the same as the settings. */
-  #download-controllers {
+  #view-controllers .rules-actions {
     display: none;
   }
 
   /* A button and what it does, with room for the names. */
   table.buttons td:first-child {
-    width: 8rem;
+    width: 7.5rem;
+    white-space: normal;
+  }
+
+  table.buttons th,
+  table.buttons td {
+    padding: 0.4rem 0.6rem;
   }
 
   /*

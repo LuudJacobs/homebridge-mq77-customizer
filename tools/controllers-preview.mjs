@@ -209,7 +209,10 @@ await settle();
   .click();
 await settle();
 
-const view = window.document.getElementById('view-controllers').innerHTML;
+// The tick lives with the other filters up in the header, so the preview
+// carries that row along with the tab underneath it.
+const controls = window.document.querySelector('.header-actions').outerHTML;
+const view = `<header>${controls}</header>${window.document.getElementById('view-controllers').innerHTML}`;
 const markdown = window.eval('controllersAsMarkdown()');
 if (!view.includes('controller-card')) {
   throw new Error('the interface drew nothing');

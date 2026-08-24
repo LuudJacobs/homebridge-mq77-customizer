@@ -73,6 +73,7 @@ const el = {
   viewControllers: document.getElementById('view-controllers'),
   controllers: document.getElementById('controllers'),
   unusedButtons: document.getElementById('unused-buttons'),
+  unusedFilter: document.getElementById('unused-buttons-filter'),
   downloadControllers: document.getElementById('download-controllers'),
   viewMap: document.getElementById('view-map'),
   map: document.getElementById('map'),
@@ -601,6 +602,7 @@ function paintControls() {
   const controls = TAB_CONTROLS[view];
 
   el.kindFilters.hidden = view !== 'activity';
+  el.unusedFilter.hidden = view !== 'controllers';
 
   el.sort.hidden = controls.sorts.length === 0;
   if (controls.sorts.length > 0) {
@@ -3424,7 +3426,7 @@ function renderControllers() {
     card.className = 'controller-card';
 
     const heading = document.createElement('h2');
-    heading.append(...deviceParts(controller));
+    heading.textContent = displayName(controller);
     card.append(heading);
 
     const table = document.createElement('table');
@@ -3438,17 +3440,25 @@ function renderControllers() {
     table.append(head);
 
     for (const row of shown) {
-      // A button two rules answer is two rows: one line, one thing it does.
-      for (const named of row.rules.length > 0 ? row.rules : [undefined]) {
+      // A button two rules answer is a row each: one line, one thing it does.
+      // The button itself is said once, over as many rows as it has.
+      const answers = row.rules.length > 0 ? row.rules : [undefined];
+      answers.forEach((named, index) => {
         const line = document.createElement('tr');
-        const button = document.createElement('td');
-        button.textContent = row.label;
+        if (index === 0) {
+          const button = document.createElement('td');
+          button.textContent = row.label;
+          if (answers.length > 1) {
+            button.rowSpan = answers.length;
+          }
+          line.append(button);
+        }
         const action = document.createElement('td');
         action.textContent = named ?? 'none';
         action.classList.toggle('free', named === undefined);
-        line.append(button, action);
+        line.append(action);
         table.append(line);
-      }
+      });
     }
 
     card.append(table);
@@ -3551,8 +3561,13 @@ function controllersAsMarkdown() {
       continue;
     }
 
+    // The button is written on the first of its rows and left blank under it,
+    // the same as the table says it once over as many rows as it has.
     const cells = shown.flatMap((row) =>
-      (row.rules.length > 0 ? row.rules : ['_none_']).map((named) => [row.label, named]),
+      (row.rules.length > 0 ? row.rules : ['_none_']).map((named, index) => [
+        index === 0 ? row.label : '',
+        named,
+      ]),
     );
     const widest = (index) =>
       Math.max(...cells.map((cell) => cell[index].length), ['Button', 'Action'][index].length);
