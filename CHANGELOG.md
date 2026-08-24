@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A remote's actions read as buttons, `1 Single Long` rather than `1_single_long`, and are listed in the order somebody would read them out
 - Picking what sets a rule off marks with a `*` any value already used by another automation, slider or timer, so two rules do not end up on one button press by accident
 - A rule just added stays at the top of the list until it is saved, including when the list is grouped by room, and has no enabled switch until then
 
