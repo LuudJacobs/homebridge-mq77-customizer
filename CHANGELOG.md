@@ -6,19 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.0.0] - 2026-08-24
+
+### Added
+
+- Settings can be downloaded and uploaded from the footer, which is the only copy that survives losing the machine
+- The last ten dated copies of the settings are kept in a `backups` folder, one at startup and at most one an hour after that, and one can be taken on the spot from the footer
+- A device that carries the same function more than once, such as a three gang switch, can put every channel into a mirror instead of one of them
+
+### Changed
+
 - A remote's actions read as buttons, `1 Single Long` rather than `1_single_long`, and are listed in the order somebody would read them out
 - Picking what sets a rule off marks with a `*` any value already used by another automation, slider or timer, so two rules do not end up on one button press by accident
 - A rule just added stays at the top of the list until it is saved, including when the list is grouped by room, and has no enabled switch until then
-
+- The footer reads left to right: which build this is, what the settings are doing, and the way out. It says when the last copy was taken and stacks onto two lines on a phone
+- Descriptions break after the arrow rather than in the middle of what follows it, in rule lines and in the activity log
 - Rule lists redraw far quicker, most of all when grouped by room. A panel is built when it is opened rather than for every rule in the list, sort keys are worked out once rather than inside every comparison, and devices are looked up by name rather than by walking the list
 - A settings file that cannot be used says so in a dialog rather than in the corner of the header
 
-- Settings can be downloaded and uploaded from the footer, which is the only copy that survives losing the machine
-- The last ten dated copies of the settings are kept in a `backups` folder, one at startup and at most one an hour after that
+### Fixed
+
 - A run that starts with nothing refuses to write over a settings file that has something in it, and says so
-- The footer reads left to right: which build this is, what the settings are doing, and the way out. It says when the last copy was taken and can take one on the spot, and stacks onto two lines on a phone
-- Descriptions break after the arrow rather than in the middle of what follows it, in rule lines and in the activity log
-- A device that carries the same function more than once, such as a three gang switch, can put every channel into a mirror instead of one of them
 
 ## [0.16.1] - 2026-08-24
 
