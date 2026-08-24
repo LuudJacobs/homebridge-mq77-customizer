@@ -52,6 +52,7 @@ const el = {
   importSettings: document.getElementById('import-settings'),
   settingsFile: document.getElementById('settings-file'),
   backupAt: document.getElementById('backup-at'),
+  backupNow: document.getElementById('backup-now'),
   tabDevices: document.getElementById('tab-devices'),
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
@@ -257,9 +258,7 @@ async function load() {
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
-  el.backupAt.textContent = snapshot.backupAt
-    ? `Backed up ${formatLastSeen(snapshot.backupAt)}`
-    : '';
+  paintBackup(snapshot.backupAt);
   if (snapshot.refusedToWrite) {
     // Everything is still on disk, and nothing here is being kept.
     setStatus('settings not saved, see the Homebridge log', 'lost');
@@ -1093,6 +1092,27 @@ el.loginForm.addEventListener('submit', async (event) => {
   }
 });
 
+/** A time as a footer wants it: the day and month, then the clock. */
+function formatBackup(at) {
+  const when = new Date(at);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(when.getDate())}/${pad(when.getMonth() + 1)} ${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
+function paintBackup(at) {
+  el.backupAt.textContent = at ? formatBackup(at) : 'never';
+}
+
+// A copy on the machine, taken now, for before changing something large.
+el.backupNow.addEventListener('click', async () => {
+  try {
+    const { backupAt } = await api('/api/settings/backup', { method: 'POST' });
+    paintBackup(backupAt);
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
+
 /**
  * Hands the settings over as a file, and takes one back.
  *
@@ -1805,6 +1825,21 @@ function chunkOf(text) {
   return chunk;
 }
 
+/**
+ * One side of an arrow, held together.
+ *
+ * A description that does not fit reads better broken after the arrow than
+ * somewhere in the middle of what follows it, so each side is laid out as one
+ * block: it moves under the arrow whole, and only breaks inside itself when a
+ * side alone is wider than the line.
+ */
+function phrase(...parts) {
+  const span = document.createElement('span');
+  span.className = 'phrase';
+  span.append(...parts);
+  return span;
+}
+
 /** " (+2)" when a rule reaches more than one device on that side. */
 const andMore = (count) => (count > 1 ? ` (+${count - 1})` : '');
 
@@ -1834,22 +1869,19 @@ function summarise(rule, inRoom) {
   }
 
   if (rule.kind === 'mirror') {
-    const seen = new Set();
-    const parts = [];
+    const seen = new Map();
     for (const ref of (rule.groups ?? []).flat()) {
-      const id = `${ref.sourceId}|${ref.deviceId}`;
-      if (seen.has(id)) {
-        continue;
-      }
-      seen.add(id);
-      if (parts.length > 0) {
-        parts.push(words(' ↔ '));
-      }
-      parts.push(...deviceParts(ref, '', inRoom));
+      seen.set(`${ref.sourceId}|${ref.deviceId}`, ref);
     }
+    const members = [...seen.values()];
     const fields = rule.groups?.length ?? 0;
-    parts.push(words(` · ${fields} field${fields === 1 ? '' : 's'}`));
-    return parts;
+    return [
+      ...members.flatMap((ref, index) => [
+        phrase(...deviceParts(ref, index < members.length - 1 ? ' ↔' : '', inRoom)),
+        words(' '),
+      ]),
+      words(`· ${fields} field${fields === 1 ? '' : 's'}`),
+    ];
   }
 
   const triggers = ruleTriggers(rule);
@@ -1857,11 +1889,13 @@ function summarise(rule, inRoom) {
   const outcomes = rule.branches?.length ?? 1;
 
   return [
-    ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
-    words(' → '),
-    ...(rule.kind === 'timer' ? [chunkOf(describeWait(rule.waitMs)), words(' → ')] : []),
-    ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
-    words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
+    phrase(...deviceParts(triggers[0], `${andMore(distinctDevices(triggers))} →`, inRoom)),
+    words(' '),
+    ...(rule.kind === 'timer' ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
+    phrase(
+      ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
+      words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
+    ),
   ];
 }
 /**
@@ -2545,7 +2579,9 @@ function drawMirror(body, draft) {
   function pruneGroups() {
     draft.groups = draft.groups
       .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
-      .filter((group) => group.length > 1);
+      .filter(
+        (group) => new Set(group.map((ref) => `${ref.sourceId}|${ref.deviceId}`)).size > 1,
+      );
   }
 
   /** Meanings every selected device has something for. */
@@ -2610,47 +2646,101 @@ function drawMirror(body, draft) {
       label.textContent = labelFor(semantic);
       row.append(box, label);
 
-      // One picker per device, because a two channel switch has two functions
-      // with the same meaning and only the user knows which one is wanted.
+      // A device can carry the same function more than once, and any number of
+      // them can take part: one lamp mirrored with all three channels of a
+      // three gang switch, or with only the two that light the same room.
       const pickers = document.createElement('span');
       pickers.className = 'rule-tail';
 
-      const refs = devices.map((device) => {
+      const parts = devices.map((device) => {
         const options = writable(device).filter((property) => property.semantic === semantic);
-        const already = existing?.find(
+        const already = (existing ?? []).filter(
           (ref) => ref.sourceId === device.sourceId && ref.deviceId === device.deviceId,
         );
-        const ref = already ?? {
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          propertyKey: options[0]?.key ?? '',
+        return {
+          device,
+          options,
+          boxes: new Map(),
+          // A new row starts on the first one, which is what a device with
+          // only one of them offers anyway.
+          keys: new Set(
+            already.length > 0
+              ? already.map((ref) => ref.propertyKey)
+              : [options[0]?.key ?? ''].filter(Boolean),
+          ),
         };
-
-        if (options.length > 1) {
-          const select = document.createElement('select');
-          for (const option of options) {
-            const choice = document.createElement('option');
-            choice.value = option.key;
-            choice.textContent = `${displayName(device)} ${option.endpoint || option.label}`;
-            select.append(choice);
-          }
-          select.value = ref.propertyKey;
-          select.addEventListener('change', () => {
-            ref.propertyKey = select.value;
-            commit();
-          });
-          pickers.append(select);
-        }
-
-        return ref;
       });
 
+      /** What the row mirrors, in the order the devices are listed. */
+      function refsOf() {
+        return parts.flatMap(({ device, options, keys }) =>
+          options
+            .filter((option) => keys.has(option.key))
+            .map((option) => ({
+              sourceId: device.sourceId,
+              deviceId: device.deviceId,
+              propertyKey: option.key,
+            })),
+        );
+      }
+
+      /*
+       * A device with nothing ticked is not in the group at all, which leaves
+       * the other side mirroring itself. Its last tick is held rather than
+       * refused after the fact, since a save turned down for a reason that is
+       * not on the screen is the worse of the two.
+       */
+      function holdTheLastOne() {
+        for (const part of parts) {
+          for (const [key, tick] of part.boxes) {
+            tick.disabled = part.keys.size === 1 && part.keys.has(key);
+          }
+        }
+      }
+
+      for (const part of parts) {
+        // Nothing to choose between, so nothing is asked.
+        if (part.options.length < 2) {
+          continue;
+        }
+
+        const strip = document.createElement('span');
+        strip.className = 'mirror-pick';
+        const named = document.createElement('span');
+        named.className = 'device-meta';
+        named.textContent = displayName(part.device);
+        strip.append(named);
+
+        for (const option of part.options) {
+          const pick = document.createElement('label');
+          pick.className = 'toggle';
+          const tick = document.createElement('input');
+          tick.type = 'checkbox';
+          tick.checked = part.keys.has(option.key);
+          tick.addEventListener('change', () => {
+            if (tick.checked) {
+              part.keys.add(option.key);
+            } else {
+              part.keys.delete(option.key);
+            }
+            holdTheLastOne();
+            commit();
+          });
+          part.boxes.set(option.key, tick);
+          pick.append(tick, document.createTextNode(option.endpoint || option.label));
+          strip.append(pick);
+        }
+
+        pickers.append(strip);
+      }
+
+      holdTheLastOne();
       row.append(pickers);
 
       function commit() {
         draft.groups = draft.groups.filter((group) => group !== existingGroup());
         if (box.checked) {
-          draft.groups.push(refs);
+          draft.groups.push(refsOf());
         }
       }
 
@@ -3178,14 +3268,21 @@ function renderLog() {
       const [sourceId, deviceId] = entry.ruleId.split(':');
       const device = findDevice({ sourceId, deviceId });
       what.replaceChildren(
-        ...(device
-          ? deviceParts(device, ` → ${entry.detail}`)
-          : [document.createTextNode(`${entry.ruleName} → ${entry.detail}`)]),
+        device
+          ? phrase(...deviceParts(device, ' →'))
+          : phrase(document.createTextNode(`${entry.ruleName} →`)),
+        document.createTextNode(' '),
+        phrase(document.createTextNode(entry.detail)),
       );
     } else {
       const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
       const named = rule ? ruleTitle(rule) : entry.ruleName;
-      what.textContent = `${named} - ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome} → ${entry.detail}`;
+      const outcome = OUTCOME_LABELS[entry.outcome] ?? entry.outcome;
+      what.replaceChildren(
+        phrase(document.createTextNode(`${named} - ${outcome} →`)),
+        document.createTextNode(' '),
+        phrase(document.createTextNode(entry.detail)),
+      );
     }
     line.append(when, kind, what);
     container.append(line);
