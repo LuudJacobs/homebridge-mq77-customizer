@@ -152,6 +152,8 @@ The footer offers `Settings: download / upload`. Download hands you the lot as a
 
 A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
 
+A remote's actions are said as buttons rather than as wire values, `1 Single Long` for `1_single_long` and `Left Double` for `double_left`, and put in the order somebody would read them: buttons by number, then left, right and both, and within each the gestures from a single press to a hold. Anything that cannot be read as a button is left as it is. What is stored is always the value the device uses.
+
 Picking what sets a rule off marks any value another rule already uses with a `*`. Two rules on one button press is a mistake nobody sees until both of them run. Conditions are left unmarked, since asking what a device is doing is something any number of rules may do.
 
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
