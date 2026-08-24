@@ -53,7 +53,7 @@ async function openRule(rule: unknown) {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
   await ui.click(ui.byText('button.tab', 'Automation'));
   const card = ui.document.querySelector('.rule') as HTMLDetailsElement;
-  card.open = true;
+  await ui.openCard(card);
   return ui;
 }
 
