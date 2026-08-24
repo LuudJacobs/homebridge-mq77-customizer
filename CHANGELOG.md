@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Picking what sets a rule off marks with a `*` any value already used by another automation, slider or timer, so two rules do not end up on one button press by accident
+- A rule just added stays at the top of the list until it is saved, including when the list is grouped by room, and has no enabled switch until then
+
 - Rule lists redraw far quicker, most of all when grouped by room. A panel is built when it is opened rather than for every rule in the list, sort keys are worked out once rather than inside every comparison, and devices are looked up by name rather than by walking the list
 - A settings file that cannot be used says so in a dialog rather than in the corner of the header
 
