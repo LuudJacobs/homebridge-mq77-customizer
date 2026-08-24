@@ -2579,7 +2579,9 @@ function drawMirror(body, draft) {
   function pruneGroups() {
     draft.groups = draft.groups
       .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
-      .filter((group) => group.length > 1);
+      .filter(
+        (group) => new Set(group.map((ref) => `${ref.sourceId}|${ref.deviceId}`)).size > 1,
+      );
   }
 
   /** Meanings every selected device has something for. */
@@ -2644,47 +2646,101 @@ function drawMirror(body, draft) {
       label.textContent = labelFor(semantic);
       row.append(box, label);
 
-      // One picker per device, because a two channel switch has two functions
-      // with the same meaning and only the user knows which one is wanted.
+      // A device can carry the same function more than once, and any number of
+      // them can take part: one lamp mirrored with all three channels of a
+      // three gang switch, or with only the two that light the same room.
       const pickers = document.createElement('span');
       pickers.className = 'rule-tail';
 
-      const refs = devices.map((device) => {
+      const parts = devices.map((device) => {
         const options = writable(device).filter((property) => property.semantic === semantic);
-        const already = existing?.find(
+        const already = (existing ?? []).filter(
           (ref) => ref.sourceId === device.sourceId && ref.deviceId === device.deviceId,
         );
-        const ref = already ?? {
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          propertyKey: options[0]?.key ?? '',
+        return {
+          device,
+          options,
+          boxes: new Map(),
+          // A new row starts on the first one, which is what a device with
+          // only one of them offers anyway.
+          keys: new Set(
+            already.length > 0
+              ? already.map((ref) => ref.propertyKey)
+              : [options[0]?.key ?? ''].filter(Boolean),
+          ),
         };
-
-        if (options.length > 1) {
-          const select = document.createElement('select');
-          for (const option of options) {
-            const choice = document.createElement('option');
-            choice.value = option.key;
-            choice.textContent = `${displayName(device)} ${option.endpoint || option.label}`;
-            select.append(choice);
-          }
-          select.value = ref.propertyKey;
-          select.addEventListener('change', () => {
-            ref.propertyKey = select.value;
-            commit();
-          });
-          pickers.append(select);
-        }
-
-        return ref;
       });
 
+      /** What the row mirrors, in the order the devices are listed. */
+      function refsOf() {
+        return parts.flatMap(({ device, options, keys }) =>
+          options
+            .filter((option) => keys.has(option.key))
+            .map((option) => ({
+              sourceId: device.sourceId,
+              deviceId: device.deviceId,
+              propertyKey: option.key,
+            })),
+        );
+      }
+
+      /*
+       * A device with nothing ticked is not in the group at all, which leaves
+       * the other side mirroring itself. Its last tick is held rather than
+       * refused after the fact, since a save turned down for a reason that is
+       * not on the screen is the worse of the two.
+       */
+      function holdTheLastOne() {
+        for (const part of parts) {
+          for (const [key, tick] of part.boxes) {
+            tick.disabled = part.keys.size === 1 && part.keys.has(key);
+          }
+        }
+      }
+
+      for (const part of parts) {
+        // Nothing to choose between, so nothing is asked.
+        if (part.options.length < 2) {
+          continue;
+        }
+
+        const strip = document.createElement('span');
+        strip.className = 'mirror-pick';
+        const named = document.createElement('span');
+        named.className = 'device-meta';
+        named.textContent = displayName(part.device);
+        strip.append(named);
+
+        for (const option of part.options) {
+          const pick = document.createElement('label');
+          pick.className = 'toggle';
+          const tick = document.createElement('input');
+          tick.type = 'checkbox';
+          tick.checked = part.keys.has(option.key);
+          tick.addEventListener('change', () => {
+            if (tick.checked) {
+              part.keys.add(option.key);
+            } else {
+              part.keys.delete(option.key);
+            }
+            holdTheLastOne();
+            commit();
+          });
+          part.boxes.set(option.key, tick);
+          pick.append(tick, document.createTextNode(option.endpoint || option.label));
+          strip.append(pick);
+        }
+
+        pickers.append(strip);
+      }
+
+      holdTheLastOne();
       row.append(pickers);
 
       function commit() {
         draft.groups = draft.groups.filter((group) => group !== existingGroup());
         if (box.checked) {
-          draft.groups.push(refs);
+          draft.groups.push(refsOf());
         }
       }
 

@@ -487,6 +487,25 @@ button.primary {
   align-items: center;
 }
 
+/*
+ * The channels of one device, named once and ticked one by one, so a lamp can
+ * be mirrored with all three of a three gang switch rather than one of them.
+ */
+.mirror-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+/* A tick that is the last one left is the reason the device is in the group. */
+.mirror-pick input:disabled {
+  opacity: 0.55;
+}
+
 .rule-row select {
   width: 8rem;
 }
