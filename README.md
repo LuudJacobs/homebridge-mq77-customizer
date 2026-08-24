@@ -152,6 +152,8 @@ The footer offers `Settings: download / upload`. Download hands you the lot as a
 
 A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
 
+Picking what sets a rule off marks any value another rule already uses with a `*`. Two rules on one button press is a mistake nobody sees until both of them run. Conditions are left unmarked, since asking what a device is doing is something any number of rules may do.
+
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
 ### Timers
