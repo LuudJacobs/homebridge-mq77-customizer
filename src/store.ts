@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { Logger } from './logger.js';
@@ -87,10 +87,21 @@ function emptyState(): PersistedState {
  * change at runtime would race it. Living in the storage path also means
  * ticking a checkbox never asks for a Homebridge restart.
  */
+/** How many dated copies to keep. Small files, so this is generous. */
+const BACKUPS_KEPT = 10;
+/** Shortest gap between copies, so a busy hour leaves one and not fifty. */
+const BACKUP_EVERY_MS = 60 * 60 * 1000;
+
 export class Store {
   private state: PersistedState = emptyState();
   private writing?: Promise<void>;
   private dirty = false;
+  /** Whether this run started from a file with anything in it. */
+  private startedFull = false;
+  /** Set when a write was refused, so the interface can say so. */
+  private blocked = false;
+  /** When the last dated copy was taken, for saying so in the interface. */
+  private backupAt?: number;
 
   constructor(
     private readonly file: string,
@@ -105,12 +116,11 @@ export class Store {
       const parsed: unknown = JSON.parse(contents);
       this.state = migrate(parsed);
 
-      // Copied once at startup rather than on every write. Backing up each
-      // time is worse than useless: the second write of a session replaces the
-      // good copy with the bad one.
-      await copyFile(this.file, `${this.file}.bak`).catch((error: unknown) => {
-        this.log.warn(`Could not keep a backup of ${this.file}: ${describe(error)}`);
-      });
+      this.startedFull =
+        Object.keys(this.state.exposures).length > 0 || this.state.rules.length > 0;
+
+      // A dated copy of what was here before this run touches anything.
+      await this.backup();
 
       // Counted out loud, so state quietly arriving empty is visible in the
       // log rather than only noticed when something is missing.
@@ -186,6 +196,82 @@ export class Store {
     void this.save();
   }
 
+  /** When the last dated copy was taken, if any. */
+  lastBackup(): number | undefined {
+    return this.backupAt;
+  }
+
+  /** True once a write has been refused to protect the file. */
+  get refusedToWrite(): boolean {
+    return this.blocked;
+  }
+
+  /** Replaces everything, keeping the secret that signs the session cookie. */
+  async replaceAll(incoming: unknown): Promise<void> {
+    const parsed = migrate(incoming);
+    await this.backup(true);
+    this.state = { ...parsed, sessionSecret: this.state.sessionSecret };
+    this.startedFull =
+      Object.keys(this.state.exposures).length > 0 || this.state.rules.length > 0;
+    this.blocked = false;
+    await this.save();
+  }
+
+  /**
+   * Keeps a dated copy of the file, and thins the older ones out.
+   *
+   * One copy per hour at most: a busy afternoon should leave a trail worth
+   * walking back along, not fifty files a minute apart.
+   */
+  private async backup(force = false): Promise<void> {
+    if (!force && this.backupAt !== undefined && Date.now() - this.backupAt < BACKUP_EVERY_MS) {
+      return;
+    }
+
+    const folder = join(dirname(this.file), 'backups');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+
+    try {
+      await mkdir(folder, { recursive: true });
+      await copyFile(this.file, join(folder, `state-${stamp}.json`));
+      this.backupAt = Date.now();
+
+      // Oldest first by name, since the stamp sorts the way time runs.
+      const kept = (await readdir(folder))
+        .filter((name) => name.startsWith('state-') && name.endsWith('.json'))
+        .sort();
+      for (const name of kept.slice(0, Math.max(0, kept.length - BACKUPS_KEPT))) {
+        await rm(join(folder, name)).catch(() => {});
+      }
+    } catch (error) {
+      this.log.warn(`Could not keep a backup of ${this.file}: ${describe(error)}`);
+    }
+  }
+
+  /**
+   * Refuses to write nothing over something.
+   *
+   * Only when this run began with nothing. Somebody deleting their last rule
+   * by hand is entitled to an empty file, but a run that started empty and is
+   * about to stamp on a file that is not has misread something, and the file
+   * is worth more than the write.
+   */
+  private async wouldWipe(): Promise<boolean> {
+    const empty =
+      Object.keys(this.state.exposures).length === 0 && this.state.rules.length === 0;
+    if (this.startedFull || !empty) {
+      return false;
+    }
+
+    try {
+      const parsed = migrate(JSON.parse(await readFile(this.file, 'utf8')) as unknown);
+      return Object.keys(parsed.exposures).length > 0 || parsed.rules.length > 0;
+    } catch {
+      // Nothing readable there, so there is nothing to protect.
+      return false;
+    }
+  }
+
   /** Writes via a temporary file so a crash mid write cannot truncate state. */
   async save(): Promise<void> {
     this.dirty = true;
@@ -196,12 +282,24 @@ export class Store {
     this.writing = (async () => {
       while (this.dirty) {
         this.dirty = false;
+
+        if (await this.wouldWipe()) {
+          this.log.error(
+            `Refusing to write ${this.file}: this run has nothing in it and the file does. ` +
+              'Nothing has been lost. Restart Homebridge to read it again, and if it keeps ' +
+              'happening say so, because something is reading the wrong file.',
+          );
+          this.blocked = true;
+          continue;
+        }
+
         const snapshot = JSON.stringify(this.state, null, 2);
         try {
           await mkdir(dirname(this.file), { recursive: true });
           const temporary = `${this.file}.tmp`;
           await writeFile(temporary, snapshot, 'utf8');
           await rename(temporary, this.file);
+          await this.backup();
         } catch (error) {
           // Loud, because everything the user configured is in here and the
           // plugin carries on looking perfectly healthy without it.

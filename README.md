@@ -144,6 +144,14 @@ Two things guard against a pair of rules setting each other off:
 
 An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button is absent until the panel and the stored rule agree again.
 
+### Keeping your settings
+
+Everything set here lives in `state.json` under the Homebridge storage path, alongside a `backups` folder holding the last ten dated copies. One is taken when the plugin starts, before anything is touched, and at most once an hour after that.
+
+The footer offers `Settings: download / upload`. Download hands you the lot as a file, which is the only copy that survives losing the machine it runs on. Upload takes one back, after copying what it replaces. The session secret is left out of the download and kept on upload, so a settings file is safe to keep somewhere else and putting one back does not sign you out.
+
+A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
+
 Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
 ### Timers
