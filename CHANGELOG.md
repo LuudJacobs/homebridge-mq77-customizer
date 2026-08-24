@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Rule lists redraw far quicker, most of all when grouped by room. A panel is built when it is opened rather than for every rule in the list, sort keys are worked out once rather than inside every comparison, and devices are looked up by name rather than by walking the list
+- A settings file that cannot be used says so in a dialog rather than in the corner of the header
+
 - Settings can be downloaded and uploaded from the footer, which is the only copy that survives losing the machine
 - The last ten dated copies of the settings are kept in a `backups` folder, one at startup and at most one an hour after that
 - A run that starts with nothing refuses to write over a settings file that has something in it, and says so

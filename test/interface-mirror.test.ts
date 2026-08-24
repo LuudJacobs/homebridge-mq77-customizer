@@ -49,9 +49,7 @@ async function openMirror(rules: unknown[] = [pair]) {
   const ui = await openInterface({ state: { devices }, rules });
   await ui.click(ui.byText('button.tab', 'Mirror devices'));
   const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
-  card.open = true;
-  card.dispatchEvent(new ui.window.Event('toggle'));
-  await ui.settle();
+  await ui.openCard(card);
   return ui;
 }
 

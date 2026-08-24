@@ -85,8 +85,7 @@ describe('the fields on a device', () => {
   it('offers all three, on any device', async () => {
     const ui = await openDevices([device('0xa', 'hall_lamp')]);
     const card = ui.document.querySelector('#devices .device') as HTMLDetailsElement;
-    card.open = true;
-    await ui.settle();
+    await ui.openCard(card);
 
     // The first child only: the Type field's options are inside its label.
     const labels = [...ui.document.querySelectorAll('.device-field')].map((node) =>
@@ -98,8 +97,7 @@ describe('the fields on a device', () => {
   it('sends what was typed', async () => {
     const ui = await openDevices([device('0xa', 'hall_lamp')]);
     const card = ui.document.querySelector('#devices .device') as HTMLDetailsElement;
-    card.open = true;
-    await ui.settle();
+    await ui.openCard(card);
 
     const room = ui.document.querySelectorAll('.device-field input')[1] as HTMLInputElement;
     room.value = 'Kitchen';
@@ -149,8 +147,7 @@ describe('grouping the device list', () => {
   it('offers every kind, including the ones added later', async () => {
     const ui = await openDevices(devices);
     const card = ui.document.querySelector('#devices .device') as HTMLDetailsElement;
-    card.open = true;
-    await ui.settle();
+    await ui.openCard(card);
 
     // Every card builds its panel, open or not, so ask this one only.
     const kinds = [...card.querySelectorAll('.device-field select option')].map(

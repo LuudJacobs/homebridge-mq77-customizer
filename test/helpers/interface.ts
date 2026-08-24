@@ -92,9 +92,23 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   window.eval(read('app.js'));
   await settle(window);
 
+  /**
+   * Opens a card the way a person does.
+   *
+   * jsdom does not raise `toggle` when `open` is set, though a browser does,
+   * and the page builds a panel when it hears one.
+   */
+  const openCard = async (card: Element | null) => {
+    const details = card as HTMLDetailsElement;
+    details.open = true;
+    details.dispatchEvent(new window.Event('toggle'));
+    await settle(window);
+  };
+
   return {
     window,
     document: window.document,
+    openCard,
     /** Mutable, so a test can change what a later request answers. */
     responses,
     failures,

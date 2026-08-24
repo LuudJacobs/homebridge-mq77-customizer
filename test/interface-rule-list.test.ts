@@ -235,9 +235,7 @@ describe('listing automations under their trigger', () => {
     await sortBy(ui, 'trigger');
 
     const cards = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
-    cards[0]!.open = true;
-    cards[0]!.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(cards[0]!);
 
     const after = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
     // Two editors of one rule means two drafts, and the second save wins.
@@ -609,9 +607,7 @@ describe('running a rule by hand', () => {
   async function openSaved(rules: unknown[] = [apple]) {
     const ui = await openTab('Automation', rules);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
     return ui;
   }
 
@@ -651,9 +647,7 @@ describe('running a rule by hand', () => {
     await ui.click(ui.byText('button', '+ automation'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
 
     expect(trigger(ui).hidden).toBe(true);
   });
@@ -673,9 +667,7 @@ describe('running a rule by hand', () => {
     });
     await ui.click(ui.byText('button.tab', 'Mirror devices'));
     const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
 
     // Every member of a mirror is a trigger, so there is nothing to press.
     const buttons = [...ui.document.querySelectorAll('#mirror .rule-footer button')].map(
@@ -691,9 +683,7 @@ describe('deleting a rule', () => {
   async function openSaved() {
     const ui = await openTab('Automation', [apple]);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
     return ui;
   }
 

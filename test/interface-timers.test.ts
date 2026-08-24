@@ -53,9 +53,7 @@ async function openTimers(rules: unknown[] = [timer()]) {
   await ui.click(ui.byText('button.tab', 'Timers'));
   const card = ui.document.querySelector('#timers .rule') as HTMLDetailsElement | null;
   if (card) {
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
   }
   return ui;
 }
