@@ -313,6 +313,45 @@ header {
   padding: 0.3rem 0;
 }
 
+/*
+ * Against the middle of the row rather than the first line of it, which is
+ * what a tick box beside several lines of text should do. `anchor-center`
+ * says it exactly and only Chrome knows it, so the plain centring goes first
+ * and the better one on top where it is understood.
+ */
+.property > input[type='checkbox'] {
+  align-self: center;
+}
+
+@supports (align-self: anchor-center) {
+  .property > input[type='checkbox'] {
+    align-self: anchor-center;
+  }
+}
+
+/* A device and the count beside it read as one thing, so they stay on one
+   line rather than the icon ending one and the name starting the next. */
+.chunk {
+  white-space: nowrap;
+}
+
+/*
+ * One side of an arrow. Laid out as a block so a side that does not fit moves
+ * under the arrow whole: "Remote →" on one line and what it did on the next,
+ * rather than a break somewhere in the middle of a sentence.
+ */
+.phrase {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.tab-select {
+  display: none;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
 /* No checkbox to leave room for. */
 .property.unselectable {
   grid-template-columns: 1fr auto;
@@ -448,6 +487,25 @@ button.primary {
   align-items: center;
 }
 
+/*
+ * The channels of one device, named once and ticked one by one, so a lamp can
+ * be mirrored with all three of a three gang switch rather than one of them.
+ */
+.mirror-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+/* A tick that is the last one left is the reason the device is in the group. */
+.mirror-pick input:disabled {
+  opacity: 0.55;
+}
+
 .rule-row select {
   width: 8rem;
 }
@@ -519,6 +577,17 @@ button.danger.armed {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;
   color: var(--muted);
+}
+
+.backup-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+/* The wording differs with the room there is to say it in. */
+.on-narrow {
+  display: none;
 }
 
 .page-footer .build {
@@ -892,4 +961,211 @@ button.link:hover {
   justify-content: space-between;
   gap: 1rem;
   font-size: 0.87rem;
+}
+
+
+/*
+ * A narrow window, which is a phone held upright or a window pulled in.
+ *
+ * The interface stops being somewhere to build things and becomes somewhere
+ * to look at what is running: rules are read only, panels hold nothing but
+ * the button that runs one by hand, and everything that needs room to be
+ * read goes on a line of its own.
+ */
+@media (max-width: 40rem) {
+  /* What each tab is for is worth a line on a desk, not on a phone. */
+  .hint {
+    display: none;
+  }
+
+  .tabs,
+  #zigbee2mqtt-link {
+    display: none;
+  }
+
+  .tab-select {
+    display: block;
+  }
+
+  /* No room to draw a network here. */
+  #tab-map,
+  #view-map {
+    display: none;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  /*
+   * The sort and the search fill the width between them and never more.
+   * `min-width: 0` is what makes that possible: a flex item will not shrink
+   * below its content without it, so the pair would push past the edge and
+   * the search would drop to a line of its own.
+   */
+  .header-actions {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  .header-actions > #sort {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .header-actions > #filter {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* A line each, with what the device is doing in HomeKit beside its name. */
+  .device > summary {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.15rem 0.5rem;
+    align-items: baseline;
+  }
+
+  .device > summary > .type-icon {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .device > summary > .device-name {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .device > summary > [data-badge] {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .device > summary > .device-meta,
+  .device > summary > .device-seen,
+  .device > summary > .device-topic {
+    grid-column: 1 / -1;
+  }
+
+  /* The topic is worth the line here, where the rest has one too. */
+  .device > summary > .device-topic {
+    display: block;
+  }
+
+  /* The name, what it is called underneath, and what it becomes: a line
+     each, with the value kept level with the name it belongs to. */
+  .property {
+    align-items: start;
+  }
+
+  .property label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  /* The gap that sits it away from the words it follows is wrong once it is
+     on a line of its own, where it should start where they start. */
+  .property label > .tag {
+    margin-left: 0;
+  }
+
+  .property .value {
+    justify-self: end;
+  }
+
+  /* Rules are read only here: name, the switch, and what it does. */
+  .rule > summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .rule > summary > .rule-enabled {
+    margin-left: 0;
+  }
+
+  .rules-actions {
+    display: none;
+  }
+
+  /* Nothing in a panel but the button that runs the rule by hand. */
+  .rule > .device-body > *:not(.rule-footer),
+  .rule > .device-body > .rule-footer > *:not(.trigger) {
+    display: none;
+  }
+
+  .rule > .device-body > .rule-footer {
+    border-top: none;
+    margin-top: 0;
+  }
+
+  /* A mirror and a slider cannot be run by hand, so there is nothing inside
+     to open. The switch on the header still works. */
+  .rule-mirror > summary,
+  .rule-slider > summary {
+    pointer-events: none;
+  }
+
+  .rule-mirror > summary .rule-enabled,
+  .rule-slider > summary .rule-enabled {
+    pointer-events: auto;
+  }
+
+  /* When it happened and what it was, then what it did underneath. */
+  .log-line {
+    grid-template-columns: auto 1fr;
+    line-height: 1.6;
+  }
+
+  .log-line > span:last-child {
+    grid-column: 1 / -1;
+  }
+
+  #kind-filters {
+    display: none;
+  }
+
+  /*
+   * Which build this is and the way out on one line, and what the settings are
+   * doing underneath. Handing a file about is a desk job, so that half is left
+   * out here and only the copy on the machine is offered.
+   */
+  .page-footer {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+    row-gap: 0.4rem;
+    text-align: left;
+  }
+
+  .page-footer > #build {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .page-footer > #logout {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .backup-line {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .on-wide {
+    display: none;
+  }
+
+  .on-narrow {
+    display: inline;
+  }
 }

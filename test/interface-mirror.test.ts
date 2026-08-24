@@ -34,7 +34,21 @@ const device = (deviceId: string, name: string) => ({
   lastSeen: {},
 });
 
-const devices = [device('0xa', 'lamp_a'), device('0xb', 'lamp_b'), device('0xc', 'lamp_c')];
+/** Three channels of the same switch, all of them writable. */
+const threeGang = {
+  ...device('0xd', 'switch_d'),
+  endpoints: ['l1', 'l2', 'l3'],
+  properties: ['l1', 'l2', 'l3'].map((endpoint) =>
+    property({ key: `state_${endpoint}`, endpoint, label: 'State' }),
+  ),
+};
+
+const devices = [
+  device('0xa', 'lamp_a'),
+  device('0xb', 'lamp_b'),
+  device('0xc', 'lamp_c'),
+  threeGang,
+];
 const ref = (deviceId: string) => ({ sourceId: 'zigbee', deviceId, propertyKey: 'state' });
 
 const pair = {
@@ -49,9 +63,7 @@ async function openMirror(rules: unknown[] = [pair]) {
   const ui = await openInterface({ state: { devices }, rules });
   await ui.click(ui.byText('button.tab', 'Mirror devices'));
   const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
-  card.open = true;
-  card.dispatchEvent(new ui.window.Event('toggle'));
-  await ui.settle();
+  await ui.openCard(card);
   return ui;
 }
 
@@ -110,6 +122,44 @@ describe('changing which devices a mirror covers', () => {
 
     const body = await saved(ui);
     expect(body.groups[0]?.map((member) => member.deviceId).sort()).toEqual(['0xa', '0xb']);
+  });
+
+  it('mirrors every channel of a device that carries the same function three times', async () => {
+    const ui = await openMirror([{ ...pair, groups: [[ref('0xa'), ref('0xb')]] }]);
+    await tick(ui, deviceBoxes(ui)[3]!, true);
+
+    const ticks = [
+      ...ui.document.querySelectorAll('#mirror .mirror-pick input'),
+    ] as HTMLInputElement[];
+    expect(ticks).toHaveLength(3);
+
+    // One channel to begin with, and the other two are there to be added.
+    expect(ticks.filter((box) => box.checked)).toHaveLength(1);
+    await tick(ui, ticks[1]!, true);
+    await tick(ui, ticks[2]!, true);
+
+    const body = await saved(ui);
+    expect(body.groups[0]?.map((member) => member.propertyKey)).toEqual([
+      'state',
+      'state',
+      'state_l1',
+      'state_l2',
+      'state_l3',
+    ]);
+  });
+
+  it('holds the last channel of a device, which is why it is in the group', async () => {
+    const ui = await openMirror([{ ...pair, groups: [[ref('0xa'), ref('0xb')]] }]);
+    await tick(ui, deviceBoxes(ui)[3]!, true);
+
+    const ticks = [
+      ...ui.document.querySelectorAll('#mirror .mirror-pick input'),
+    ] as HTMLInputElement[];
+    expect(ticks[0]!.disabled).toBe(true);
+
+    // With two of them in, either may go.
+    await tick(ui, ticks[1]!, true);
+    expect(ticks.map((box) => box.disabled)).toEqual([false, false, false]);
   });
 
   it('builds one from nothing', async () => {

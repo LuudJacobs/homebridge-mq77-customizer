@@ -235,9 +235,7 @@ describe('listing automations under their trigger', () => {
     await sortBy(ui, 'trigger');
 
     const cards = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
-    cards[0]!.open = true;
-    cards[0]!.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(cards[0]!);
 
     const after = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
     // Two editors of one rule means two drafts, and the second save wins.
@@ -376,6 +374,50 @@ describe('naming a rule by where it acts', () => {
   });
 });
 
+describe('keeping a description on one line', () => {
+  it('wraps each device and its count in one piece', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const chunks = [...ui.document.querySelectorAll('#automation .device-meta .chunk')].map(
+      (node) => node.textContent,
+    );
+
+    // An icon must not end a line with its device name on the next, and the
+    // arrow belongs to the side in front of it.
+    expect(chunks).toEqual(['hall_lamp \u2192', 'porch_lamp']);
+  });
+
+  it('breaks after an arrow rather than inside what follows it', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const sides = [...ui.document.querySelectorAll('#automation .device-meta .phrase')].map(
+      (node) => node.textContent,
+    );
+
+    // Each side is laid out whole, so a narrow window puts the second under
+    // the first instead of splitting it somewhere in the middle.
+    expect(sides).toEqual(['hall_lamp \u2192', 'porch_lamp']);
+  });
+
+  it('keeps a timer wait whole', async () => {
+    const timer = {
+      id: 't1',
+      kind: 'timer',
+      name: 'Light out',
+      enabled: true,
+      triggers: [{ ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } }],
+      waitMs: 90_000,
+      actions: [{ ...ref('0xb'), value: 'OFF' }],
+    };
+    const ui = await openInterface({ state: { devices }, rules: [timer] });
+    await ui.click(ui.byText('button.tab', 'Timers'));
+
+    const chunks = [...ui.document.querySelectorAll('#timers .device-meta .chunk')].map(
+      (node) => node.textContent,
+    );
+    // The time is one piece, with the arrow after it. The line breaks there.
+    expect(chunks).toContain('01:30 \u2192');
+  });
+});
+
 describe('what the line under a rule says', () => {
   const meta = (ui: { document: Document }) =>
     ui.document.querySelector('#automation .device-meta')?.textContent;
@@ -482,6 +524,44 @@ describe('a rule just added', () => {
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
   });
 
+  it('has no switch until there is something saved to switch', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = {
+      rules: [apple, { ...automation('r2', 'New automation', '0xa', '0xb'), enabled: false }],
+    };
+    await ui.click(ui.byText('button', '+ automation'));
+
+    const cards = [...ui.document.querySelectorAll('#automation .rule')];
+    expect(cards[0]!.querySelector('.rule-enabled')).toBeNull();
+    // The one below it, which is saved, keeps its switch.
+    expect(cards[1]!.querySelector('.rule-enabled')).not.toBeNull();
+  });
+
+  it('stays above the headings when the list is grouped by room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}) },
+    }));
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openInterface({ state: { devices: placed }, rules: [apple] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', '+ automation'));
+
+    // Under a heading it would be buried, which is the same as hidden.
+    const first = ui.document.querySelector('#automation > *');
+    expect(first?.classList.contains('rule')).toBe(true);
+    // Sitting above the headings, none of which has said its room, so the
+    // name still carries one.
+    expect(named(ui, '#automation')[0]).toContain('New automation');
+  });
+
   it('takes its place in the order once saved', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
     const ui = await openTab('Automation', [apple]);
@@ -577,9 +657,7 @@ describe('running a rule by hand', () => {
   async function openSaved(rules: unknown[] = [apple]) {
     const ui = await openTab('Automation', rules);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
     return ui;
   }
 
@@ -619,9 +697,7 @@ describe('running a rule by hand', () => {
     await ui.click(ui.byText('button', '+ automation'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
 
     expect(trigger(ui).hidden).toBe(true);
   });
@@ -641,9 +717,7 @@ describe('running a rule by hand', () => {
     });
     await ui.click(ui.byText('button.tab', 'Mirror devices'));
     const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
 
     // Every member of a mirror is a trigger, so there is nothing to press.
     const buttons = [...ui.document.querySelectorAll('#mirror .rule-footer button')].map(
@@ -659,9 +733,7 @@ describe('deleting a rule', () => {
   async function openSaved() {
     const ui = await openTab('Automation', [apple]);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
     return ui;
   }
 

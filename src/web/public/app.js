@@ -48,6 +48,11 @@ const el = {
   kindAction: document.getElementById('kind-action'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
+  exportSettings: document.getElementById('export-settings'),
+  importSettings: document.getElementById('import-settings'),
+  settingsFile: document.getElementById('settings-file'),
+  backupAt: document.getElementById('backup-at'),
+  backupNow: document.getElementById('backup-now'),
   tabDevices: document.getElementById('tab-devices'),
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
@@ -55,6 +60,7 @@ const el = {
   tabTimers: document.getElementById('tab-timers'),
   tabActivity: document.getElementById('tab-activity'),
   tabMap: document.getElementById('tab-map'),
+  tabSelect: document.getElementById('tab-select'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
@@ -71,7 +77,6 @@ const el = {
   sliders: document.getElementById('sliders'),
   timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
-  clearLog: document.getElementById('clear-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
@@ -253,6 +258,11 @@ async function load() {
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
+  paintBackup(snapshot.backupAt);
+  if (snapshot.refusedToWrite) {
+    // Everything is still on disk, and nothing here is being kept.
+    setStatus('settings not saved, see the Homebridge log', 'lost');
+  }
 
   // Only shown when configured, so the tab bar does not carry a dead link.
   const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
@@ -614,7 +624,10 @@ function sortDevices(devices) {
   }
 
   const key = SORT_KEYS[state.sorts.devices] ?? SORT_KEYS.name;
-  return sorted.sort((a, b) => compareNames(key(a), key(b)) || compareNames(displayName(a), displayName(b)));
+  return sorted
+    .map((device) => ({ device, key: key(device), name: displayName(device) }))
+    .sort((a, b) => compareNames(a.key, b.key) || compareNames(a.name, b.name))
+    .map((entry) => entry.device);
 }
 
 /** Case and accent insensitive, and puts device2 after device10 the way people expect. */
@@ -1079,6 +1092,60 @@ el.loginForm.addEventListener('submit', async (event) => {
   }
 });
 
+/** A time as a footer wants it: the day and month, then the clock. */
+function formatBackup(at) {
+  const when = new Date(at);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(when.getDate())}/${pad(when.getMonth() + 1)} ${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
+function paintBackup(at) {
+  el.backupAt.textContent = at ? formatBackup(at) : 'never';
+}
+
+// A copy on the machine, taken now, for before changing something large.
+el.backupNow.addEventListener('click', async () => {
+  try {
+    const { backupAt } = await api('/api/settings/backup', { method: 'POST' });
+    paintBackup(backupAt);
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
+
+/**
+ * Hands the settings over as a file, and takes one back.
+ *
+ * The one thing here that puts a copy somewhere other than the machine this
+ * is running on, which is the only kind of backup that survives losing it.
+ */
+el.exportSettings.addEventListener('click', () => {
+  // A plain navigation, so the browser saves it rather than the page holding
+  // it in memory and asking what to do with it.
+  window.location.href = '/api/settings';
+});
+
+el.importSettings.addEventListener('click', () => el.settingsFile.click());
+
+el.settingsFile.addEventListener('change', async () => {
+  const file = el.settingsFile.files?.[0];
+  el.settingsFile.value = '';
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const counts = await api('/api/settings', { method: 'PUT', body: text });
+    setStatus(`settings replaced: ${counts.devices} devices, ${counts.rules} rules`, 'live');
+    await load();
+  } catch (problem) {
+    // Asking for a file and then saying nothing about it up in the corner is
+    // no answer. This one waits to be acknowledged.
+    window.alert(`That file could not be used.\n\n${problem.message}`);
+  }
+});
+
 el.logout.addEventListener('click', async () => {
   await api('/api/logout', { method: 'POST' }).catch(() => {});
   showLogin();
@@ -1162,16 +1229,123 @@ function byName(devices) {
   return [...devices].sort((a, b) => compareNames(displayName(a), displayName(b)));
 }
 
+/**
+ * Gestures, in the order somebody would read them out.
+ *
+ * Zigbee2MQTT writes an action as a button and a gesture joined by an
+ * underscore, in either order, so a value has to be taken apart before it can
+ * be said properly or put in a sensible order.
+ */
+const GESTURES = [
+  'single',
+  'single_long',
+  'double',
+  'double_long',
+  'triple',
+  'triple_long',
+  'quadruple',
+  'quadruple_long',
+  'quintuple',
+  'quintuple_long',
+  'hold',
+  'long',
+  'press',
+  'click',
+  'toggle',
+  'release',
+];
+
+/** Buttons with an order of their own, before anything alphabetical. */
+const BUTTONS = ['left', 'right', 'both'];
+
+/** Splits an action into the button it belongs to and what was done to it. */
+function splitAction(value) {
+  const parts = String(value).split('_');
+
+  // Longest first, so `single_long` is not read as `long`.
+  for (let take = Math.min(2, parts.length - 1); take >= 1; take--) {
+    const tail = parts.slice(-take).join('_').toLowerCase();
+    if (GESTURES.includes(tail)) {
+      return { button: parts.slice(0, -take).join('_'), gesture: tail };
+    }
+    const head = parts.slice(0, take).join('_').toLowerCase();
+    if (GESTURES.includes(head)) {
+      return { button: parts.slice(take).join('_'), gesture: head };
+    }
+  }
+
+  const whole = parts.join('_').toLowerCase();
+  return GESTURES.includes(whole) ? { button: '', gesture: whole } : { button: value, gesture: '' };
+}
+
+const titled = (text) =>
+  String(text)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+/** An action as somebody would say it: `1 Single Long`, `Left Double`. */
+function describeAction(value) {
+  const { button, gesture } = splitAction(value);
+  return [titled(button), titled(gesture)].filter(Boolean).join(' ') || String(value);
+}
+
+/** Buttons in their own order, then gestures in theirs. */
+function actionOrder(value) {
+  const { button, gesture } = splitAction(value);
+  const number = Number(button);
+  const named = BUTTONS.indexOf(button.toLowerCase());
+  const rank =
+    button !== '' && Number.isFinite(number)
+      ? [0, number, '']
+      : named >= 0
+        ? [1, named, '']
+        : [2, 0, button.toLowerCase()];
+
+  const step = GESTURES.indexOf(gesture);
+  return [...rank, step < 0 ? GESTURES.length : step];
+}
+
+function compareActions(a, b) {
+  const left = actionOrder(a);
+  const right = actionOrder(b);
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] === right[index]) {
+      continue;
+    }
+    return typeof left[index] === 'string'
+      ? compareNames(left[index], right[index])
+      : left[index] - right[index];
+  }
+  return 0;
+}
+
 /** Properties a rule can watch: anything readable. */
 const watchable = (device) => device.properties.filter((property) => property.readable);
 
 /** Properties a rule can write: anything with a command topic. */
 const writable = (device) => device.properties.filter((property) => property.writable);
 
+/** Devices by `source|id`, rebuilt whenever the list itself is replaced. */
+let deviceIndex = new Map();
+let indexedList;
+
+/**
+ * A device by reference, without walking the list to find it.
+ *
+ * Sorting a rule list asks this once per device per comparison, and a
+ * comparison happens n log n times, so a walk of forty devices turns into
+ * thousands of them and the page stops answering.
+ */
 function findDevice(ref) {
-  return state.devices.find(
-    (device) => device.sourceId === ref.sourceId && device.deviceId === ref.deviceId,
-  );
+  if (indexedList !== state.devices) {
+    indexedList = state.devices;
+    deviceIndex = new Map(
+      state.devices.map((device) => [`${device.sourceId}|${device.deviceId}`, device]),
+    );
+  }
+  return deviceIndex.get(`${ref.sourceId}|${ref.deviceId}`);
 }
 
 function findProperty(ref) {
@@ -1218,6 +1392,53 @@ function safely(render) {
 }
 
 /** The devices a rule touches, in the order it names them. */
+/**
+ * Values on this button that already set something else off.
+ *
+ * Two rules on one press is a mistake nobody sees until both run, so the
+ * ones already spoken for are marked where they are picked. The rule being
+ * edited is left out: its own choices are not a warning.
+ */
+function boundElsewhere(ref, ruleId) {
+  const taken = new Set();
+  if (!ref?.propertyKey) {
+    return taken;
+  }
+
+  for (const rule of state.rules) {
+    if (rule.id === ruleId) {
+      continue;
+    }
+    for (const trigger of startsOf(rule)) {
+      const value = trigger?.match?.value;
+      if (
+        value !== undefined &&
+        value !== '' &&
+        trigger.sourceId === ref.sourceId &&
+        trigger.deviceId === ref.deviceId &&
+        trigger.propertyKey === ref.propertyKey
+      ) {
+        taken.add(String(value));
+      }
+    }
+  }
+  return taken;
+}
+
+/** Everything that sets a rule off, whichever kind of rule it is. */
+function startsOf(rule) {
+  if (rule.kind === 'mirror') {
+    // Every member sets a mirror off, and none of them by a value.
+    return [];
+  }
+  if (rule.kind === 'slider') {
+    return ['up', 'down', 'on', 'off'].flatMap((key) =>
+      Array.isArray(rule[key]) ? rule[key] : [rule[key]],
+    );
+  }
+  return ruleTriggers(rule);
+}
+
 /**
  * Every trigger of a rule, whatever shape it was saved in.
  *
@@ -1361,16 +1582,21 @@ function renderRuleList(kind, container, emptyText) {
   // that was filtered or set to enabled only would swallow it on the spot.
   const justAdded = (rule) => rule.id === state.pinned;
 
+  // Worked out once per rule rather than inside every comparison. Sorting by
+  // room or by device reads devices to answer, and a comparator that does
+  // that is doing it n log n times over.
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
     .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
+    .map((rule) => ({ rule, key: ruleSortKey(rule, sort), title: ruleTitle(rule) }))
     .sort(
       (a, b) =>
         // A rule just added stays in sight, wherever its name would put it.
-        Number(b.id === state.pinned) - Number(a.id === state.pinned) ||
-        compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
-        compareNames(ruleTitle(a), ruleTitle(b)),
-    );
+        Number(b.rule.id === state.pinned) - Number(a.rule.id === state.pinned) ||
+        compareNames(a.key, b.key) ||
+        compareNames(a.title, b.title),
+    )
+    .map((entry) => entry.rule);
 
   if (rules.length === 0) {
     const empty = document.createElement('p');
@@ -1397,6 +1623,13 @@ function renderRuleList(kind, container, emptyText) {
   if (sort === 'room') {
     const groups = new Map();
     for (const rule of rules) {
+      // A rule just added has no room yet, and burying it under a heading is
+      // the same as hiding it. It sits above them until it is saved.
+      if (rule.id === state.pinned) {
+        container.append(renderRule(rule));
+        continue;
+      }
+
       const rooms = affectedRooms(rule);
       for (const room of rooms.length > 0 ? rooms : [UNGROUPED]) {
         if (!groups.has(room)) {
@@ -1429,11 +1662,16 @@ function describeTrigger(trigger) {
   if (!trigger) {
     return 'Nothing yet';
   }
-  const label = findProperty(trigger)?.label ?? trigger.propertyKey ?? 'something';
+  const property = findProperty(trigger);
+  const label = property?.label ?? trigger.propertyKey ?? 'something';
   const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
   const value = trigger.match?.value;
   const hasValue = value !== undefined && value !== '';
-  return [label, verb, hasValue ? value : ''].filter(Boolean).join(' ');
+  const said =
+    property?.semantic === 'action' || property?.role === 'action'
+      ? describeAction(value)
+      : value;
+  return [label, verb, hasValue ? said : ''].filter(Boolean).join(' ');
 }
 
 /**
@@ -1492,14 +1730,30 @@ function renderByTrigger(container, rules) {
 
 function renderRule(rule, occurrence, inRoom) {
   const card = document.createElement('details');
-  card.className = 'device rule';
+  card.className = `device rule rule-${kindOf(rule)}`;
   // One rule can be listed under several of its triggers, and opening it in
   // one place should not open it in the others.
   const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
   card.open = state.openRules.has(key);
+
+  /**
+   * Built when it is first opened, not before.
+   *
+   * A panel holds a device picker per row, and a picker holds every device.
+   * Building that for every rule in the list, and again for each room a rule
+   * is listed under, is most of the work of drawing a page nobody has asked
+   * to see inside of.
+   */
+  const reveal = () => {
+    if (card.open && !card.querySelector('.device-body')) {
+      card.append(renderRuleBody(rule));
+    }
+  };
+
   card.addEventListener('toggle', () => {
     if (card.open) {
       state.openRules.add(key);
+      reveal();
     } else {
       state.openRules.delete(key);
     }
@@ -1520,10 +1774,17 @@ function renderRule(rule, occurrence, inRoom) {
   } else {
     detail.replaceChildren(...summarise(rule, inRoom));
   }
-  summary.append(name, detail, enabledToggle(rule));
+  summary.append(name, detail);
+
+  // Nothing to switch on until there is something saved to switch on, and a
+  // half built rule that says "disabled" invites turning it on.
+  if (rule.id !== state.pinned) {
+    summary.append(enabledToggle(rule));
+  }
   card.append(summary);
 
-  card.append(renderRuleBody(rule));
+  // Already open from before the list was redrawn, so it is wanted now.
+  reveal();
   return card;
 }
 
@@ -1531,12 +1792,22 @@ function renderRule(rule, occurrence, inRoom) {
 function deviceParts(ref, suffix = '', inRoom) {
   // A device or a reference to one, since the log already holds the device.
   const device = ref && (ref.properties ? ref : findDevice(ref));
+
+  // One span, so an icon never ends a line with its name on the next.
+  const chunk = document.createElement('span');
+  chunk.className = 'chunk';
+
   if (!device) {
-    return [document.createTextNode(`a removed device${suffix}`)];
+    chunk.textContent = `a removed device${suffix}`;
+    return [chunk];
   }
+
   const icon = typeIcon(device);
-  const text = document.createTextNode(`${displayName(device, inRoom)}${suffix}`);
-  return icon ? [icon, text] : [text];
+  if (icon) {
+    chunk.append(icon);
+  }
+  chunk.append(document.createTextNode(`${displayName(device, inRoom)}${suffix}`));
+  return [chunk];
 }
 
 /** A wait as a clock says it, minutes and seconds. */
@@ -1544,6 +1815,29 @@ function describeWait(waitMs) {
   const total = Math.round((waitMs ?? 0) / 1000);
   const minutes = Math.floor(total / 60);
   return `${String(minutes).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** Words that must not be broken across two lines. */
+function chunkOf(text) {
+  const chunk = document.createElement('span');
+  chunk.className = 'chunk';
+  chunk.textContent = text;
+  return chunk;
+}
+
+/**
+ * One side of an arrow, held together.
+ *
+ * A description that does not fit reads better broken after the arrow than
+ * somewhere in the middle of what follows it, so each side is laid out as one
+ * block: it moves under the arrow whole, and only breaks inside itself when a
+ * side alone is wider than the line.
+ */
+function phrase(...parts) {
+  const span = document.createElement('span');
+  span.className = 'phrase';
+  span.append(...parts);
+  return span;
 }
 
 /** " (+2)" when a rule reaches more than one device on that side. */
@@ -1575,22 +1869,19 @@ function summarise(rule, inRoom) {
   }
 
   if (rule.kind === 'mirror') {
-    const seen = new Set();
-    const parts = [];
+    const seen = new Map();
     for (const ref of (rule.groups ?? []).flat()) {
-      const id = `${ref.sourceId}|${ref.deviceId}`;
-      if (seen.has(id)) {
-        continue;
-      }
-      seen.add(id);
-      if (parts.length > 0) {
-        parts.push(words(' ↔ '));
-      }
-      parts.push(...deviceParts(ref, '', inRoom));
+      seen.set(`${ref.sourceId}|${ref.deviceId}`, ref);
     }
+    const members = [...seen.values()];
     const fields = rule.groups?.length ?? 0;
-    parts.push(words(` · ${fields} field${fields === 1 ? '' : 's'}`));
-    return parts;
+    return [
+      ...members.flatMap((ref, index) => [
+        phrase(...deviceParts(ref, index < members.length - 1 ? ' ↔' : '', inRoom)),
+        words(' '),
+      ]),
+      words(`· ${fields} field${fields === 1 ? '' : 's'}`),
+    ];
   }
 
   const triggers = ruleTriggers(rule);
@@ -1598,10 +1889,13 @@ function summarise(rule, inRoom) {
   const outcomes = rule.branches?.length ?? 1;
 
   return [
-    ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
-    words(rule.kind === 'timer' ? ` → ${describeWait(rule.waitMs)} → ` : ' → '),
-    ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
-    words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
+    phrase(...deviceParts(triggers[0], `${andMore(distinctDevices(triggers))} →`, inRoom)),
+    words(' '),
+    ...(rule.kind === 'timer' ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
+    phrase(
+      ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
+      words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
+    ),
   ];
 }
 /**
@@ -1764,6 +2058,7 @@ function ruleFooter(rule, draft, body) {
 function triggerButton(rule, draft, body, error) {
   const button = document.createElement('button');
   button.type = 'button';
+  button.className = 'trigger';
   button.textContent = 'Trigger';
   button.title = 'Run this rule now, whether or not it is switched on';
 
@@ -1813,6 +2108,8 @@ function drawWhenThen(body, draft) {
         refRow(trigger, {
           pick: watchable,
           withMatch: true,
+          starts: true,
+          ruleId: draft.id,
           // Any of them fires the rule, so the last one cannot be removed.
           onRemove:
             draft.triggers.length > 1
@@ -1987,7 +2284,14 @@ function drawTimer(body, draft) {
   draft.waitMs = draft.waitMs ?? 30_000;
 
   body.append(sectionTitle('When'));
-  body.append(refRow(draft.triggers[0], { pick: watchable, withMatch: true }));
+  body.append(
+    refRow(draft.triggers[0], {
+      pick: watchable,
+      withMatch: true,
+      starts: true,
+      ruleId: draft.id,
+    }),
+  );
 
   const waitRow = document.createElement('div');
   waitRow.className = 'option wait';
@@ -2182,6 +2486,8 @@ function drawSlider(body, draft) {
           refRow(trigger, {
             pick: watchable,
             withMatch: true,
+            starts: true,
+            ruleId: draft.id,
             onRemove: () => {
               triggers.splice(index, 1);
               drawButtons();
@@ -2273,7 +2579,9 @@ function drawMirror(body, draft) {
   function pruneGroups() {
     draft.groups = draft.groups
       .map((group) => group.filter((ref) => chosen.has(`${ref.sourceId}|${ref.deviceId}`)))
-      .filter((group) => group.length > 1);
+      .filter(
+        (group) => new Set(group.map((ref) => `${ref.sourceId}|${ref.deviceId}`)).size > 1,
+      );
   }
 
   /** Meanings every selected device has something for. */
@@ -2338,47 +2646,101 @@ function drawMirror(body, draft) {
       label.textContent = labelFor(semantic);
       row.append(box, label);
 
-      // One picker per device, because a two channel switch has two functions
-      // with the same meaning and only the user knows which one is wanted.
+      // A device can carry the same function more than once, and any number of
+      // them can take part: one lamp mirrored with all three channels of a
+      // three gang switch, or with only the two that light the same room.
       const pickers = document.createElement('span');
       pickers.className = 'rule-tail';
 
-      const refs = devices.map((device) => {
+      const parts = devices.map((device) => {
         const options = writable(device).filter((property) => property.semantic === semantic);
-        const already = existing?.find(
+        const already = (existing ?? []).filter(
           (ref) => ref.sourceId === device.sourceId && ref.deviceId === device.deviceId,
         );
-        const ref = already ?? {
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          propertyKey: options[0]?.key ?? '',
+        return {
+          device,
+          options,
+          boxes: new Map(),
+          // A new row starts on the first one, which is what a device with
+          // only one of them offers anyway.
+          keys: new Set(
+            already.length > 0
+              ? already.map((ref) => ref.propertyKey)
+              : [options[0]?.key ?? ''].filter(Boolean),
+          ),
         };
-
-        if (options.length > 1) {
-          const select = document.createElement('select');
-          for (const option of options) {
-            const choice = document.createElement('option');
-            choice.value = option.key;
-            choice.textContent = `${displayName(device)} ${option.endpoint || option.label}`;
-            select.append(choice);
-          }
-          select.value = ref.propertyKey;
-          select.addEventListener('change', () => {
-            ref.propertyKey = select.value;
-            commit();
-          });
-          pickers.append(select);
-        }
-
-        return ref;
       });
 
+      /** What the row mirrors, in the order the devices are listed. */
+      function refsOf() {
+        return parts.flatMap(({ device, options, keys }) =>
+          options
+            .filter((option) => keys.has(option.key))
+            .map((option) => ({
+              sourceId: device.sourceId,
+              deviceId: device.deviceId,
+              propertyKey: option.key,
+            })),
+        );
+      }
+
+      /*
+       * A device with nothing ticked is not in the group at all, which leaves
+       * the other side mirroring itself. Its last tick is held rather than
+       * refused after the fact, since a save turned down for a reason that is
+       * not on the screen is the worse of the two.
+       */
+      function holdTheLastOne() {
+        for (const part of parts) {
+          for (const [key, tick] of part.boxes) {
+            tick.disabled = part.keys.size === 1 && part.keys.has(key);
+          }
+        }
+      }
+
+      for (const part of parts) {
+        // Nothing to choose between, so nothing is asked.
+        if (part.options.length < 2) {
+          continue;
+        }
+
+        const strip = document.createElement('span');
+        strip.className = 'mirror-pick';
+        const named = document.createElement('span');
+        named.className = 'device-meta';
+        named.textContent = displayName(part.device);
+        strip.append(named);
+
+        for (const option of part.options) {
+          const pick = document.createElement('label');
+          pick.className = 'toggle';
+          const tick = document.createElement('input');
+          tick.type = 'checkbox';
+          tick.checked = part.keys.has(option.key);
+          tick.addEventListener('change', () => {
+            if (tick.checked) {
+              part.keys.add(option.key);
+            } else {
+              part.keys.delete(option.key);
+            }
+            holdTheLastOne();
+            commit();
+          });
+          part.boxes.set(option.key, tick);
+          pick.append(tick, document.createTextNode(option.endpoint || option.label));
+          strip.append(pick);
+        }
+
+        pickers.append(strip);
+      }
+
+      holdTheLastOne();
       row.append(pickers);
 
       function commit() {
         draft.groups = draft.groups.filter((group) => group !== existingGroup());
         if (box.checked) {
-          draft.groups.push(refs);
+          draft.groups.push(refsOf());
         }
       }
 
@@ -2699,10 +3061,17 @@ function refRow(ref, options) {
         // No toggle here: it is something to send, never something a device
         // reports, so it could never match.
         tail.append(
-          valueInput(property, ref.match.value, (value) => {
-            ref.match.value = value;
-            changed();
-          }),
+          valueInput(
+            property,
+            ref.match.value,
+            (value) => {
+              ref.match.value = value;
+              changed();
+            },
+            // Only where this row is what sets a rule off. A condition asks
+            // what a device is doing, which any number of rules may ask.
+            options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {},
+          ),
         );
       }
     }
@@ -2793,11 +3162,26 @@ function refRow(ref, options) {
 function valueInput(property, current, onChange, options = {}) {
   if (property?.type === 'enum' && property.values?.length) {
     const select = document.createElement('select');
-    for (const value of property.values) {
+    let anyTaken = false;
+
+    // A remote lists its actions in whatever order its handler was written
+    // in. Said properly and put in order, they read as the buttons they are.
+    const actions = property.semantic === 'action' || property.role === 'action';
+    const values = actions ? [...property.values].sort(compareActions) : property.values;
+
+    for (const value of values) {
       const choice = document.createElement('option');
       choice.value = value;
-      choice.textContent = value;
+      // Both the name and the star are in what is shown, never in what is
+      // stored.
+      const shown = actions ? describeAction(value) : value;
+      const taken = options.taken?.has(String(value));
+      choice.textContent = taken ? `${shown} *` : shown;
+      anyTaken = anyTaken || Boolean(taken);
       select.append(choice);
+    }
+    if (anyTaken) {
+      select.title = 'A * marks a value that already sets off another rule.';
     }
     select.value = current ?? property.values[0];
     onChange(select.value);
@@ -2884,14 +3268,21 @@ function renderLog() {
       const [sourceId, deviceId] = entry.ruleId.split(':');
       const device = findDevice({ sourceId, deviceId });
       what.replaceChildren(
-        ...(device
-          ? deviceParts(device, ` → ${entry.detail}`)
-          : [document.createTextNode(`${entry.ruleName} → ${entry.detail}`)]),
+        device
+          ? phrase(...deviceParts(device, ' →'))
+          : phrase(document.createTextNode(`${entry.ruleName} →`)),
+        document.createTextNode(' '),
+        phrase(document.createTextNode(entry.detail)),
       );
     } else {
       const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
       const named = rule ? ruleTitle(rule) : entry.ruleName;
-      what.textContent = `${named} - ${OUTCOME_LABELS[entry.outcome] ?? entry.outcome} → ${entry.detail}`;
+      const outcome = OUTCOME_LABELS[entry.outcome] ?? entry.outcome;
+      what.replaceChildren(
+        phrase(document.createTextNode(`${named} - ${outcome} →`)),
+        document.createTextNode(' '),
+        phrase(document.createTextNode(entry.detail)),
+      );
     }
     line.append(when, kind, what);
     container.append(line);
@@ -3194,6 +3585,7 @@ function showView(view) {
   el.tabTimers.classList.toggle('active', view === 'timers');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabMap.classList.toggle('active', view === 'map');
+  el.tabSelect.value = view;
   paintControls();
   if (view === 'devices') {
     safeRender();
@@ -3212,21 +3604,45 @@ const showsRules = () =>
   state.view === 'timers' ||
   state.view === 'activity';
 
+/**
+ * The sections, for the dropdown a narrow window gets instead of the tabs.
+ *
+ * The map is left out: there is no room to draw a network on a phone, so it
+ * is hidden there and offering it would lead nowhere.
+ */
+const TAB_OPTIONS = [
+  ['devices', 'Devices'],
+  ['automation', 'Automation'],
+  ['mirror', 'Mirror devices'],
+  ['sliders', 'Sliders'],
+  ['timers', 'Timers'],
+  ['activity', 'Activity'],
+];
+
+for (const [view, label] of TAB_OPTIONS) {
+  const option = document.createElement('option');
+  option.value = view;
+  option.textContent = label;
+  el.tabSelect.append(option);
+}
+
+el.tabSelect.addEventListener('change', () => showView(el.tabSelect.value));
+
+// Narrowing the window while the map is open would otherwise leave a page
+// with nothing on it, since the map is hidden and the dropdown cannot say so.
+const narrow = window.matchMedia('(max-width: 40rem)');
+narrow.addEventListener('change', () => {
+  if (narrow.matches && state.view === 'map') {
+    showView('devices');
+  }
+});
+
 el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));
 el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
 
-el.clearLog.addEventListener('click', async () => {
-  try {
-    await api('/api/log', { method: 'DELETE' });
-    state.log = [];
-    renderLog();
-  } catch (problem) {
-    setStatus(problem.message, 'lost');
-  }
-});
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());

@@ -56,6 +56,8 @@
         </div>
       </header>
 
+      <select id="tab-select" class="tab-select" aria-label="Section"></select>
+
       <nav class="tabs">
         <button id="tab-devices" type="button" class="tab active">Devices</button>
         <button id="tab-automation" type="button" class="tab">Automation</button>
@@ -140,15 +142,27 @@
       </section>
 
       <section id="view-activity" hidden>
-        <div class="hint-row">
-          <p class="hint">Log what has been ran and what triggered it.</p>
-          <button id="clear-log" type="button" class="add-row">Clear</button>
-        </div>
+        <p class="hint">Log what has been ran and what triggered it.</p>
         <div id="activity-log" class="log"></div>
       </section>
       <footer class="page-footer">
-        <button id="logout" type="button" class="link">Sign out</button>
         <span id="build" class="build"></span>
+        <span class="backup-line">
+          <span class="on-wide"
+            >back up:
+            <button id="export-settings" type="button" class="link">download</button>
+            /
+            <button id="import-settings" type="button" class="link">upload</button>
+            -
+          </span>
+          <span class="on-wide">last:</span>
+          <span class="on-narrow">last backup:</span>
+          <span id="backup-at">never</span>
+          -
+          <button id="backup-now" type="button" class="link">back up now</button>
+        </span>
+        <button id="logout" type="button" class="link">Sign out</button>
+        <input id="settings-file" type="file" accept="application/json,.json" hidden />
       </footer>
     </div>
 

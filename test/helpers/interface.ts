@@ -73,6 +73,15 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   // the rule editor fails on its first line and the whole list goes blank.
   (window as unknown as { structuredClone: unknown }).structuredClone = structuredClone;
 
+  // jsdom has no media queries, and the page asks whether the window is
+  // narrow so it can leave the map when it is.
+  (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+
   // Nothing here depends on live updates, and jsdom has no EventSource.
   (window as unknown as { EventSource: unknown }).EventSource = class {
     onopen: unknown;
@@ -83,9 +92,23 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   window.eval(read('app.js'));
   await settle(window);
 
+  /**
+   * Opens a card the way a person does.
+   *
+   * jsdom does not raise `toggle` when `open` is set, though a browser does,
+   * and the page builds a panel when it hears one.
+   */
+  const openCard = async (card: Element | null) => {
+    const details = card as HTMLDetailsElement;
+    details.open = true;
+    details.dispatchEvent(new window.Event('toggle'));
+    await settle(window);
+  };
+
   return {
     window,
     document: window.document,
+    openCard,
     /** Mutable, so a test can change what a later request answers. */
     responses,
     failures,
