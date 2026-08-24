@@ -958,8 +958,26 @@ button.link:hover {
     gap: 0.5rem;
   }
 
+  /*
+   * The sort and the search fill the width between them and never more.
+   * `min-width: 0` is what makes that possible: a flex item will not shrink
+   * below its content without it, so the pair would push past the edge and
+   * the search would drop to a line of its own.
+   */
   .header-actions {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  .header-actions > #sort {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .header-actions > #filter {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
   }
 
   /* A line each, with what the device is doing in HomeKit beside its name. */
