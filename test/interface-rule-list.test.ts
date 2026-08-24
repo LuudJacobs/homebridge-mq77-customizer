@@ -512,6 +512,44 @@ describe('a rule just added', () => {
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
   });
 
+  it('has no switch until there is something saved to switch', async () => {
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openTab('Automation', [apple]);
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = {
+      rules: [apple, { ...automation('r2', 'New automation', '0xa', '0xb'), enabled: false }],
+    };
+    await ui.click(ui.byText('button', '+ automation'));
+
+    const cards = [...ui.document.querySelectorAll('#automation .rule')];
+    expect(cards[0]!.querySelector('.rule-enabled')).toBeNull();
+    // The one below it, which is saved, keeps its switch.
+    expect(cards[1]!.querySelector('.rule-enabled')).not.toBeNull();
+  });
+
+  it('stays above the headings when the list is grouped by room', async () => {
+    const placed = devices.map((entry) => ({
+      ...entry,
+      exposure: { properties: [], ...(entry.deviceId === '0xb' ? { room: 'Study' } : {}) },
+    }));
+    const apple = automation('r1', 'Apple', '0xa', '0xb');
+    const ui = await openInterface({ state: { devices: placed }, rules: [apple] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await sortBy(ui, 'room');
+
+    const added = automation('r2', 'New automation', '0xa', '0xb');
+    ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
+    ui.responses['/api/rules'] = { rules: [apple, added] };
+    await ui.click(ui.byText('button', '+ automation'));
+
+    // Under a heading it would be buried, which is the same as hidden.
+    const first = ui.document.querySelector('#automation > *');
+    expect(first?.classList.contains('rule')).toBe(true);
+    // Sitting above the headings, none of which has said its room, so the
+    // name still carries one.
+    expect(named(ui, '#automation')[0]).toContain('New automation');
+  });
+
   it('takes its place in the order once saved', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
     const ui = await openTab('Automation', [apple]);
