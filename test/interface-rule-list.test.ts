@@ -381,8 +381,20 @@ describe('keeping a description on one line', () => {
       (node) => node.textContent,
     );
 
-    // An icon must not end a line with its device name on the next.
-    expect(chunks).toEqual(['hall_lamp', 'porch_lamp']);
+    // An icon must not end a line with its device name on the next, and the
+    // arrow belongs to the side in front of it.
+    expect(chunks).toEqual(['hall_lamp \u2192', 'porch_lamp']);
+  });
+
+  it('breaks after an arrow rather than inside what follows it', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const sides = [...ui.document.querySelectorAll('#automation .device-meta .phrase')].map(
+      (node) => node.textContent,
+    );
+
+    // Each side is laid out whole, so a narrow window puts the second under
+    // the first instead of splitting it somewhere in the middle.
+    expect(sides).toEqual(['hall_lamp \u2192', 'porch_lamp']);
   });
 
   it('keeps a timer wait whole', async () => {
@@ -401,8 +413,8 @@ describe('keeping a description on one line', () => {
     const chunks = [...ui.document.querySelectorAll('#timers .device-meta .chunk')].map(
       (node) => node.textContent,
     );
-    // The time is one piece. The arrows either side may end a line.
-    expect(chunks).toContain('01:30');
+    // The time is one piece, with the arrow after it. The line breaks there.
+    expect(chunks).toContain('01:30 \u2192');
   });
 });
 

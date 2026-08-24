@@ -335,6 +335,17 @@ header {
   white-space: nowrap;
 }
 
+/*
+ * One side of an arrow. Laid out as a block so a side that does not fit moves
+ * under the arrow whole: "Remote →" on one line and what it did on the next,
+ * rather than a break somewhere in the middle of a sentence.
+ */
+.phrase {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
 .tab-select {
   display: none;
   width: 100%;
@@ -549,10 +560,15 @@ button.danger.armed {
   color: var(--muted);
 }
 
-.settings-links {
+.backup-line {
   display: inline-flex;
   align-items: baseline;
   gap: 0.3rem;
+}
+
+/* The wording differs with the room there is to say it in. */
+.on-narrow {
+  display: none;
 }
 
 .page-footer .build {
@@ -1095,5 +1111,42 @@ button.link:hover {
 
   #kind-filters {
     display: none;
+  }
+
+  /*
+   * Which build this is and the way out on one line, and what the settings are
+   * doing underneath. Handing a file about is a desk job, so that half is left
+   * out here and only the copy on the machine is offered.
+   */
+  .page-footer {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+    row-gap: 0.4rem;
+    text-align: left;
+  }
+
+  .page-footer > #build {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .page-footer > #logout {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .backup-line {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .on-wide {
+    display: none;
+  }
+
+  .on-narrow {
+    display: inline;
   }
 }

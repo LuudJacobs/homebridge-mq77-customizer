@@ -146,15 +146,22 @@
         <div id="activity-log" class="log"></div>
       </section>
       <footer class="page-footer">
-        <span class="settings-links">
-          Settings:
-          <button id="export-settings" type="button" class="link">download</button>
-          /
-          <button id="import-settings" type="button" class="link">upload</button>
-        </span>
-        <span id="backup-at"></span>
-        <button id="logout" type="button" class="link">Sign out</button>
         <span id="build" class="build"></span>
+        <span class="backup-line">
+          <span class="on-wide"
+            >back up:
+            <button id="export-settings" type="button" class="link">download</button>
+            /
+            <button id="import-settings" type="button" class="link">upload</button>
+            -
+          </span>
+          <span class="on-wide">last:</span>
+          <span class="on-narrow">last backup:</span>
+          <span id="backup-at">never</span>
+          -
+          <button id="backup-now" type="button" class="link">back up now</button>
+        </span>
+        <button id="logout" type="button" class="link">Sign out</button>
         <input id="settings-file" type="file" accept="application/json,.json" hidden />
       </footer>
     </div>

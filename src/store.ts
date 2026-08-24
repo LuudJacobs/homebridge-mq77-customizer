@@ -201,6 +201,18 @@ export class Store {
     return this.backupAt;
   }
 
+  /**
+   * Takes a copy now, whether or not one was due.
+   *
+   * Written out first: on a fresh install there is nothing on disk yet, and
+   * there would be nothing to copy.
+   */
+  async backupNow(): Promise<number | undefined> {
+    await this.save();
+    await this.backup(true);
+    return this.backupAt;
+  }
+
   /** True once a write has been refused to protect the file. */
   get refusedToWrite(): boolean {
     return this.blocked;

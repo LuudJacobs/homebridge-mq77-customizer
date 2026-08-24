@@ -158,6 +158,9 @@ export class WebServer {
       if (path === '/api/settings' && request.method === 'PUT') {
         return this.importSettings(request, response);
       }
+      if (path === '/api/settings/backup' && request.method === 'POST') {
+        return send(response, 200, { backupAt: await this.deps.store.backupNow() });
+      }
       if (path === '/api/log' && request.method === 'GET') {
         return send(response, 200, { entries: this.deps.rules.getLog() });
       }
