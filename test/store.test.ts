@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -87,10 +87,101 @@ describe('keeping a way back', () => {
     await second.save();
     await second.save();
 
-    // Backed up once at startup, so repeated writes cannot replace the good
-    // copy with the empty one.
-    const backup = JSON.parse(await readFile(`${file}.bak`, 'utf8')) as { rules: unknown[] };
-    expect(backup.rules).toHaveLength(1);
+    // Copied at startup, before this run touched anything, so repeated
+    // writes cannot replace the good copy with the empty one.
+    const folder = join(dirname(file), 'backups');
+    const copies = (await readdir(folder)).filter((name) => name.startsWith('state-'));
+    expect(copies.length).toBeGreaterThan(0);
+
+    const kept = JSON.parse(
+      await readFile(join(folder, copies.sort().at(-1)!), 'utf8'),
+    ) as { rules: unknown[] };
+    expect(kept.rules).toHaveLength(1);
+  });
+
+  it('lets somebody empty their own settings', async () => {
+    const file = await temporaryFile();
+    const first = new Store(file, silentLogger);
+    await first.load();
+    first.update((state) => {
+      state.rules = [{ id: 'r1', name: 'First', enabled: true } as never];
+    });
+    await first.save();
+
+    // This run read them, so deleting them is a decision rather than a fault.
+    const second = new Store(file, silentLogger);
+    await second.load();
+    second.update((state) => {
+      state.rules = [];
+    });
+    await second.save();
+
+    const written = JSON.parse(await readFile(file, 'utf8')) as { rules: unknown[] };
+    expect(written.rules).toEqual([]);
+    expect(second.refusedToWrite).toBe(false);
+  });
+
+  it('refuses to write nothing over something it never read', async () => {
+    const file = await temporaryFile();
+    const first = new Store(file, silentLogger);
+    await first.load();
+    first.update((state) => {
+      state.rules = [{ id: 'r1', name: 'First', enabled: true } as never];
+    });
+    await first.save();
+
+    // A run that began with nothing, as one looking at the wrong file would.
+    const stray = new Store(`${file}.missing`, silentLogger);
+    await stray.load();
+    // Pointed at the real file after the fact, which is the shape of the
+    // fault: everything configured is there, and this run knows none of it.
+    const blind = new Store(file, silentLogger);
+    Object.assign(blind, { startedFull: false });
+    await blind.save();
+
+    const kept = JSON.parse(await readFile(file, 'utf8')) as { rules: unknown[] };
+    expect(kept.rules).toHaveLength(1);
+    expect(blind.refusedToWrite).toBe(true);
+    expect(stray).toBeDefined();
+  });
+
+  it('keeps ten copies and no more', async () => {
+    const file = await temporaryFile();
+    const store = new Store(file, silentLogger);
+    await store.load();
+    store.update((state) => {
+      state.rules = [{ id: 'r1', name: 'First', enabled: true } as never];
+    });
+    await store.save();
+
+    const folder = join(dirname(file), 'backups');
+    await mkdir(folder, { recursive: true });
+    for (let index = 0; index < 15; index++) {
+      await writeFile(join(folder, `state-2020-01-01-00-${String(index).padStart(2, '0')}.json`), '{}');
+    }
+
+    // A copy is only taken when one is due, so this one is asked for.
+    await (store as unknown as { backup: (force: boolean) => Promise<void> }).backup(true);
+
+    const copies = (await readdir(folder)).filter((name) => name.startsWith('state-'));
+    expect(copies).toHaveLength(10);
+  });
+
+  it('puts a settings file back, keeping the session secret', async () => {
+    const file = await temporaryFile();
+    const store = new Store(file, silentLogger);
+    await store.load();
+    const secret = store.sessionSecret();
+
+    await store.replaceAll({
+      exposures: { 'zigbee:0xa': { properties: ['state'] } },
+      rules: [{ id: 'r9', name: 'From a file', enabled: true }],
+    });
+
+    expect(store.data.rules).toHaveLength(1);
+    expect(Object.keys(store.data.exposures)).toEqual(['zigbee:0xa']);
+    // Replacing the secret would sign everybody out of the interface.
+    expect(store.sessionSecret()).toBe(secret);
   });
 
   it('does not mind there being nothing to back up yet', async () => {

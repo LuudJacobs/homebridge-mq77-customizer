@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Settings can be downloaded and uploaded from the footer, which is the only copy that survives losing the machine
+- The last ten dated copies of the settings are kept in a `backups` folder, one at startup and at most one an hour after that
+- A run that starts with nothing refuses to write over a settings file that has something in it, and says so
+
 ## [0.16.1] - 2026-08-24
 
 ### Fixed

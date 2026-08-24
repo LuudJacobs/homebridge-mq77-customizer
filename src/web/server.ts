@@ -152,6 +152,12 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
+      if (path === '/api/settings' && request.method === 'GET') {
+        return this.exportSettings(response);
+      }
+      if (path === '/api/settings' && request.method === 'PUT') {
+        return this.importSettings(request, response);
+      }
       if (path === '/api/log' && request.method === 'GET') {
         return send(response, 200, { entries: this.deps.rules.getLog() });
       }
@@ -338,6 +344,8 @@ export class WebServer {
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       build: buildLabel(),
+      backupAt: this.deps.store.lastBackup(),
+      refusedToWrite: this.deps.store.refusedToWrite,
     };
   }
 
@@ -362,6 +370,61 @@ export class WebServer {
       this.deps.log.error(`Network map failed: ${why}`);
       return send(response, 502, { error: why });
     }
+  }
+
+  /**
+   * Hands over everything worth keeping, as a file to save somewhere else.
+   *
+   * Without the session secret: it signs the cookie that keeps you signed in,
+   * it regenerates on its own, and a settings file is a thing people mail to
+   * themselves.
+   */
+  private exportSettings(response: ServerResponse): void {
+    const { sessionSecret: _secret, ...rest } = this.deps.store.data;
+    const stamp = new Date().toISOString().slice(0, 10);
+    const body = JSON.stringify(rest, null, 2);
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="mq77-settings-${stamp}.json"`,
+      'Content-Length': Buffer.byteLength(body),
+    });
+    response.end(body);
+  }
+
+  /**
+   * Puts a settings file back, over whatever is there.
+   *
+   * A copy of what is being replaced is taken first, so uploading the wrong
+   * file is not the end of it either.
+   */
+  private async importSettings(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const body = await readJson(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return send(response, 400, { error: 'That is not a settings file' });
+    }
+
+    const incoming = body as { exposures?: unknown; rules?: unknown };
+    if (typeof incoming.exposures !== 'object' || !Array.isArray(incoming.rules)) {
+      return send(response, 400, {
+        error: 'That file has no devices or rules in it, so it is not one of ours',
+      });
+    }
+
+    await this.deps.store.replaceAll(body);
+    this.deps.onExposureChanged();
+
+    const counts = {
+      devices: Object.keys(this.deps.store.data.exposures).length,
+      rules: this.deps.store.data.rules.length,
+    };
+    this.deps.log.info(
+      `Settings replaced from an uploaded file: ${counts.devices} device(s), ${counts.rules} rule(s)`,
+    );
+    return send(response, 200, counts);
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {

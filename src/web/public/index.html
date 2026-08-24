@@ -146,8 +146,16 @@
         <div id="activity-log" class="log"></div>
       </section>
       <footer class="page-footer">
+        <span class="settings-links">
+          Settings:
+          <button id="export-settings" type="button" class="link">download</button>
+          /
+          <button id="import-settings" type="button" class="link">upload</button>
+        </span>
+        <span id="backup-at"></span>
         <button id="logout" type="button" class="link">Sign out</button>
         <span id="build" class="build"></span>
+        <input id="settings-file" type="file" accept="application/json,.json" hidden />
       </footer>
     </div>
 

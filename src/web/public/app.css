@@ -549,6 +549,12 @@ button.danger.armed {
   color: var(--muted);
 }
 
+.settings-links {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
 .page-footer .build {
   align-self: baseline;
   padding: 0;
