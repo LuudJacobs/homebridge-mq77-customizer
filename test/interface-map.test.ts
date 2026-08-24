@@ -75,6 +75,50 @@ describe('the page around it', () => {
     expect(ui.document.querySelector('#activity-log')!.textContent).toContain('Nothing has run');
   });
 
+  it('offers the sections as a dropdown as well as tabs', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    const select = ui.document.querySelector('#tab-select') as HTMLSelectElement;
+    const offered = [...select.options].map((option) => option.value);
+
+    // The map is left out: there is no room to draw a network on a phone,
+    // and offering it would lead to a hidden section.
+    expect(offered).toEqual([
+      'devices',
+      'automation',
+      'mirror',
+      'sliders',
+      'timers',
+      'activity',
+    ]);
+  });
+
+  it('switches section from the dropdown, and follows the tabs', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    const select = ui.document.querySelector('#tab-select') as HTMLSelectElement;
+
+    select.value = 'activity';
+    select.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    expect((ui.document.querySelector('#view-activity') as HTMLElement).hidden).toBe(false);
+
+    await ui.click(ui.byText('button.tab', 'Devices'));
+    expect(select.value).toBe('devices');
+  });
+
+  it('marks a rule with its kind, so a phone knows what can be opened', async () => {
+    const ui = await openInterface({
+      state: { devices: [] },
+      rules: [
+        { id: 'm1', kind: 'mirror', name: 'Together', enabled: true, groups: [] },
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Mirror devices'));
+
+    // A mirror cannot be run by hand, so on a narrow window there is nothing
+    // inside it worth opening.
+    expect(ui.document.querySelector('#mirror .rule-mirror')).not.toBeNull();
+  });
+
   it('has no in HomeKit only or enabled only filters', async () => {
     const ui = await openInterface({ state: { devices: [] } });
     expect(ui.document.querySelector('#exposed-only')).toBeNull();
