@@ -376,6 +376,37 @@ describe('naming a rule by where it acts', () => {
   });
 });
 
+describe('keeping a description on one line', () => {
+  it('wraps each device and its count in one piece', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const chunks = [...ui.document.querySelectorAll('#automation .device-meta .chunk')].map(
+      (node) => node.textContent,
+    );
+
+    // An icon must not end a line with its device name on the next.
+    expect(chunks).toEqual(['hall_lamp', 'porch_lamp']);
+  });
+
+  it('keeps a timer wait whole', async () => {
+    const timer = {
+      id: 't1',
+      kind: 'timer',
+      name: 'Light out',
+      enabled: true,
+      triggers: [{ ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } }],
+      waitMs: 90_000,
+      actions: [{ ...ref('0xb'), value: 'OFF' }],
+    };
+    const ui = await openInterface({ state: { devices }, rules: [timer] });
+    await ui.click(ui.byText('button.tab', 'Timers'));
+
+    const chunks = [...ui.document.querySelectorAll('#timers .device-meta .chunk')].map(
+      (node) => node.textContent,
+    );
+    expect(chunks).toContain(' → 01:30 → ');
+  });
+});
+
 describe('what the line under a rule says', () => {
   const meta = (ui: { document: Document }) =>
     ui.document.querySelector('#automation .device-meta')?.textContent;
