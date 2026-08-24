@@ -617,9 +617,9 @@ button.link:hover {
   white-space: nowrap;
 }
 
-/* One remote, and what its buttons are bound to, drawn as the lists are. */
+/* One remote and its buttons, drawn the way the activity log is drawn. */
 .controller-card {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
@@ -628,47 +628,52 @@ button.link:hover {
 
 .controller-card h2 {
   margin: 0;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
   font-weight: 600;
+  line-height: 2;
   border-bottom: 1px solid var(--line);
 }
 
 table.buttons {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-table.buttons th {
-  text-align: left;
-  font-weight: 500;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 2;
+  table-layout: fixed;
 }
 
 table.buttons th,
 table.buttons td {
-  padding: 0.4rem 0.9rem;
+  padding: 0.15rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
 }
 
-/* Between the rows only: the edges are the card's own. */
+table.buttons th {
+  font-weight: 500;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 2.4;
+}
+
 table.buttons tr + tr td,
 table.buttons th {
   border-top: 1px solid var(--line);
 }
 
-table.buttons td[rowspan] {
-  vertical-align: top;
-}
-
-/* The button is the column read down, so it is the one that is weighted. */
-table.buttons td:first-child {
-  width: 11rem;
+/*
+ * As slim as the longest button name, and the same width in every table: the
+ * column is read down the page across all of them, and a width per table
+ * would step in and out on the way down.
+ */
+table.buttons td:first-child,
+table.buttons th:first-child {
+  width: var(--button-column, 8rem);
   white-space: nowrap;
-  font-weight: 500;
+  color: var(--muted);
 }
 
 /* A button nothing answers, which is what the list is read for. */
@@ -1212,15 +1217,10 @@ table.buttons td.free {
     display: none;
   }
 
-  /* A button and what it does, with room for the names. */
-  table.buttons td:first-child {
-    width: 7.5rem;
-    white-space: normal;
-  }
-
+  /* The names need what room there is, so the padding gives some of it up. */
   table.buttons th,
   table.buttons td {
-    padding: 0.4rem 0.6rem;
+    padding: 0.15rem 0.5rem;
   }
 
   /*

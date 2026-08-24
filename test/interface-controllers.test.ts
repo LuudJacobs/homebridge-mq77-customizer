@@ -215,3 +215,16 @@ describe('the overview as a file', () => {
     expect(ui.window.eval('controllersAsMarkdown()') as string).not.toContain('_none_');
   });
 });
+
+describe('how wide the button column is', () => {
+  it('is one width for every table, as slim as the longest button', async () => {
+    const ui = await openControllers();
+    const width = (ui.document.getElementById('controllers') as HTMLElement).style.getPropertyValue(
+      '--button-column',
+    );
+
+    // "1 Double" and "Left Single" are the longest of them, and every table
+    // reads down the same column edge.
+    expect(width).toBe('9ch');
+  });
+});

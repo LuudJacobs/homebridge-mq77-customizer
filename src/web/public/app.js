@@ -3406,6 +3406,14 @@ function renderControllers() {
   el.controllers.replaceChildren();
   const controllers = byName(state.devices.filter((device) => isController(device)));
 
+  // One width for every table: the column is read down the page across all of
+  // them, and a width worked out per table would step in and out on the way.
+  const widest = Math.max(
+    6,
+    ...controllers.flatMap((controller) => buttonRows(controller).map((row) => row.label.length)),
+  );
+  el.controllers.style.setProperty('--button-column', `${widest + 1}ch`);
+
   if (controllers.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';

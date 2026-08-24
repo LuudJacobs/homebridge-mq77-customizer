@@ -5,7 +5,14 @@
  * so the preview cannot drift from what the browser will show. The markdown
  * the download button writes is printed underneath, from the same function.
  *
- *   node tools/controllers-preview.mjs [out.html]
+ * With a settings file exported from the footer it draws the real thing:
+ *
+ *   node tools/controllers-preview.mjs out.html ~/Downloads/mq77-settings.json
+ *
+ * The export holds what the user set up, not what the devices said they can
+ * send, so the buttons of a controller are worked back out of the values its
+ * rules were built on: every button seen, crossed with every gesture seen.
+ * That is a guess, but a truthful one about which are free.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -163,6 +170,124 @@ const rules = [
   },
 ];
 
+/** Devices and rules as an exported settings file describes them. */
+function fromSettings(path, splitAction) {
+  const settings = JSON.parse(readFileSync(path, 'utf8'));
+  const rules = settings.rules ?? [];
+
+  // What each controller's rules were built on, which is all the file says
+  // about its buttons.
+  const used = new Map();
+  for (const rule of rules) {
+    const starts = [
+      ...(rule.triggers ?? []),
+      rule.trigger,
+      ...['up', 'down', 'on', 'off'].flatMap((key) =>
+        Array.isArray(rule[key]) ? rule[key] : [rule[key]],
+      ),
+    ].filter(Boolean);
+    for (const start of starts) {
+      if (start.propertyKey !== 'action' || start.match?.value === undefined) {
+        continue;
+      }
+      const key = `${start.sourceId}:${start.deviceId}`;
+      used.set(key, [...(used.get(key) ?? []), String(start.match.value)]);
+    }
+  }
+
+  const devices = Object.entries(settings.exposures ?? {}).map(([key, exposure]) => {
+    const [sourceId, ...rest] = key.split(':');
+    const deviceId = rest.join(':');
+    // Actions are added below, from the values the rules were built on.
+    const properties = (exposure.properties ?? [])
+      .filter((propertyKey) => propertyKey !== 'action')
+      .map((propertyKey) => ({
+      key: propertyKey,
+      label: propertyKey.startsWith('state')
+        ? `State${propertyKey.slice(5).replace('_', ' ')}`
+        : propertyKey[0].toUpperCase() + propertyKey.slice(1),
+      semantic: propertyKey.startsWith('state') ? 'state' : propertyKey,
+      type: propertyKey === 'brightness' ? 'numeric' : 'binary',
+      category: 'primary',
+      endpoint: '',
+      readable: true,
+      writable: true,
+      publishable: true,
+      role: 'power',
+      onValue: 'ON',
+      offValue: 'OFF',
+      }));
+
+    if (exposure.type === 'controller' || used.has(key)) {
+      properties.push({
+        key: 'action',
+        label: 'Action',
+        semantic: 'action',
+        type: 'enum',
+        category: 'primary',
+        endpoint: '',
+        readable: true,
+        writable: false,
+        publishable: false,
+        values: everyButton(used.get(key) ?? [], splitAction),
+      });
+    }
+
+    return {
+      sourceId,
+      deviceId,
+      name: exposure.label ?? deviceId,
+      topic: `${sourceId}/${deviceId}`,
+      manufacturer: '',
+      model: '',
+      rulesOnly: false,
+      renameable: false,
+      endpoints: [''],
+      properties,
+      exposure: { properties: [], ...exposure },
+      state: {},
+      lastSeen: {},
+    };
+  });
+
+  return { devices, rules };
+}
+
+/**
+ * Every button of a remote, from the handful its rules name.
+ *
+ * A remote sends the same gestures on each of its buttons, so the buttons and
+ * the gestures seen, crossed, is a fair account of what it can send. The order
+ * of the two halves is kept as the values themselves have it.
+ */
+function everyButton(values, splitAction) {
+  const buttons = [];
+  const gestures = [];
+  let buttonFirst = true;
+
+  for (const value of values) {
+    const { button, gesture } = splitAction(value);
+    if (!button || !gesture) {
+      continue;
+    }
+    buttonFirst = value.startsWith(button);
+    if (!buttons.includes(button)) {
+      buttons.push(button);
+    }
+    if (!gestures.includes(gesture)) {
+      gestures.push(gesture);
+    }
+  }
+
+  if (buttons.length === 0) {
+    return [...new Set(values)];
+  }
+
+  return buttons.flatMap((button) =>
+    gestures.map((gesture) => (buttonFirst ? `${button}_${gesture}` : `${gesture}_${button}`)),
+  );
+}
+
 const virtualConsole = new VirtualConsole();
 virtualConsole.on('jsdomError', (error) => console.error(String(error)));
 
@@ -173,9 +298,17 @@ const dom = new JSDOM(read('index.html'), {
 });
 const { window } = dom;
 
+// The page has to be loaded before its splitting can be borrowed, so the file
+// is read after it and the answers are looked up as they are asked for.
+let shown = { devices, rules };
+
 const responses = {
-  '/api/state': { tileTypes: ['Switch', 'Outlet', 'Lightbulb', 'Fan'], devices },
-  '/api/rules': { rules },
+  get '/api/state'() {
+    return { tileTypes: ['Switch', 'Outlet', 'Lightbulb', 'Fan'], devices: shown.devices };
+  },
+  get '/api/rules'() {
+    return { rules: shown.rules };
+  },
   '/api/log': { entries: [] },
 };
 
@@ -196,6 +329,12 @@ window.matchMedia = (query) => ({
 window.EventSource = class {};
 
 window.eval(read('app.js'));
+
+const settings = process.argv[3];
+if (settings) {
+  shown = fromSettings(settings, (value) => window.eval(`splitAction(${JSON.stringify(value)})`));
+  window.eval('load()').catch?.(() => {});
+}
 
 const settle = async () => {
   for (let turn = 0; turn < 12; turn += 1) {
