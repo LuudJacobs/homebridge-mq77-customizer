@@ -1281,6 +1281,53 @@ function safely(render) {
 
 /** The devices a rule touches, in the order it names them. */
 /**
+ * Values on this button that already set something else off.
+ *
+ * Two rules on one press is a mistake nobody sees until both run, so the
+ * ones already spoken for are marked where they are picked. The rule being
+ * edited is left out: its own choices are not a warning.
+ */
+function boundElsewhere(ref, ruleId) {
+  const taken = new Set();
+  if (!ref?.propertyKey) {
+    return taken;
+  }
+
+  for (const rule of state.rules) {
+    if (rule.id === ruleId) {
+      continue;
+    }
+    for (const trigger of startsOf(rule)) {
+      const value = trigger?.match?.value;
+      if (
+        value !== undefined &&
+        value !== '' &&
+        trigger.sourceId === ref.sourceId &&
+        trigger.deviceId === ref.deviceId &&
+        trigger.propertyKey === ref.propertyKey
+      ) {
+        taken.add(String(value));
+      }
+    }
+  }
+  return taken;
+}
+
+/** Everything that sets a rule off, whichever kind of rule it is. */
+function startsOf(rule) {
+  if (rule.kind === 'mirror') {
+    // Every member sets a mirror off, and none of them by a value.
+    return [];
+  }
+  if (rule.kind === 'slider') {
+    return ['up', 'down', 'on', 'off'].flatMap((key) =>
+      Array.isArray(rule[key]) ? rule[key] : [rule[key]],
+    );
+  }
+  return ruleTriggers(rule);
+}
+
+/**
  * Every trigger of a rule, whatever shape it was saved in.
  *
  * `trigger` is what versions before outcomes stored, a single one, and rules
@@ -1930,6 +1977,8 @@ function drawWhenThen(body, draft) {
         refRow(trigger, {
           pick: watchable,
           withMatch: true,
+          starts: true,
+          ruleId: draft.id,
           // Any of them fires the rule, so the last one cannot be removed.
           onRemove:
             draft.triggers.length > 1
@@ -2104,7 +2153,14 @@ function drawTimer(body, draft) {
   draft.waitMs = draft.waitMs ?? 30_000;
 
   body.append(sectionTitle('When'));
-  body.append(refRow(draft.triggers[0], { pick: watchable, withMatch: true }));
+  body.append(
+    refRow(draft.triggers[0], {
+      pick: watchable,
+      withMatch: true,
+      starts: true,
+      ruleId: draft.id,
+    }),
+  );
 
   const waitRow = document.createElement('div');
   waitRow.className = 'option wait';
@@ -2299,6 +2355,8 @@ function drawSlider(body, draft) {
           refRow(trigger, {
             pick: watchable,
             withMatch: true,
+            starts: true,
+            ruleId: draft.id,
             onRemove: () => {
               triggers.splice(index, 1);
               drawButtons();
@@ -2816,10 +2874,17 @@ function refRow(ref, options) {
         // No toggle here: it is something to send, never something a device
         // reports, so it could never match.
         tail.append(
-          valueInput(property, ref.match.value, (value) => {
-            ref.match.value = value;
-            changed();
-          }),
+          valueInput(
+            property,
+            ref.match.value,
+            (value) => {
+              ref.match.value = value;
+              changed();
+            },
+            // Only where this row is what sets a rule off. A condition asks
+            // what a device is doing, which any number of rules may ask.
+            options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {},
+          ),
         );
       }
     }
@@ -2910,11 +2975,18 @@ function refRow(ref, options) {
 function valueInput(property, current, onChange, options = {}) {
   if (property?.type === 'enum' && property.values?.length) {
     const select = document.createElement('select');
+    let anyTaken = false;
     for (const value of property.values) {
       const choice = document.createElement('option');
       choice.value = value;
-      choice.textContent = value;
+      // The star is in what is shown, never in what is stored.
+      const taken = options.taken?.has(String(value));
+      choice.textContent = taken ? `${value} *` : value;
+      anyTaken = anyTaken || Boolean(taken);
       select.append(choice);
+    }
+    if (anyTaken) {
+      select.title = 'A * marks a value that already sets off another rule.';
     }
     select.value = current ?? property.values[0];
     onChange(select.value);
