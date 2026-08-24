@@ -55,6 +55,7 @@ const el = {
   tabTimers: document.getElementById('tab-timers'),
   tabActivity: document.getElementById('tab-activity'),
   tabMap: document.getElementById('tab-map'),
+  tabSelect: document.getElementById('tab-select'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
   viewMirror: document.getElementById('view-mirror'),
@@ -1492,7 +1493,7 @@ function renderByTrigger(container, rules) {
 
 function renderRule(rule, occurrence, inRoom) {
   const card = document.createElement('details');
-  card.className = 'device rule';
+  card.className = `device rule rule-${kindOf(rule)}`;
   // One rule can be listed under several of its triggers, and opening it in
   // one place should not open it in the others.
   const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
@@ -1531,12 +1532,22 @@ function renderRule(rule, occurrence, inRoom) {
 function deviceParts(ref, suffix = '', inRoom) {
   // A device or a reference to one, since the log already holds the device.
   const device = ref && (ref.properties ? ref : findDevice(ref));
+
+  // One span, so an icon never ends a line with its name on the next.
+  const chunk = document.createElement('span');
+  chunk.className = 'chunk';
+
   if (!device) {
-    return [document.createTextNode(`a removed device${suffix}`)];
+    chunk.textContent = `a removed device${suffix}`;
+    return [chunk];
   }
+
   const icon = typeIcon(device);
-  const text = document.createTextNode(`${displayName(device, inRoom)}${suffix}`);
-  return icon ? [icon, text] : [text];
+  if (icon) {
+    chunk.append(icon);
+  }
+  chunk.append(document.createTextNode(`${displayName(device, inRoom)}${suffix}`));
+  return [chunk];
 }
 
 /** A wait as a clock says it, minutes and seconds. */
@@ -1544,6 +1555,14 @@ function describeWait(waitMs) {
   const total = Math.round((waitMs ?? 0) / 1000);
   const minutes = Math.floor(total / 60);
   return `${String(minutes).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** Words that must not be broken across two lines. */
+function chunkOf(text) {
+  const chunk = document.createElement('span');
+  chunk.className = 'chunk';
+  chunk.textContent = text;
+  return chunk;
 }
 
 /** " (+2)" when a rule reaches more than one device on that side. */
@@ -1599,7 +1618,7 @@ function summarise(rule, inRoom) {
 
   return [
     ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
-    words(rule.kind === 'timer' ? ` → ${describeWait(rule.waitMs)} → ` : ' → '),
+    rule.kind === 'timer' ? chunkOf(` → ${describeWait(rule.waitMs)} → `) : words(' → '),
     ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
     words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
   ];
@@ -1764,6 +1783,7 @@ function ruleFooter(rule, draft, body) {
 function triggerButton(rule, draft, body, error) {
   const button = document.createElement('button');
   button.type = 'button';
+  button.className = 'trigger';
   button.textContent = 'Trigger';
   button.title = 'Run this rule now, whether or not it is switched on';
 
@@ -3194,6 +3214,7 @@ function showView(view) {
   el.tabTimers.classList.toggle('active', view === 'timers');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabMap.classList.toggle('active', view === 'map');
+  el.tabSelect.value = view;
   paintControls();
   if (view === 'devices') {
     safeRender();
@@ -3211,6 +3232,39 @@ const showsRules = () =>
   state.view === 'sliders' ||
   state.view === 'timers' ||
   state.view === 'activity';
+
+/**
+ * The sections, for the dropdown a narrow window gets instead of the tabs.
+ *
+ * The map is left out: there is no room to draw a network on a phone, so it
+ * is hidden there and offering it would lead nowhere.
+ */
+const TAB_OPTIONS = [
+  ['devices', 'Devices'],
+  ['automation', 'Automation'],
+  ['mirror', 'Mirror devices'],
+  ['sliders', 'Sliders'],
+  ['timers', 'Timers'],
+  ['activity', 'Activity'],
+];
+
+for (const [view, label] of TAB_OPTIONS) {
+  const option = document.createElement('option');
+  option.value = view;
+  option.textContent = label;
+  el.tabSelect.append(option);
+}
+
+el.tabSelect.addEventListener('change', () => showView(el.tabSelect.value));
+
+// Narrowing the window while the map is open would otherwise leave a page
+// with nothing on it, since the map is hidden and the dropdown cannot say so.
+const narrow = window.matchMedia('(max-width: 40rem)');
+narrow.addEventListener('change', () => {
+  if (narrow.matches && state.view === 'map') {
+    showView('devices');
+  }
+});
 
 el.tabDevices.addEventListener('click', () => showView('devices'));
 el.tabAutomation.addEventListener('click', () => showView('automation'));

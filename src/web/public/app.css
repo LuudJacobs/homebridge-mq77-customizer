@@ -313,6 +313,34 @@ header {
   padding: 0.3rem 0;
 }
 
+/*
+ * Against the middle of the row rather than the first line of it, which is
+ * what a tick box beside several lines of text should do. `anchor-center`
+ * says it exactly and only Chrome knows it, so the plain centring goes first
+ * and the better one on top where it is understood.
+ */
+.property > input[type='checkbox'] {
+  align-self: center;
+}
+
+@supports (align-self: anchor-center) {
+  .property > input[type='checkbox'] {
+    align-self: anchor-center;
+  }
+}
+
+/* A device and the count beside it read as one thing, so they stay on one
+   line rather than the icon ending one and the name starting the next. */
+.chunk {
+  white-space: nowrap;
+}
+
+.tab-select {
+  display: none;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
 /* No checkbox to leave room for. */
 .property.unselectable {
   grid-template-columns: 1fr auto;
@@ -892,4 +920,149 @@ button.link:hover {
   justify-content: space-between;
   gap: 1rem;
   font-size: 0.87rem;
+}
+
+
+/*
+ * A narrow window, which is a phone held upright or a window pulled in.
+ *
+ * The interface stops being somewhere to build things and becomes somewhere
+ * to look at what is running: rules are read only, panels hold nothing but
+ * the button that runs one by hand, and everything that needs room to be
+ * read goes on a line of its own.
+ */
+@media (max-width: 40rem) {
+  /* What each tab is for is worth a line on a desk, not on a phone. */
+  .hint {
+    display: none;
+  }
+
+  .tabs,
+  #zigbee2mqtt-link {
+    display: none;
+  }
+
+  .tab-select {
+    display: block;
+  }
+
+  /* No room to draw a network here. */
+  #tab-map,
+  #view-map {
+    display: none;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+  }
+
+  /* A line each, with what the device is doing in HomeKit beside its name. */
+  .device > summary {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.15rem 0.6rem;
+    align-items: baseline;
+  }
+
+  .device > summary > .device-name {
+    grid-column: 1;
+  }
+
+  .device > summary > [data-badge] {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .device > summary > .device-meta,
+  .device > summary > .device-seen,
+  .device > summary > .device-topic {
+    grid-column: 1 / -1;
+  }
+
+  /* The topic is worth the line here, where the rest has one too. */
+  .device > summary > .device-topic {
+    display: block;
+  }
+
+  /* What kind of thing it is belongs with the panel that sets it. */
+  .device:not([open]) > summary > .type-icon {
+    display: none;
+  }
+
+  /* The name, what it is called underneath, and what it becomes: a line
+     each, with the value kept level with the name it belongs to. */
+  .property {
+    align-items: start;
+  }
+
+  .property label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  .property .value {
+    justify-self: end;
+  }
+
+  /* Rules are read only here: name, the switch, and what it does. */
+  .rule > summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .rule > summary > .rule-enabled {
+    margin-left: 0;
+  }
+
+  .rules-actions {
+    display: none;
+  }
+
+  /* Nothing in a panel but the button that runs the rule by hand. */
+  .rule > .device-body > *:not(.rule-footer),
+  .rule > .device-body > .rule-footer > *:not(.trigger) {
+    display: none;
+  }
+
+  .rule > .device-body > .rule-footer {
+    border-top: none;
+    margin-top: 0;
+  }
+
+  /* A mirror and a slider cannot be run by hand, so there is nothing inside
+     to open. The switch on the header still works. */
+  .rule-mirror > summary,
+  .rule-slider > summary {
+    pointer-events: none;
+  }
+
+  .rule-mirror > summary .rule-enabled,
+  .rule-slider > summary .rule-enabled {
+    pointer-events: auto;
+  }
+
+  /* When it happened and what it was, then what it did underneath. */
+  .log-line {
+    grid-template-columns: auto 1fr;
+    line-height: 1.6;
+  }
+
+  .log-line > span:last-child {
+    grid-column: 1 / -1;
+  }
+
+  #kind-filters {
+    display: none;
+  }
 }

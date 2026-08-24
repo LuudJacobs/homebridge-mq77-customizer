@@ -73,6 +73,15 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   // the rule editor fails on its first line and the whole list goes blank.
   (window as unknown as { structuredClone: unknown }).structuredClone = structuredClone;
 
+  // jsdom has no media queries, and the page asks whether the window is
+  // narrow so it can leave the map when it is.
+  (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+
   // Nothing here depends on live updates, and jsdom has no EventSource.
   (window as unknown as { EventSource: unknown }).EventSource = class {
     onopen: unknown;
