@@ -83,9 +83,7 @@ async function openSliders(rules: unknown[] = [slider()]) {
   await ui.click(ui.byText('button.tab', 'Sliders'));
   const card = ui.document.querySelector('#sliders .rule') as HTMLDetailsElement | null;
   if (card) {
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
   }
   return ui;
 }
@@ -229,9 +227,7 @@ describe('the sliders tab', () => {
     });
     await ui.click(ui.byText('button.tab', 'Sliders'));
     const card = ui.document.querySelector('#sliders .rule') as HTMLDetailsElement;
-    card.open = true;
-    card.dispatchEvent(new ui.window.Event('toggle'));
-    await ui.settle();
+    await ui.openCard(card);
 
     const hints = [...ui.document.querySelectorAll('#sliders .hint')].map((node) => node.textContent);
     expect(hints.some((text) => text?.includes('cannot'))).toBe(true);

@@ -625,7 +625,10 @@ function sortDevices(devices) {
   }
 
   const key = SORT_KEYS[state.sorts.devices] ?? SORT_KEYS.name;
-  return sorted.sort((a, b) => compareNames(key(a), key(b)) || compareNames(displayName(a), displayName(b)));
+  return sorted
+    .map((device) => ({ device, key: key(device), name: displayName(device) }))
+    .sort((a, b) => compareNames(a.key, b.key) || compareNames(a.name, b.name))
+    .map((entry) => entry.device);
 }
 
 /** Case and accent insensitive, and puts device2 after device10 the way people expect. */
@@ -1117,7 +1120,9 @@ el.settingsFile.addEventListener('change', async () => {
     setStatus(`settings replaced: ${counts.devices} devices, ${counts.rules} rules`, 'live');
     await load();
   } catch (problem) {
-    setStatus(problem.message, 'lost');
+    // Asking for a file and then saying nothing about it up in the corner is
+    // no answer. This one waits to be acknowledged.
+    window.alert(`That file could not be used.\n\n${problem.message}`);
   }
 });
 
@@ -1210,10 +1215,25 @@ const watchable = (device) => device.properties.filter((property) => property.re
 /** Properties a rule can write: anything with a command topic. */
 const writable = (device) => device.properties.filter((property) => property.writable);
 
+/** Devices by `source|id`, rebuilt whenever the list itself is replaced. */
+let deviceIndex = new Map();
+let indexedList;
+
+/**
+ * A device by reference, without walking the list to find it.
+ *
+ * Sorting a rule list asks this once per device per comparison, and a
+ * comparison happens n log n times, so a walk of forty devices turns into
+ * thousands of them and the page stops answering.
+ */
 function findDevice(ref) {
-  return state.devices.find(
-    (device) => device.sourceId === ref.sourceId && device.deviceId === ref.deviceId,
-  );
+  if (indexedList !== state.devices) {
+    indexedList = state.devices;
+    deviceIndex = new Map(
+      state.devices.map((device) => [`${device.sourceId}|${device.deviceId}`, device]),
+    );
+  }
+  return deviceIndex.get(`${ref.sourceId}|${ref.deviceId}`);
 }
 
 function findProperty(ref) {
@@ -1403,16 +1423,21 @@ function renderRuleList(kind, container, emptyText) {
   // that was filtered or set to enabled only would swallow it on the spot.
   const justAdded = (rule) => rule.id === state.pinned;
 
+  // Worked out once per rule rather than inside every comparison. Sorting by
+  // room or by device reads devices to answer, and a comparator that does
+  // that is doing it n log n times over.
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
     .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
+    .map((rule) => ({ rule, key: ruleSortKey(rule, sort), title: ruleTitle(rule) }))
     .sort(
       (a, b) =>
         // A rule just added stays in sight, wherever its name would put it.
-        Number(b.id === state.pinned) - Number(a.id === state.pinned) ||
-        compareNames(ruleSortKey(a, sort), ruleSortKey(b, sort)) ||
-        compareNames(ruleTitle(a), ruleTitle(b)),
-    );
+        Number(b.rule.id === state.pinned) - Number(a.rule.id === state.pinned) ||
+        compareNames(a.key, b.key) ||
+        compareNames(a.title, b.title),
+    )
+    .map((entry) => entry.rule);
 
   if (rules.length === 0) {
     const empty = document.createElement('p');
@@ -1539,9 +1564,25 @@ function renderRule(rule, occurrence, inRoom) {
   // one place should not open it in the others.
   const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
   card.open = state.openRules.has(key);
+
+  /**
+   * Built when it is first opened, not before.
+   *
+   * A panel holds a device picker per row, and a picker holds every device.
+   * Building that for every rule in the list, and again for each room a rule
+   * is listed under, is most of the work of drawing a page nobody has asked
+   * to see inside of.
+   */
+  const reveal = () => {
+    if (card.open && !card.querySelector('.device-body')) {
+      card.append(renderRuleBody(rule));
+    }
+  };
+
   card.addEventListener('toggle', () => {
     if (card.open) {
       state.openRules.add(key);
+      reveal();
     } else {
       state.openRules.delete(key);
     }
@@ -1565,7 +1606,8 @@ function renderRule(rule, occurrence, inRoom) {
   summary.append(name, detail, enabledToggle(rule));
   card.append(summary);
 
-  card.append(renderRuleBody(rule));
+  // Already open from before the list was redrawn, so it is wanted now.
+  reveal();
   return card;
 }
 
