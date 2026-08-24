@@ -9,6 +9,8 @@ const state = {
   /** Hides rules that are switched off. */
   /** Which kinds the activity list shows. */
   activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: false },
+  /** Whether the controller overview lists buttons nothing is bound to. */
+  unusedButtons: true,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -59,6 +61,7 @@ const el = {
   tabSliders: document.getElementById('tab-sliders'),
   tabTimers: document.getElementById('tab-timers'),
   tabActivity: document.getElementById('tab-activity'),
+  tabControllers: document.getElementById('tab-controllers'),
   tabMap: document.getElementById('tab-map'),
   tabSelect: document.getElementById('tab-select'),
   viewDevices: document.getElementById('view-devices'),
@@ -67,6 +70,10 @@ const el = {
   viewSliders: document.getElementById('view-sliders'),
   viewTimers: document.getElementById('view-timers'),
   viewActivity: document.getElementById('view-activity'),
+  viewControllers: document.getElementById('view-controllers'),
+  controllers: document.getElementById('controllers'),
+  unusedButtons: document.getElementById('unused-buttons'),
+  downloadControllers: document.getElementById('download-controllers'),
   viewMap: document.getElementById('view-map'),
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
@@ -584,6 +591,7 @@ const TAB_CONTROLS = {
     placeholder: 'Filter...',
   },
   activity: { sorts: [], placeholder: 'Filter...' },
+  controllers: { sorts: [], placeholder: 'Filter...' },
   map: { sorts: [], placeholder: 'Filter...' },
 };
 
@@ -606,8 +614,9 @@ function paintControls() {
     el.sort.value = state.sorts[view] ?? 'name';
   }
 
-  // Nothing on the map is filtered or sorted from up here.
-  el.filter.hidden = view === 'map';
+  // Nothing on the map or the controller overview is filtered or sorted from
+  // up here: one is a drawing and the other is every controller there is.
+  el.filter.hidden = view === 'map' || view === 'controllers';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
 }
@@ -1471,6 +1480,7 @@ async function loadRules() {
   state.log = log.entries;
   renderRules();
   renderLog();
+  renderControllers();
 }
 
 /** Whether a stored rule belongs to the mirror tab or the automation one. */
@@ -3382,11 +3392,205 @@ function renderLog() {
   }
 }
 
+/**
+ * What every controller's buttons set off, one table per remote.
+ *
+ * Read against the rules rather than stored anywhere: a button belongs to
+ * whichever rules name it, and a rule can be found on several buttons. The
+ * buttons themselves come from what the device says it can send, so one it has
+ * never sent is still listed as free.
+ */
+function renderControllers() {
+  el.controllers.replaceChildren();
+  const controllers = byName(state.devices.filter((device) => isController(device)));
+
+  if (controllers.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'No device is marked as a controller yet. Set one on the Devices tab.';
+    el.controllers.append(empty);
+    return;
+  }
+
+  for (const controller of controllers) {
+    const rows = buttonRows(controller);
+    const shown = state.unusedButtons ? rows : rows.filter((row) => row.rules.length > 0);
+    if (shown.length === 0) {
+      continue;
+    }
+
+    const card = document.createElement('section');
+    // Not `controller`: the type icons already carry that as a class.
+    card.className = 'controller-card';
+
+    const heading = document.createElement('h2');
+    heading.append(...deviceParts(controller));
+    card.append(heading);
+
+    const table = document.createElement('table');
+    table.className = 'buttons';
+    const head = document.createElement('tr');
+    for (const column of ['Button', 'Action']) {
+      const cell = document.createElement('th');
+      cell.textContent = column;
+      head.append(cell);
+    }
+    table.append(head);
+
+    for (const row of shown) {
+      // A button two rules answer is two rows: one line, one thing it does.
+      for (const named of row.rules.length > 0 ? row.rules : [undefined]) {
+        const line = document.createElement('tr');
+        const button = document.createElement('td');
+        button.textContent = row.label;
+        const action = document.createElement('td');
+        action.textContent = named ?? 'none';
+        action.classList.toggle('free', named === undefined);
+        line.append(button, action);
+        table.append(line);
+      }
+    }
+
+    card.append(table);
+    el.controllers.append(card);
+  }
+}
+
+/** A device somebody has marked as one whose presses are worth watching. */
+function isController(device) {
+  return device.exposure?.type === 'controller';
+}
+
+/** Every button a controller can send, with whatever answers it. */
+function buttonRows(controller) {
+  const rows = [];
+
+  for (const property of controller.properties) {
+    if (property.semantic !== 'action') {
+      continue;
+    }
+
+    // What the device says it can send. A source that does not say leaves only
+    // the buttons rules were built on, which is the best that can be known.
+    const values = property.values?.length
+      ? [...property.values]
+      : [...new Set(boundValues(controller, property.key))];
+
+    for (const value of values.sort((a, b) => compareActions(String(a), String(b)))) {
+      rows.push({
+        label: describeAction(String(value)),
+        rules: rulesOn(controller, property.key, String(value)),
+      });
+    }
+  }
+
+  return rows;
+}
+
+/** The action values rules were built on, for a device that lists none. */
+function boundValues(controller, propertyKey) {
+  return state.rules.flatMap((rule) =>
+    startsOf(rule)
+      .filter(
+        (start) =>
+          start &&
+          start.sourceId === controller.sourceId &&
+          start.deviceId === controller.deviceId &&
+          start.propertyKey === propertyKey &&
+          start.match?.value !== undefined,
+      )
+      .map((start) => String(start.match.value)),
+  );
+}
+
+/** What one button sets off, named the way the rule lists name it. */
+function rulesOn(controller, propertyKey, value) {
+  const named = [];
+
+  for (const rule of state.rules) {
+    for (const [start, part] of startsWithParts(rule)) {
+      if (
+        !start ||
+        start.sourceId !== controller.sourceId ||
+        start.deviceId !== controller.deviceId ||
+        start.propertyKey !== propertyKey ||
+        String(start.match?.value) !== value
+      ) {
+        continue;
+      }
+      // Which of a slider's four buttons this is, since the name alone would
+      // be the same on all of them.
+      const title = part ? `${ruleTitle(rule)} (${part})` : ruleTitle(rule);
+      if (!named.includes(title)) {
+        named.push(title);
+      }
+    }
+  }
+
+  return named;
+}
+
+/** A rule's triggers, and for a slider which of its buttons each one is. */
+function startsWithParts(rule) {
+  if (rule.kind === 'slider') {
+    return ['up', 'down', 'on', 'off'].flatMap((key) =>
+      (Array.isArray(rule[key]) ? rule[key] : [rule[key]]).map((start) => [start, key]),
+    );
+  }
+  return startsOf(rule).map((start) => [start, undefined]);
+}
+
+/** The overview as a page somebody can keep, next to the remote. */
+function controllersAsMarkdown() {
+  const lines = [];
+
+  for (const controller of byName(state.devices.filter((device) => isController(device)))) {
+    const rows = buttonRows(controller);
+    const shown = state.unusedButtons ? rows : rows.filter((row) => row.rules.length > 0);
+    if (shown.length === 0) {
+      continue;
+    }
+
+    const cells = shown.flatMap((row) =>
+      (row.rules.length > 0 ? row.rules : ['_none_']).map((named) => [row.label, named]),
+    );
+    const widest = (index) =>
+      Math.max(...cells.map((cell) => cell[index].length), ['Button', 'Action'][index].length);
+    const pad = (text, index) => text.padEnd(widest(index));
+
+    lines.push(`## ${displayName(controller)}`, '');
+    lines.push(`| ${pad('Button', 0)} | ${pad('Action', 1)} |`);
+    lines.push(`|${'-'.repeat(widest(0) + 2)}|${'-'.repeat(widest(1) + 2)}|`);
+    for (const [button, named] of cells) {
+      lines.push(`| ${pad(button, 0)} | ${pad(named, 1)} |`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+el.unusedButtons.addEventListener('change', () => {
+  state.unusedButtons = el.unusedButtons.checked;
+  renderControllers();
+});
+
+el.downloadControllers.addEventListener('click', () => {
+  const file = new Blob([controllersAsMarkdown()], { type: 'text/markdown' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = 'controller-config.md';
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
 function repaint() {
   if (state.view === 'devices') {
     safeRender();
   } else if (state.view === 'activity') {
     renderLog();
+  } else if (state.view === 'controllers') {
+    renderControllers();
   } else {
     renderRules();
   }
@@ -3670,6 +3874,7 @@ function showView(view) {
   el.viewSliders.hidden = view !== 'sliders';
   el.viewTimers.hidden = view !== 'timers';
   el.viewActivity.hidden = view !== 'activity';
+  el.viewControllers.hidden = view !== 'controllers';
   el.viewMap.hidden = view !== 'map';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
@@ -3677,6 +3882,7 @@ function showView(view) {
   el.tabSliders.classList.toggle('active', view === 'sliders');
   el.tabTimers.classList.toggle('active', view === 'timers');
   el.tabActivity.classList.toggle('active', view === 'activity');
+  el.tabControllers.classList.toggle('active', view === 'controllers');
   el.tabMap.classList.toggle('active', view === 'map');
   el.tabSelect.value = view;
   paintControls();
@@ -3691,6 +3897,7 @@ function showView(view) {
 }
 
 const showsRules = () =>
+  state.view === 'controllers' ||
   state.view === 'automation' ||
   state.view === 'mirror' ||
   state.view === 'sliders' ||
@@ -3709,6 +3916,7 @@ const TAB_OPTIONS = [
   ['mirror', 'Mirror devices'],
   ['sliders', 'Sliders'],
   ['timers', 'Timers'],
+  ['controllers', 'Controllers'],
   ['activity', 'Activity'],
 ];
 
@@ -3736,6 +3944,7 @@ el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
 
+el.tabControllers.addEventListener('click', () => showView('controllers'));
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());

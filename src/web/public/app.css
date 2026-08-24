@@ -617,6 +617,51 @@ button.link:hover {
   white-space: nowrap;
 }
 
+/* One remote, and what its buttons are bound to. */
+.controller-card {
+  margin-bottom: 1.5rem;
+}
+
+.controller-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+table.buttons {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+table.buttons th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.buttons th,
+table.buttons td {
+  padding: 0.3rem 0.75rem 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+table.buttons td:first-child {
+  width: 12rem;
+  white-space: nowrap;
+}
+
+/* A button nothing answers, which is what the list is read for. */
+table.buttons td.free {
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* A description with something to press at the end of it. */
 .hint-row {
   display: flex;
@@ -1139,6 +1184,16 @@ button.link:hover {
 
   #kind-filters {
     display: none;
+  }
+
+  /* Saving a file to a phone leads nowhere useful, the same as the settings. */
+  #download-controllers {
+    display: none;
+  }
+
+  /* A button and what it does, with room for the names. */
+  table.buttons td:first-child {
+    width: 8rem;
   }
 
   /*
