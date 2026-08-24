@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings can be downloaded and uploaded from the footer, which is the only copy that survives losing the machine
 - The last ten dated copies of the settings are kept in a `backups` folder, one at startup and at most one an hour after that
 - A run that starts with nothing refuses to write over a settings file that has something in it, and says so
+- The footer reads left to right: which build this is, what the settings are doing, and the way out. It says when the last copy was taken and can take one on the spot, and stacks onto two lines on a phone
+- Descriptions break after the arrow rather than in the middle of what follows it, in rule lines and in the activity log
+- A device that carries the same function more than once, such as a three gang switch, can put every channel into a mirror instead of one of them
 
 ## [0.16.1] - 2026-08-24
 
