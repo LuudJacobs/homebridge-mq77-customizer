@@ -8,7 +8,7 @@ const state = {
   /** Hides everything that is not currently published to HomeKit. */
   /** Hides rules that are switched off. */
   /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: true },
+  activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: false },
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -1215,14 +1215,127 @@ const MATCH_KINDS = [
 
 const OUTCOME_LABELS = {
   fired: 'ran',
-  rateLimited: 'held back',
+  // Held back and nothing to do are different things underneath, which the
+  // filters and the colour still tell apart. Read out they are both a rule
+  // that decided not to.
+  rateLimited: 'ignored',
   conditionsFailed: 'conditions not met',
   failed: 'failed',
   disabled: 'turned off',
-  skipped: 'nothing to do',
+  skipped: 'ignored',
   started: 'started',
   cancelled: 'called off',
 };
+
+/** Outcomes that say everything in the word itself. */
+const WORDLESS = new Set(['cancelled']);
+
+/**
+ * A log line, in the parts it reads in: what set it off, which rule and how it
+ * ended, and what it did.
+ *
+ * The engine stores what happened rather than a sentence about it, because the
+ * words want names, rooms and button labels that only live here. Each part is
+ * laid out whole, so a line breaks after the arrow or the colon and a narrow
+ * window puts each part on its own line.
+ */
+function logParts(entry) {
+  const words = (text) => document.createTextNode(text);
+
+  // A press of its own: nothing answered it, so it is the whole line.
+  if (entry.ruleKind === 'action') {
+    const device = findDevice(entry.press ?? refOf(entry.ruleId));
+    return [
+      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
+      words(' '),
+      phrase(words(pressWords(entry.press) ?? entry.detail)),
+    ];
+  }
+
+  const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
+  const named = rule ? ruleTitle(rule) : entry.ruleName;
+  const outcome = OUTCOME_LABELS[entry.outcome] ?? entry.outcome;
+  const branch = entry.branch ? `'${entry.branch}' ` : '';
+  const said = describeOutcome(entry);
+  const parts = [];
+
+  // What set it off, when a button did. A rule that ran on a state change has
+  // nothing to name here.
+  if (entry.press) {
+    const device = findDevice(entry.press);
+    parts.push(
+      phrase(
+        ...(device ? deviceParts(device, ` ${pressWords(entry.press)} →`) : [words('a press →')]),
+      ),
+      words(' '),
+    );
+  }
+
+  parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? ':' : ''}`)));
+  if (said) {
+    parts.push(words(' '), phrase(words(said)));
+  }
+  return parts;
+}
+
+/** `zigbee:0xabc` as the reference the rest of the interface passes about. */
+function refOf(ruleId) {
+  const [sourceId, deviceId] = String(ruleId).split(':');
+  return { sourceId, deviceId };
+}
+
+/** A press as somebody would say it: `4 Single Long`. */
+function pressWords(press) {
+  return press ? describeAction(press.value) : undefined;
+}
+
+/**
+ * What a rule did, in as few words as it takes.
+ *
+ * Sliders and mirrors are worded here rather than in the engine, which knows
+ * property keys and not what the user calls them.
+ */
+function describeOutcome(entry) {
+  if (WORDLESS.has(entry.outcome)) {
+    return '';
+  }
+
+  if (entry.copy) {
+    const from = nameOfRef(entry.copy.from);
+    const to = entry.copy.to.map(nameOfRef).join(', ');
+    return `${from} → ${to}`;
+  }
+
+  const step = entry.step;
+  if (step) {
+    if (step.power) {
+      return step.power === 'on' ? 'On' : 'Off';
+    }
+    if (step.at === 'max' && step.step === undefined) {
+      return `${step.label} maxed`;
+    }
+
+    const where =
+      step.step === undefined
+        ? String(step.level)
+        : `${step.step}/${step.steps}${step.at ? ` (${step.at})` : ''}`;
+
+    // Coming on says so, since that is the part somebody notices.
+    if (step.cameOn) {
+      return `On to ${step.label} ${where}`;
+    }
+    return `${step.label}${step.direction === 'down' ? '-' : '+'} ${where}`;
+  }
+
+  return entry.detail;
+}
+
+/** A property as `Gang Voor State`: which device, and which of its functions. */
+function nameOfRef(ref) {
+  const device = findDevice(ref);
+  const property = findProperty(ref);
+  return [device ? displayName(device) : ref.deviceId, property?.label ?? ref.propertyKey].join(' ');
+}
 
 /** By display name, for the pickers a rule is built from. */
 function byName(devices) {
@@ -3262,28 +3375,8 @@ function renderLog() {
     kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
 
     const what = document.createElement('span');
-    if (entry.ruleKind === 'action') {
-      // Not a rule: a device saying a button was pressed. Named and drawn the
-      // way it is everywhere else, which is not what the engine stored.
-      const [sourceId, deviceId] = entry.ruleId.split(':');
-      const device = findDevice({ sourceId, deviceId });
-      what.replaceChildren(
-        device
-          ? phrase(...deviceParts(device, ' →'))
-          : phrase(document.createTextNode(`${entry.ruleName} →`)),
-        document.createTextNode(' '),
-        phrase(document.createTextNode(entry.detail)),
-      );
-    } else {
-      const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
-      const named = rule ? ruleTitle(rule) : entry.ruleName;
-      const outcome = OUTCOME_LABELS[entry.outcome] ?? entry.outcome;
-      what.replaceChildren(
-        phrase(document.createTextNode(`${named} - ${outcome} →`)),
-        document.createTextNode(' '),
-        phrase(document.createTextNode(entry.detail)),
-      );
-    }
+    what.className = 'log-what';
+    what.replaceChildren(...logParts(entry));
     line.append(when, kind, what);
     container.append(line);
   }
