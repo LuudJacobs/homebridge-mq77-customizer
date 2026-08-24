@@ -1128,6 +1128,15 @@ button.link:hover {
     grid-column: 1 / -1;
   }
 
+  /*
+   * The three parts of a log line, one under the other: what set it off, which
+   * rule and how it ended, and what it did. Beside each other they would wrap
+   * anywhere; stacked they say the same thing in the order it is read.
+   */
+  .log-what .phrase {
+    display: block;
+  }
+
   #kind-filters {
     display: none;
   }

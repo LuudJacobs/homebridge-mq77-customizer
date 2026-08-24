@@ -26,6 +26,7 @@ import {
   STEP_MEMORY_MS,
   type Action,
   type LogEntry,
+  type LogPress,
   type LogOutcome,
   type AnyRule,
   type Branch,
@@ -60,6 +61,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** Firing times per rule, trimmed to the runaway window. */
   private readonly recentFirings = new Map<string, number[]>();
   private readonly entries: LogEntry[] = [];
+
+  /** The press the rules are being run for, if a press is what arrived. */
+  private pressed?: LogPress;
+
+  /** Whether any rule answered that press. */
+  private answered = false;
   /** When each mirror group was last written to, so it can be left to settle. */
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
@@ -117,8 +124,31 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
-    this.notePresses(update);
+    // Held back rather than written down at once: a press that sets a rule off
+    // is that rule's line, not a line of its own in front of it.
+    const presses = this.pressesIn(update);
+    this.pressed = presses[0];
+    this.answered = false;
 
+    try {
+      this.runRules(rules, update, previously);
+    } finally {
+      this.pressed = undefined;
+    }
+
+    if (!this.answered) {
+      for (const press of presses) {
+        this.notePress(press);
+      }
+    }
+  }
+
+  /** Every rule's turn at one message. */
+  private runRules(
+    rules: AnyRule[],
+    update: StateUpdate,
+    previously: Map<string, unknown>,
+  ): void {
     for (const rule of rules) {
       if (!rule.enabled) {
         continue;
@@ -266,6 +296,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         rule,
         'fired',
         `${source.label} copied to ${writes.map((write) => write.target.label).join(', ')}`,
+        { copy: { from, to: writes.map((write) => write.member) } },
       );
     }
   }
@@ -316,7 +347,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
       const wanted = button === 'on' ? power.onValue : power.offValue;
       this.send(power, wanted);
-      this.record(rule, 'fired', `switched ${button}`);
+      this.record(rule, 'fired', `switched ${button}`, {
+        step: { label: power.label, power: button },
+      });
       return;
     }
 
@@ -339,22 +372,33 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
           : step - 1;
 
     if (wanted === step && step === ladder.steps) {
-      this.record(rule, 'skipped', `${target.label} is already at the top`);
+      this.record(rule, 'skipped', `${target.label} is already at the top`, {
+        step: { label: target.label, at: 'max' },
+      });
       return;
     }
 
     // Off is a step of its own at the bottom: a light at zero brightness is
     // usually still on, drawing power and looking broken.
     if (wanted === 0) {
+      const bottom = {
+        label: target.label,
+        direction: 'down' as const,
+        step: 0,
+        steps: ladder.steps,
+        at: 'off' as const,
+      };
       if (power?.setTopic) {
         this.send(power, power.offValue);
         this.remember(rule, 0);
-        this.record(rule, 'fired', `${target.label} stepped down to off`);
+        this.record(rule, 'fired', `${target.label} stepped down to off`, { step: bottom });
         return;
       }
       this.send(target, ladder.min);
       this.remember(rule, 0);
-      this.record(rule, 'fired', `${target.label} down to ${ladder.min}`);
+      this.record(rule, 'fired', `${target.label} down to ${ladder.min}`, {
+        step: { ...bottom, level: ladder.min },
+      });
       return;
     }
 
@@ -382,6 +426,16 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       fromOff
         ? `${target.label} on at ${level}`
         : `${target.label} ${button} to step ${landed} of ${ladder.steps}`,
+      {
+        step: {
+          label: target.label,
+          // Coming on where the device says lands on a level rather than a
+          // step, and the level is what happened.
+          ...(fromOff ? { level } : { direction: button, step: landed, steps: ladder.steps }),
+          ...(step === 0 ? { cameOn: true } : {}),
+          ...(landed === ladder.steps ? { at: 'max' as const } : {}),
+        },
+      },
     );
   }
 
@@ -599,33 +653,45 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    * every remote in the house reporting into one list would bury the rules.
    * An empty action is Zigbee2MQTT clearing the last one, not a new press.
    */
-  private notePresses(update: StateUpdate): void {
+  private pressesIn(update: StateUpdate): LogPress[] {
     const device = this.catalog.getDevice(update.sourceId, update.deviceId);
     if (!device) {
-      return;
+      return [];
     }
     const exposure = this.store.getExposure(`${update.sourceId}:${update.deviceId}`);
     if (exposure?.type !== 'controller') {
-      return;
+      return [];
     }
 
+    const presses: LogPress[] = [];
     for (const [propertyKey, value] of Object.entries(update.changes)) {
       const property = device.properties.find((candidate) => candidate.key === propertyKey);
       if (property?.semantic !== 'action' || value === '' || value === undefined) {
         continue;
       }
-      this.notePress(update, device.name, property.label, value);
+      presses.push({
+        sourceId: update.sourceId,
+        deviceId: update.deviceId,
+        propertyKey,
+        value: String(value),
+      });
     }
+    return presses;
   }
 
-  private notePress(update: StateUpdate, name: string, label: string, value: unknown): void {
+  private notePress(press: LogPress): void {
+    const device = this.catalog.getDevice(press.sourceId, press.deviceId);
+    const label =
+      device?.properties.find((property) => property.key === press.propertyKey)?.label ??
+      press.propertyKey;
     const entry: LogEntry = {
       at: Date.now(),
-      ruleId: `${update.sourceId}:${update.deviceId}`,
-      ruleName: name,
+      ruleId: `${press.sourceId}:${press.deviceId}`,
+      ruleName: device?.name ?? press.deviceId,
       ruleKind: 'action',
       outcome: 'fired',
-      detail: `${label} ${String(value)}`,
+      detail: `${label} ${press.value}`,
+      press,
     };
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
@@ -669,7 +735,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const last = this.lastFired.get(rule.id);
 
     if (last !== undefined && now - last < limit) {
-      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, waiting ${limit}ms between runs`);
+      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`);
       return;
     }
 
@@ -712,20 +778,15 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
     }
 
-    const what = nameOf(chosen.branch, chosen.index);
+    // Named only when there is a choice to name: one branch is just the rule.
+    const what = branches.length === 1 ? undefined : nameOf(chosen.branch, chosen.index);
     if (problems.length > 0) {
-      this.record(rule, 'failed', `${what}: ${problems.join('; ')}`);
+      this.record(rule, 'failed', problems.join('; '), { branch: what });
       return;
     }
 
     const count = chosen.branch.actions.length;
-    this.record(
-      rule,
-      'fired',
-      branches.length === 1
-        ? `${count} action${count === 1 ? '' : 's'} sent`
-        : `${what}, ${count} action${count === 1 ? '' : 's'} sent`,
-    );
+    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what });
   }
 
   /** Returns a problem, or undefined when the action was sent. */
@@ -797,7 +858,19 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ?.properties.find((property) => property.key === ref.propertyKey);
   }
 
-  private record(rule: AnyRule, outcome: LogOutcome, detail: string): void {
+  private record(
+    rule: AnyRule,
+    outcome: LogOutcome,
+    detail: string,
+    parts: Pick<LogEntry, 'branch' | 'step' | 'copy'> = {},
+  ): void {
+    // A rule that answers a press says so on its own line, and the press does
+    // not get one of its own. Two lines for one thing that happened read as
+    // two things happening.
+    if (this.pressed) {
+      this.answered = true;
+    }
+
     const entry: LogEntry = {
       at: Date.now(),
       ruleId: rule.id,
@@ -811,15 +884,18 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
             : 'standard',
       outcome,
       detail,
+      ...(this.pressed ? { press: this.pressed } : {}),
+      ...parts,
     };
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
       this.entries.shift();
     }
+    const said = parts.branch ? `${parts.branch}: ${detail}` : detail;
     if (outcome === 'fired') {
-      this.log.info(`Rule "${rule.name}": ${detail}`);
+      this.log.info(`Rule "${rule.name}": ${said}`);
     } else {
-      this.log.debug(`Rule "${rule.name}" ${outcome}: ${detail}`);
+      this.log.debug(`Rule "${rule.name}" ${outcome}: ${said}`);
     }
     this.emit('log', entry);
   }
