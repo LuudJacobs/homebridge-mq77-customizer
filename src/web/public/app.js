@@ -72,7 +72,6 @@ const el = {
   sliders: document.getElementById('sliders'),
   timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
-  clearLog: document.getElementById('clear-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
@@ -1618,7 +1617,8 @@ function summarise(rule, inRoom) {
 
   return [
     ...deviceParts(triggers[0], andMore(distinctDevices(triggers)), inRoom),
-    rule.kind === 'timer' ? chunkOf(` → ${describeWait(rule.waitMs)} → `) : words(' → '),
+    words(' → '),
+    ...(rule.kind === 'timer' ? [chunkOf(describeWait(rule.waitMs)), words(' → ')] : []),
     ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
     words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
   ];
@@ -3272,15 +3272,6 @@ el.tabMirror.addEventListener('click', () => showView('mirror'));
 el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
 
-el.clearLog.addEventListener('click', async () => {
-  try {
-    await api('/api/log', { method: 'DELETE' });
-    state.log = [];
-    renderLog();
-  } catch (problem) {
-    setStatus(problem.message, 'lost');
-  }
-});
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
