@@ -1010,6 +1010,12 @@ button.link:hover {
     gap: 0.15rem;
   }
 
+  /* The gap that sits it away from the words it follows is wrong once it is
+     on a line of its own, where it should start where they start. */
+  .property label > .tag {
+    margin-left: 0;
+  }
+
   .property .value {
     justify-self: end;
   }
