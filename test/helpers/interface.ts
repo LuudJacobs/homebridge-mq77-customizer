@@ -19,7 +19,11 @@ export interface Snapshot {
  * types, which is exactly the kind of code that goes wrong quietly. Running it
  * for real is the only way to know it still works.
  */
-export async function openInterface(options: { state: Snapshot; rules?: unknown[] }) {
+export async function openInterface(options: {
+  state: Snapshot;
+  rules?: unknown[];
+  log?: unknown[];
+}) {
   // Anything the page throws is collected rather than swallowed, since a
   // handler that fails silently is the whole difficulty with this code.
   const errors: string[] = [];
@@ -37,7 +41,7 @@ export async function openInterface(options: { state: Snapshot; rules?: unknown[
   const responses: Record<string, unknown> = {
     '/api/state': { tileTypes: ['Switch', 'Outlet', 'Lightbulb', 'Fan'], ...options.state },
     '/api/rules': { rules: options.rules ?? [] },
-    '/api/log': { entries: [] },
+    '/api/log': { entries: options.log ?? [] },
   };
 
   const requests: { path: string; body: unknown }[] = [];

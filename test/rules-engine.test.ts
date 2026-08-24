@@ -298,6 +298,39 @@ describe('watching a controller', () => {
     expect(engine.getLog()[0]?.detail).toContain('single_left');
   });
 
+  it('puts a press that set a rule off on the rule entry, and not on one of its own', async () => {
+    const rule = buttonRule();
+    const { engine, mqtt, store } = await harness([rule]);
+    store.setExposure(`zigbee:${ROCKER.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    // Two lines for one thing that happened read as two things happening.
+    expect(engine.getLog()).toHaveLength(1);
+    expect(engine.getLog()[0]).toMatchObject({
+      ruleId: rule.id,
+      press: { deviceId: ROCKER.id, propertyKey: 'action', value: 'single_left' },
+    });
+  });
+
+  it('keeps a press of its own when nothing answered it', async () => {
+    const rule = buttonRule({
+      trigger: {
+        sourceId: 'zigbee',
+        deviceId: ROCKER.id,
+        propertyKey: 'action',
+        match: { kind: 'equals', value: 'double_left' },
+      },
+    });
+    const { engine, mqtt, store } = await harness([rule]);
+    store.setExposure(`zigbee:${ROCKER.id}`, { properties: [], type: 'controller' });
+
+    mqtt.deliver(ROCKER.topic, { action: 'single_left' });
+
+    expect(engine.getLog()).toHaveLength(1);
+    expect(engine.getLog()[0]).toMatchObject({ ruleKind: 'action' });
+  });
+
   it('says nothing about a device nobody has marked', async () => {
     const { engine, mqtt } = await harness([]);
     mqtt.deliver(ROCKER.topic, { action: 'single_left' });
@@ -387,8 +420,9 @@ describe('branches', () => {
     mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
     mqtt.deliver(ROCKER.topic, { action: 'single_left' });
 
-    // The second one, since the first did not hold.
-    expect(engine.getLog()[0]?.detail).toContain('outcome 2');
+    // The second one, since the first did not hold. Named on the entry rather
+    // than written into the sentence: the interface words it.
+    expect(engine.getLog()[0]?.branch).toContain('outcome 2');
   });
 
   it('calls an outcome what it was named, not what number it is', async () => {
@@ -400,8 +434,8 @@ describe('branches', () => {
     mqtt.deliver(ROCKER.topic, { action: 'single_left' });
 
     // The name is the reason for having one: the run log is what it is read in.
-    expect(engine.getLog()[0]?.detail).toContain('nobody home');
-    expect(engine.getLog()[0]?.detail).not.toContain('outcome 2');
+    expect(engine.getLog()[0]?.branch).toContain('nobody home');
+    expect(engine.getLog()[0]?.branch).not.toContain('outcome 2');
   });
 
   it('names a declining outcome the same way', async () => {
