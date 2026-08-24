@@ -1464,6 +1464,13 @@ function renderRuleList(kind, container, emptyText) {
   if (sort === 'room') {
     const groups = new Map();
     for (const rule of rules) {
+      // A rule just added has no room yet, and burying it under a heading is
+      // the same as hiding it. It sits above them until it is saved.
+      if (rule.id === state.pinned) {
+        container.append(renderRule(rule));
+        continue;
+      }
+
       const rooms = affectedRooms(rule);
       for (const room of rooms.length > 0 ? rooms : [UNGROUPED]) {
         if (!groups.has(room)) {
@@ -1603,7 +1610,13 @@ function renderRule(rule, occurrence, inRoom) {
   } else {
     detail.replaceChildren(...summarise(rule, inRoom));
   }
-  summary.append(name, detail, enabledToggle(rule));
+  summary.append(name, detail);
+
+  // Nothing to switch on until there is something saved to switch on, and a
+  // half built rule that says "disabled" invites turning it on.
+  if (rule.id !== state.pinned) {
+    summary.append(enabledToggle(rule));
+  }
   card.append(summary);
 
   // Already open from before the list was redrawn, so it is wanted now.
