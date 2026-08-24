@@ -1209,6 +1209,98 @@ function byName(devices) {
   return [...devices].sort((a, b) => compareNames(displayName(a), displayName(b)));
 }
 
+/**
+ * Gestures, in the order somebody would read them out.
+ *
+ * Zigbee2MQTT writes an action as a button and a gesture joined by an
+ * underscore, in either order, so a value has to be taken apart before it can
+ * be said properly or put in a sensible order.
+ */
+const GESTURES = [
+  'single',
+  'single_long',
+  'double',
+  'double_long',
+  'triple',
+  'triple_long',
+  'quadruple',
+  'quadruple_long',
+  'quintuple',
+  'quintuple_long',
+  'hold',
+  'long',
+  'press',
+  'click',
+  'toggle',
+  'release',
+];
+
+/** Buttons with an order of their own, before anything alphabetical. */
+const BUTTONS = ['left', 'right', 'both'];
+
+/** Splits an action into the button it belongs to and what was done to it. */
+function splitAction(value) {
+  const parts = String(value).split('_');
+
+  // Longest first, so `single_long` is not read as `long`.
+  for (let take = Math.min(2, parts.length - 1); take >= 1; take--) {
+    const tail = parts.slice(-take).join('_').toLowerCase();
+    if (GESTURES.includes(tail)) {
+      return { button: parts.slice(0, -take).join('_'), gesture: tail };
+    }
+    const head = parts.slice(0, take).join('_').toLowerCase();
+    if (GESTURES.includes(head)) {
+      return { button: parts.slice(take).join('_'), gesture: head };
+    }
+  }
+
+  const whole = parts.join('_').toLowerCase();
+  return GESTURES.includes(whole) ? { button: '', gesture: whole } : { button: value, gesture: '' };
+}
+
+const titled = (text) =>
+  String(text)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+/** An action as somebody would say it: `1 Single Long`, `Left Double`. */
+function describeAction(value) {
+  const { button, gesture } = splitAction(value);
+  return [titled(button), titled(gesture)].filter(Boolean).join(' ') || String(value);
+}
+
+/** Buttons in their own order, then gestures in theirs. */
+function actionOrder(value) {
+  const { button, gesture } = splitAction(value);
+  const number = Number(button);
+  const named = BUTTONS.indexOf(button.toLowerCase());
+  const rank =
+    button !== '' && Number.isFinite(number)
+      ? [0, number, '']
+      : named >= 0
+        ? [1, named, '']
+        : [2, 0, button.toLowerCase()];
+
+  const step = GESTURES.indexOf(gesture);
+  return [...rank, step < 0 ? GESTURES.length : step];
+}
+
+function compareActions(a, b) {
+  const left = actionOrder(a);
+  const right = actionOrder(b);
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] === right[index]) {
+      continue;
+    }
+    return typeof left[index] === 'string'
+      ? compareNames(left[index], right[index])
+      : left[index] - right[index];
+  }
+  return 0;
+}
+
 /** Properties a rule can watch: anything readable. */
 const watchable = (device) => device.properties.filter((property) => property.readable);
 
@@ -1550,11 +1642,16 @@ function describeTrigger(trigger) {
   if (!trigger) {
     return 'Nothing yet';
   }
-  const label = findProperty(trigger)?.label ?? trigger.propertyKey ?? 'something';
+  const property = findProperty(trigger);
+  const label = property?.label ?? trigger.propertyKey ?? 'something';
   const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
   const value = trigger.match?.value;
   const hasValue = value !== undefined && value !== '';
-  return [label, verb, hasValue ? value : ''].filter(Boolean).join(' ');
+  const said =
+    property?.semantic === 'action' || property?.role === 'action'
+      ? describeAction(value)
+      : value;
+  return [label, verb, hasValue ? said : ''].filter(Boolean).join(' ');
 }
 
 /**
@@ -2976,12 +3073,20 @@ function valueInput(property, current, onChange, options = {}) {
   if (property?.type === 'enum' && property.values?.length) {
     const select = document.createElement('select');
     let anyTaken = false;
-    for (const value of property.values) {
+
+    // A remote lists its actions in whatever order its handler was written
+    // in. Said properly and put in order, they read as the buttons they are.
+    const actions = property.semantic === 'action' || property.role === 'action';
+    const values = actions ? [...property.values].sort(compareActions) : property.values;
+
+    for (const value of values) {
       const choice = document.createElement('option');
       choice.value = value;
-      // The star is in what is shown, never in what is stored.
+      // Both the name and the star are in what is shown, never in what is
+      // stored.
+      const shown = actions ? describeAction(value) : value;
       const taken = options.taken?.has(String(value));
-      choice.textContent = taken ? `${value} *` : value;
+      choice.textContent = taken ? `${shown} *` : shown;
       anyTaken = anyTaken || Boolean(taken);
       select.append(choice);
     }
