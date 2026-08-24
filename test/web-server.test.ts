@@ -440,10 +440,22 @@ describe('taking settings away and putting them back', () => {
     expect(Object.keys(store.data.exposures)).toEqual(['zigbee:0xabc']);
   });
 
+  it('takes a copy on asking, and says when', async () => {
+    const { base } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const response = await signed('/api/settings/backup', { method: 'POST' });
+    expect(response.status).toBe(200);
+
+    const { backupAt } = (await response.json()) as { backupAt: number };
+    expect(backupAt).toBeGreaterThan(0);
+  });
+
   it('is behind the password like everything else', async () => {
     const { base } = await harness();
     expect((await fetch(`${base}/api/settings`)).status).toBe(401);
     expect((await fetch(`${base}/api/settings`, { method: 'PUT' })).status).toBe(401);
+    expect((await fetch(`${base}/api/settings/backup`, { method: 'POST' })).status).toBe(401);
   });
 });
 
