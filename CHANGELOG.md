@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A press and the rule it sets off read as one line, `Woonkamer Remote 4 Single Long → Woonkamer: All Off - ran: 2 actions sent`. Presses that set nothing off keep a line of their own, and start hidden
+- Actions read as buttons in the activity log too, `4 Single Long` rather than `4_single_long`
+- A slider says what it did in the words somebody would use: `Brightness+ 1/6`, `Brightness- 0/6 (off)`, `On to Brightness 94`
+- A mirror says which function it read and which it wrote: `Gang Voor State → Gang Achter State`
+- A rule with more than one outcome says which one ran, in quotes
+- Held back and nothing to do both read as `ignored`, and a timer called off says so without repeating why
+- On a phone a log line stacks into what set it off, which rule, and what it did
+
 ## [1.0.0] - 2026-08-24
 
 ### Added
