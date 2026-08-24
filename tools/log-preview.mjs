@@ -148,7 +148,7 @@ const log = [
   entry({ ruleId: 'r3', ruleName: 'Bar', outcome: 'rateLimited', detail: 'Fired 651ms ago, minimum 1000ms' }),
   entry({ ruleId: 'r2', ruleName: 'Light Cycle', outcome: 'conditionsFailed', detail: 'Zithoek Only: Licht is not ON' }),
   entry({ ruleId: 'r2', ruleName: 'Light Cycle', outcome: 'failed', branch: 'Zithoek Only', detail: 'Licht cannot be written to' }),
-  entry({ ruleId: 'r3', ruleName: 'Bar', outcome: 'disabled', detail: 'Fired too often, so it was turned off. Check it is not triggering itself' }),
+  entry({ ruleId: 'r3', ruleName: 'Bar', outcome: 'disabled', detail: 'Fired too often' }),
 ];
 
 const virtualConsole = new VirtualConsole();

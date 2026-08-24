@@ -141,7 +141,7 @@ describe('what a log line says', () => {
       detail: 'Action 2_triple',
       press: { ...press, value: '2_triple' },
     });
-    expect(await lines([noted])).toEqual(['Woonkamer Remote: 2 Triple']);
+    expect(await lines([noted])).toEqual(['Woonkamer Remote 2 Triple']);
   });
 
   it('says which function a mirror read and which it wrote', async () => {

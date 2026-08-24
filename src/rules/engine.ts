@@ -726,7 +726,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.log.error(
       `Rule "${rule.name}" fired ${RUNAWAY_FIRINGS} times in ${RUNAWAY_WINDOW_MS / 1000}s and has been turned off. It is probably triggering itself.`,
     );
-    this.record(rule, 'disabled', 'Fired too often, so it was turned off. Check it is not triggering itself');
+    this.record(rule, 'disabled', 'Fired too often');
   }
 
   private fire(rule: Rule, trigger: { property: PropertyRef; value: unknown }): void {
