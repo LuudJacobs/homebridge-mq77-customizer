@@ -388,6 +388,65 @@ describe('sanitiseExposure', () => {
   });
 });
 
+describe('taking settings away and putting them back', () => {
+  it('hands over everything worth keeping, as a file', async () => {
+    const { base, store } = await harness();
+    const { fetch: signed } = await signIn(base);
+    store.setExposure('zigbee:0xabc', { properties: ['state'] });
+
+    const response = await signed('/api/settings', { method: 'GET' });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain('attachment');
+
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(Object.keys(body.exposures as object)).toContain('zigbee:0xabc');
+    // It signs the cookie that keeps you signed in, and a settings file is a
+    // thing people mail to themselves.
+    expect(body.sessionSecret).toBeUndefined();
+  });
+
+  it('puts one back and says what it found', async () => {
+    const { base, store } = await harness();
+    const { fetch: signed } = await signIn(base);
+    const secret = store.sessionSecret();
+
+    const response = await signed('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        exposures: { 'zigbee:0xdef': { properties: ['state'] } },
+        rules: [{ id: 'r1', name: 'From a file', enabled: true }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ devices: 1, rules: 1 });
+    expect(store.data.rules).toHaveLength(1);
+    // Still signed in afterwards, which replacing the secret would undo.
+    expect(store.sessionSecret()).toBe(secret);
+  });
+
+  it('refuses a file that is not one of ours', async () => {
+    const { base, store } = await harness();
+    const { fetch: signed } = await signIn(base);
+    store.setExposure('zigbee:0xabc', { properties: ['state'] });
+
+    const response = await signed('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ something: 'else' }),
+    });
+
+    expect(response.status).toBe(400);
+    // And nothing was touched on the way to saying so.
+    expect(Object.keys(store.data.exposures)).toEqual(['zigbee:0xabc']);
+  });
+
+  it('is behind the password like everything else', async () => {
+    const { base } = await harness();
+    expect((await fetch(`${base}/api/settings`)).status).toBe(401);
+    expect((await fetch(`${base}/api/settings`, { method: 'PUT' })).status).toBe(401);
+  });
+});
+
 describe('running a rule by hand', () => {
   it('runs a stored automation and says so', async () => {
     const { base } = await harness();

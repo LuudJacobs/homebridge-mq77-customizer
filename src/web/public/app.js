@@ -48,6 +48,10 @@ const el = {
   kindAction: document.getElementById('kind-action'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
+  exportSettings: document.getElementById('export-settings'),
+  importSettings: document.getElementById('import-settings'),
+  settingsFile: document.getElementById('settings-file'),
+  backupAt: document.getElementById('backup-at'),
   tabDevices: document.getElementById('tab-devices'),
   tabAutomation: document.getElementById('tab-automation'),
   tabMirror: document.getElementById('tab-mirror'),
@@ -253,6 +257,13 @@ async function load() {
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
+  el.backupAt.textContent = snapshot.backupAt
+    ? `Backed up ${formatLastSeen(snapshot.backupAt)}`
+    : '';
+  if (snapshot.refusedToWrite) {
+    // Everything is still on disk, and nothing here is being kept.
+    setStatus('settings not saved, see the Homebridge log', 'lost');
+  }
 
   // Only shown when configured, so the tab bar does not carry a dead link.
   const zigbee2mqtt = snapshot.links?.zigbee2mqtt;
@@ -1076,6 +1087,37 @@ el.loginForm.addEventListener('submit', async (event) => {
         ? 'Password accepted, but the session was rejected. Check that cookies are enabled for this site.'
         : error.message,
     );
+  }
+});
+
+/**
+ * Hands the settings over as a file, and takes one back.
+ *
+ * The one thing here that puts a copy somewhere other than the machine this
+ * is running on, which is the only kind of backup that survives losing it.
+ */
+el.exportSettings.addEventListener('click', () => {
+  // A plain navigation, so the browser saves it rather than the page holding
+  // it in memory and asking what to do with it.
+  window.location.href = '/api/settings';
+});
+
+el.importSettings.addEventListener('click', () => el.settingsFile.click());
+
+el.settingsFile.addEventListener('change', async () => {
+  const file = el.settingsFile.files?.[0];
+  el.settingsFile.value = '';
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const counts = await api('/api/settings', { method: 'PUT', body: text });
+    setStatus(`settings replaced: ${counts.devices} devices, ${counts.rules} rules`, 'live');
+    await load();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
   }
 });
 
