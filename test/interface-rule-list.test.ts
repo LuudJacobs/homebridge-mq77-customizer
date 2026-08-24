@@ -403,7 +403,8 @@ describe('keeping a description on one line', () => {
     const chunks = [...ui.document.querySelectorAll('#timers .device-meta .chunk')].map(
       (node) => node.textContent,
     );
-    expect(chunks).toContain(' → 01:30 → ');
+    // The time is one piece. The arrows either side may end a line.
+    expect(chunks).toContain('01:30');
   });
 });
 
