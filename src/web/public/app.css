@@ -348,8 +348,6 @@ header {
 
 .tab-select {
   display: none;
-  width: 100%;
-  margin-bottom: 1rem;
 }
 
 /* No checkbox to leave room for. */
@@ -430,11 +428,23 @@ header {
 
 /* Rules */
 
-.tabs {
+/*
+ * The way into every section, on one line: the tabs or the dropdown standing
+ * in for them, and the way out to Zigbee2MQTT at the far end. The line under
+ * it belongs to the bar rather than to the tabs, so it is still there when
+ * they give way to the dropdown.
+ */
+.tab-bar {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
   margin-bottom: 1rem;
   border-bottom: 1px solid var(--line);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
 }
 
 .tab {
@@ -461,6 +471,22 @@ header {
 
 .tab-link:hover {
   color: var(--accent);
+}
+
+/*
+ * Eight tabs and a link need more room than a window this size has, so they
+ * become a dropdown as wide as the section it names, with the way out to
+ * Zigbee2MQTT still at the far end of the line.
+ */
+@media (max-width: 60rem) {
+  .tabs {
+    display: none;
+  }
+
+  .tab-select {
+    display: block;
+    margin: 0.35rem 0;
+  }
 }
 
 .rules-actions {
@@ -618,8 +644,25 @@ button.link:hover {
   white-space: nowrap;
 }
 
+/*
+ * Two tables side by side, since each is half a page wide and there are as
+ * many of them as there are remotes. They flow down one column and on into
+ * the next, so a table is never cut across the two.
+ */
+#controllers {
+  column-count: 2;
+  column-gap: 1rem;
+}
+
+@media (max-width: 60rem) {
+  #controllers {
+    column-count: 1;
+  }
+}
+
 /* One remote and its buttons, drawn the way the activity log is drawn. */
 .controller-card {
+  break-inside: avoid;
   margin-bottom: 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -644,20 +687,10 @@ table.buttons {
   table-layout: fixed;
 }
 
-table.buttons th,
 table.buttons td {
   padding: 0.15rem 0.75rem;
   text-align: left;
   vertical-align: top;
-}
-
-table.buttons th {
-  font-weight: 500;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  line-height: 2.4;
 }
 
 table.buttons tr + tr td {
@@ -665,12 +698,20 @@ table.buttons tr + tr td {
 }
 
 /*
+ * Where one physical button ends and the next begins. A remote is read a
+ * button at a time, and the gestures of one belong together more than the
+ * line between two of them says on its own.
+ */
+table.buttons tr.next-button td {
+  border-top-width: 3px;
+}
+
+/*
  * As slim as the longest button name, and the same width in every table: the
  * column is read down the page across all of them, and a width per table
  * would step in and out on the way down.
  */
-table.buttons td:first-child,
-table.buttons th:first-child {
+table.buttons td:first-child {
   width: var(--button-column, 8rem);
   white-space: nowrap;
   color: var(--muted);
@@ -686,8 +727,12 @@ table.buttons td.in-homekit {
   font-style: italic;
 }
 
-/* Where the download sits: at the end of the line above the tables. */
-#view-controllers .rules-actions {
+/*
+ * Where the download and the clear sit: at the end of the line above what
+ * they act on, rather than at the start of it where a rule is added.
+ */
+#view-controllers .rules-actions,
+#view-activity .rules-actions {
   display: flex;
   justify-content: flex-end;
 }
@@ -1058,8 +1103,14 @@ table.buttons td.in-homekit {
     display: none;
   }
 
+  /* Nothing beside it to leave room for, so it takes the width. */
   .tab-select {
     display: block;
+    width: 100%;
+  }
+
+  .tab-bar {
+    border-bottom: none;
   }
 
   /* No room to draw a network here. */
@@ -1216,13 +1267,16 @@ table.buttons td.in-homekit {
     display: none;
   }
 
-  /* Saving a file to a phone leads nowhere useful, the same as the settings. */
-  #view-controllers .rules-actions {
+  /*
+   * Saving a file to a phone leads nowhere useful, the same as the settings,
+   * and emptying the log is a thing to do at a desk rather than in passing.
+   */
+  #view-controllers .rules-actions,
+  #view-activity .rules-actions {
     display: none;
   }
 
   /* The names need what room there is, so the padding gives some of it up. */
-  table.buttons th,
   table.buttons td {
     padding: 0.15rem 0.5rem;
   }

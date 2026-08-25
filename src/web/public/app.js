@@ -89,6 +89,7 @@ const el = {
   sliders: document.getElementById('sliders'),
   timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
+  clearLog: document.getElementById('clear-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
@@ -1365,6 +1366,9 @@ function byName(devices) {
  * underscore, in either order, so a value has to be taken apart before it can
  * be said properly or put in a sensible order.
  */
+/** A slider's buttons, in the order the editor lists them. */
+const SLIDER_BUTTONS = ['up', 'down', 'on', 'off', 'cycle'];
+
 const GESTURES = [
   'single',
   'single_long',
@@ -1562,7 +1566,7 @@ function startsOf(rule) {
     return [];
   }
   if (rule.kind === 'slider') {
-    return ['up', 'down', 'on', 'off'].flatMap((key) =>
+    return SLIDER_BUTTONS.flatMap((key) =>
       Array.isArray(rule[key]) ? rule[key] : [rule[key]],
     );
   }
@@ -1595,7 +1599,7 @@ function ruleRefs(rule) {
     return (rule.groups ?? []).flat();
   }
   if (rule.kind === 'slider') {
-    const buttons = ['up', 'down', 'on', 'off'].flatMap((key) =>
+    const buttons = SLIDER_BUTTONS.flatMap((key) =>
       Array.isArray(rule[key]) ? rule[key] : [rule[key]],
     );
     return [rule.target, ...buttons].filter(Boolean);
@@ -1989,7 +1993,7 @@ function summarise(rule, inRoom) {
   const words = (text) => document.createTextNode(text);
 
   if (rule.kind === 'slider') {
-    const buttons = ['up', 'down', 'on', 'off'].filter((key) =>
+    const buttons = SLIDER_BUTTONS.filter((key) =>
       Array.isArray(rule[key]) ? rule[key].length > 0 : Boolean(rule[key]),
     ).length;
     return [
@@ -2590,6 +2594,7 @@ function drawSlider(body, draft) {
     for (const [key, label] of [
       ['up', 'Step up'],
       ['down', 'Step down'],
+      ['cycle', 'Cycle'],
       ['on', 'Switch on'],
       ['off', 'Switch off'],
     ]) {
@@ -3441,21 +3446,22 @@ function renderControllers() {
     heading.textContent = displayName(controller);
     card.append(heading);
 
+    // No heading over the columns: a button and what it does need no naming,
+    // and every card would carry the same two words over again. The file
+    // keeps them, since a markdown table is nothing without a heading row.
     const table = document.createElement('table');
     table.className = 'buttons';
-    const head = document.createElement('tr');
-    for (const column of ['Button', 'Action']) {
-      const cell = document.createElement('th');
-      cell.textContent = column;
-      head.append(cell);
-    }
-    table.append(head);
 
-    for (const row of shown) {
+    shown.forEach((row, place) => {
       // A button two rules answer is a row each: one line, one thing it does.
       // The button itself is said once, over as many rows as it has.
       row.answers.forEach((answer, index) => {
         const line = document.createElement('tr');
+        // Where one physical button gives way to the next, said with a
+        // heavier line than the one between two gestures of the same button.
+        if (index === 0 && place > 0 && row.button !== shown[place - 1].button) {
+          line.className = 'next-button';
+        }
         if (index === 0) {
           const button = document.createElement('td');
           button.textContent = row.label;
@@ -3472,7 +3478,7 @@ function renderControllers() {
         line.append(action);
         table.append(line);
       });
-    }
+    });
 
     card.append(table);
     el.controllers.append(card);
@@ -3531,6 +3537,8 @@ function buttonRows(controller) {
         label: describeAction(String(value)),
         rules: rulesOn(controller, property.key, String(value)),
         homekit: heardByHomekit(controller, property, String(value)),
+        // The physical button, so the gestures of one can be held together.
+        button: `${property.key}:${splitAction(String(value)).button}`,
       });
     }
   }
@@ -3610,7 +3618,7 @@ function rulesOn(controller, propertyKey, value) {
 /** A rule's triggers, and for a slider which of its buttons each one is. */
 function startsWithParts(rule) {
   if (rule.kind === 'slider') {
-    return ['up', 'down', 'on', 'off'].flatMap((key) =>
+    return SLIDER_BUTTONS.flatMap((key) =>
       (Array.isArray(rule[key]) ? rule[key] : [rule[key]]).map((start) => [start, key]),
     );
   }
@@ -3999,10 +4007,12 @@ const showsRules = () =>
   state.view === 'activity';
 
 /**
- * The sections, for the dropdown a narrow window gets instead of the tabs.
+ * The sections, for the dropdown a window without room for the tabs gets.
  *
- * The map is left out: there is no room to draw a network on a phone, so it
- * is hidden there and offering it would lead nowhere.
+ * The map is last and left off a phone: there is no room to draw a network
+ * on one, so it is hidden there and offering it would lead nowhere. In a
+ * window between the two the tabs are gone but the map is still worth
+ * drawing, so the dropdown is the only way left to reach it.
  */
 const TAB_OPTIONS = [
   ['devices', 'Devices'],
@@ -4012,24 +4022,36 @@ const TAB_OPTIONS = [
   ['timers', 'Timers'],
   ['controllers', 'Controllers'],
   ['activity', 'Activity'],
+  ['map', 'Map'],
 ];
 
-for (const [view, label] of TAB_OPTIONS) {
-  const option = document.createElement('option');
-  option.value = view;
-  option.textContent = label;
-  el.tabSelect.append(option);
+const narrow = window.matchMedia('(max-width: 40rem)');
+
+function drawTabOptions() {
+  el.tabSelect.replaceChildren();
+  for (const [view, label] of TAB_OPTIONS) {
+    if (view === 'map' && narrow.matches) {
+      continue;
+    }
+    const option = document.createElement('option');
+    option.value = view;
+    option.textContent = label;
+    el.tabSelect.append(option);
+  }
+  el.tabSelect.value = state.view;
 }
+
+drawTabOptions();
 
 el.tabSelect.addEventListener('change', () => showView(el.tabSelect.value));
 
 // Narrowing the window while the map is open would otherwise leave a page
 // with nothing on it, since the map is hidden and the dropdown cannot say so.
-const narrow = window.matchMedia('(max-width: 40rem)');
 narrow.addEventListener('change', () => {
   if (narrow.matches && state.view === 'map') {
     showView('devices');
   }
+  drawTabOptions();
 });
 
 el.tabDevices.addEventListener('click', () => showView('devices'));
@@ -4039,6 +4061,16 @@ el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
 
 el.tabControllers.addEventListener('click', () => showView('controllers'));
+el.clearLog.addEventListener('click', async () => {
+  try {
+    await api('/api/log', { method: 'DELETE' });
+    state.log = [];
+    renderLog();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
+
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());

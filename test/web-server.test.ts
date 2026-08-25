@@ -514,6 +514,42 @@ describe('running a rule by hand', () => {
     expect(response.status).toBe(200);
   });
 
+  it('empties the run log when asked, having something to empty', async () => {
+    const { base } = await harness();
+    const { fetch: signed } = await signIn(base);
+
+    const created = await signed('/api/rules', {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: 'By hand',
+        enabled: false,
+        trigger: {
+          sourceId: 'zigbee',
+          deviceId: '0xf044d3fffe024659',
+          propertyKey: 'state_l1',
+          match: { kind: 'equals', value: 'ON' },
+        },
+        actions: [
+          {
+            sourceId: 'zigbee',
+            deviceId: '0xf044d3fffe024659',
+            propertyKey: 'state_l1',
+            value: 'ON',
+          },
+        ],
+      }),
+    });
+    const { rule } = (await created.json()) as { rule: { id: string } };
+    await signed(`/api/rules/${rule.id}/run`, { method: 'POST' });
+
+    const ran = (await (await signed('/api/log')).json()) as { entries: unknown[] };
+    expect(ran.entries.length).toBeGreaterThan(0);
+
+    expect((await signed('/api/log', { method: 'DELETE' })).status).toBe(200);
+    const after = (await (await signed('/api/log')).json()) as { entries: unknown[] };
+    expect(after.entries).toEqual([]);
+  });
+
   it('says no to a rule that is not there', async () => {
     const { base } = await harness();
     const { fetch: signed } = await signIn(base);

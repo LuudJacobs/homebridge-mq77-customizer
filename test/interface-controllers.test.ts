@@ -103,9 +103,9 @@ async function openControllers(over: { rules?: unknown[] } = {}) {
 const table = (ui: { document: Document }) =>
   [...ui.document.querySelectorAll('#controllers .controller-card')].map((card) => ({
     name: card.querySelector('h2')?.textContent?.replace('Controller', '').trim(),
-    rows: [...card.querySelectorAll('tr')]
-      .slice(1)
-      .map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent)),
+    rows: [...card.querySelectorAll('tr')].map((row) =>
+      [...row.querySelectorAll('td')].map((cell) => cell.textContent),
+    ),
   }));
 
 describe('what every controller sets off', () => {
@@ -349,5 +349,39 @@ describe('buttons HomeKit hears', () => {
 
     await ui.click(ui.byText('button.tab', 'Devices'));
     expect(box.hidden).toBe(true);
+  });
+});
+
+describe('the columns need no naming', () => {
+  it('draws no heading row, since a button and what it does say themselves', async () => {
+    const ui = await openControllers();
+
+    expect(ui.document.querySelectorAll('#controllers th')).toHaveLength(0);
+    // The first line of a table is a button, not the word Button.
+    expect(table(ui)[0]?.rows[0]).toEqual(['1 Single', 'Woonkamer: Dimmen (up)']);
+  });
+
+  it('keeps the heading in the file, which a markdown table cannot do without', async () => {
+    const ui = await openControllers();
+    const lines = (ui.window.eval('controllersAsMarkdown()') as string).split('\n');
+
+    expect(lines[2]?.replace(/\s+\|/g, ' |')).toBe('| Button | Action |');
+  });
+});
+
+describe('one button and the next', () => {
+  it('marks the row where a physical button gives way to the next', async () => {
+    const ui = await openControllers();
+    const classes = [...ui.document.querySelectorAll('#controllers .controller-card')].map(
+      (card) => [...card.querySelectorAll('tr')].map((row) => row.className),
+    );
+
+    // `1 Single`, `1 Double`, `2 Single`: the heavier line goes above the
+    // third of them and nowhere else. In the second table the second rule of
+    // a button is a line of its own, and it is not a new button either.
+    expect(classes).toEqual([
+      ['', '', 'next-button'],
+      ['', '', '', 'next-button'],
+    ]);
   });
 });

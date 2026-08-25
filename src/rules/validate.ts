@@ -218,8 +218,8 @@ function parseSlider(
     MAX_STEPS,
   );
 
-  const buttons: Partial<Record<'up' | 'down' | 'on' | 'off', Trigger[]>> = {};
-  for (const button of ['up', 'down', 'on', 'off'] as const) {
+  const buttons: Partial<Record<'up' | 'down' | 'on' | 'off' | 'cycle', Trigger[]>> = {};
+  for (const button of ['up', 'down', 'on', 'off', 'cycle'] as const) {
     if (raw[button] === undefined || raw[button] === null) {
       continue;
     }

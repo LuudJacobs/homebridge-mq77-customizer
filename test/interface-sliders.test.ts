@@ -239,3 +239,52 @@ describe('the sliders tab', () => {
     expect(ui.document.querySelector('#kind-slider')).not.toBeNull();
   });
 });
+
+describe('the cycle button', () => {
+  it('is offered under the stepping buttons, empty until something is put on it', async () => {
+    const ui = await openSliders();
+    const headings = [...ui.document.querySelectorAll('#sliders .group-title')].map(
+      (node) => node.textContent,
+    );
+
+    expect(headings).toEqual(['Step up', 'Step down', 'Cycle', 'Switch on', 'Switch off']);
+  });
+
+  it('is saved with the rest of the slider', async () => {
+    const ui = await openSliders([
+      slider({
+        cycle: [
+          {
+            sourceId: 'zigbee',
+            deviceId: '0xr1',
+            propertyKey: 'action',
+            match: { kind: 'changedTo', value: 'single_right' },
+          },
+        ],
+      }),
+    ]);
+    await ui.click(ui.byText('button.primary', 'Save', '#sliders'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      cycle: { match: { value: string } }[];
+    };
+    expect(saved.cycle[0]!.match.value).toBe('single_right');
+  });
+
+  it('counts towards how many buttons a slider has', async () => {
+    const ui = await openSliders([
+      slider({
+        cycle: [
+          {
+            sourceId: 'zigbee',
+            deviceId: '0xr1',
+            propertyKey: 'action',
+            match: { kind: 'changedTo', value: 'single_right' },
+          },
+        ],
+      }),
+    ]);
+
+    expect(ui.document.querySelector('#sliders .device-meta')?.textContent).toContain('2 buttons');
+  });
+});

@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Catalog } from '../src/catalog.js';
 import { silentLogger } from '../src/logger.js';
@@ -314,5 +314,106 @@ describe('what the log says', () => {
 
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'failed' });
     expect(mqtt.published).toEqual([]);
+  });
+});
+
+describe('one button for the whole range', () => {
+  /** No debounce, so a run of presses can be read as a run of steps. */
+  const cycling = (over: Partial<SliderRule> = {}) =>
+    sliderRule({ cycle: [press('single_both')], rateLimitMs: 0, ...over });
+
+  it('climbs to the top and turns round there, down to off and up again', async () => {
+    const { mqtt } = await harness([cycling()]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    for (let index = 0; index < 9; index += 1) {
+      pressed(mqtt, 'single_both');
+    }
+
+    // Off to the first step, up to the top, then back down the same ladder
+    // and off at the bottom. The ninth press starts the climb again.
+    expect(sent(mqtt)).toEqual([
+      '{"state":"ON"}',
+      '{"brightness":64}',
+      '{"brightness":127}',
+      '{"brightness":191}',
+      '{"brightness":254}',
+      '{"brightness":191}',
+      '{"brightness":127}',
+      '{"brightness":64}',
+      '{"state":"OFF"}',
+      '{"state":"ON"}',
+      '{"brightness":64}',
+    ]);
+  });
+
+  it('goes down from the top on the first press it is given there', async () => {
+    const { mqtt } = await harness([cycling()]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 254 });
+
+    pressed(mqtt, 'single_both');
+    expect(sent(mqtt)).toEqual(['{"brightness":191}']);
+  });
+
+  it('ignores the on level, since it counts the steps rather than landing', async () => {
+    const { mqtt } = await harness([cycling({ onLevel: 200 })]);
+    mqtt.deliver(DIMMER.topic, { state: 'OFF' });
+
+    pressed(mqtt, 'single_both');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}', '{"brightness":64}']);
+  });
+
+  it('starts upward again after any other button of the same slider', async () => {
+    const { mqtt } = await harness([cycling()]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 254 });
+
+    // Down to three, so it is going down.
+    pressed(mqtt, 'single_both');
+    // Then the step down button, which is the other action that resets it.
+    pressed(mqtt, 'single_right');
+    pressed(mqtt, 'single_both');
+
+    expect(sent(mqtt)).toEqual(['{"brightness":191}', '{"brightness":127}', '{"brightness":191}']);
+  });
+
+  it('starts upward again when the level was set somewhere else', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([cycling()]);
+      mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 254 });
+
+      pressed(mqtt, 'single_both');
+      expect(sent(mqtt)).toEqual(['{"brightness":191}']);
+
+      // Dimmed from HomeKit or a wall switch, once the slider has stopped
+      // counting from what it last sent.
+      vi.advanceTimersByTime(3000);
+      mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 64 });
+
+      pressed(mqtt, 'single_both');
+      expect(sent(mqtt).at(-1)).toBe('{"brightness":127}');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores a second press inside the second, unlike the stepping buttons', async () => {
+    const { engine, mqtt } = await harness([sliderRule({ cycle: [press('single_both')] })]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 64 });
+
+    pressed(mqtt, 'single_both');
+    pressed(mqtt, 'single_both');
+
+    expect(sent(mqtt)).toEqual(['{"brightness":127}']);
+    expect(engine.getLog()[0]).toMatchObject({ outcome: 'rateLimited' });
+    expect(engine.getLog()[0]?.detail).toContain('minimum 1000ms');
+  });
+
+  it('says which way it went, so the log reads as a step like any other', async () => {
+    const { engine, mqtt } = await harness([cycling()]);
+    mqtt.deliver(DIMMER.topic, { state: 'ON', brightness: 254 });
+
+    pressed(mqtt, 'single_both');
+    expect(engine.getLog()[0]?.step).toMatchObject({ direction: 'down', step: 3, steps: 4 });
   });
 });

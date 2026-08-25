@@ -157,6 +157,14 @@ export interface SliderRule {
   down?: Trigger[];
   on?: Trigger[];
   off?: Trigger[];
+  /**
+   * One button for the whole range: up to the top, then back down to off.
+   *
+   * A remote with a button to spare rather than two is the reason for it. It
+   * goes up until there is nowhere left to go and turns round there, and
+   * starts upward again whenever the level was last set by something else.
+   */
+  cycle?: Trigger[];
   rateLimitMs?: number;
 }
 
