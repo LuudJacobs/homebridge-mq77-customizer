@@ -676,8 +676,12 @@ table.buttons th:first-child {
   color: var(--muted);
 }
 
-/* A button nothing answers, which is what the list is read for. */
-table.buttons td.free {
+/*
+ * Said about a button rather than set off by it: that nothing answers it,
+ * which is what the list is read for, and that HomeKit hears it.
+ */
+table.buttons td.free,
+table.buttons td.in-homekit {
   color: var(--muted);
   font-style: italic;
 }
