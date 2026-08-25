@@ -11,6 +11,8 @@ const state = {
   activityKinds: { standard: true, mirror: true, slider: true, timer: true, action: false },
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: true,
+  /** Whether it says of a button that HomeKit hears it. */
+  homekitButtons: true,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -74,6 +76,8 @@ const el = {
   controllers: document.getElementById('controllers'),
   unusedButtons: document.getElementById('unused-buttons'),
   unusedFilter: document.getElementById('unused-buttons-filter'),
+  homekitButtons: document.getElementById('homekit-buttons'),
+  homekitFilter: document.getElementById('homekit-buttons-filter'),
   downloadControllers: document.getElementById('download-controllers'),
   viewMap: document.getElementById('view-map'),
   map: document.getElementById('map'),
@@ -603,6 +607,7 @@ function paintControls() {
 
   el.kindFilters.hidden = view !== 'activity';
   el.unusedFilter.hidden = view !== 'controllers';
+  el.homekitFilter.hidden = view !== 'controllers';
 
   el.sort.hidden = controls.sorts.length === 0;
   if (controls.sorts.length > 0) {
@@ -3423,8 +3428,7 @@ function renderControllers() {
   }
 
   for (const controller of controllers) {
-    const rows = buttonRows(controller);
-    const shown = state.unusedButtons ? rows : rows.filter((row) => row.rules.length > 0);
+    const shown = withAnswers(buttonRows(controller));
     if (shown.length === 0) {
       continue;
     }
@@ -3450,20 +3454,21 @@ function renderControllers() {
     for (const row of shown) {
       // A button two rules answer is a row each: one line, one thing it does.
       // The button itself is said once, over as many rows as it has.
-      const answers = row.rules.length > 0 ? row.rules : [undefined];
-      answers.forEach((named, index) => {
+      row.answers.forEach((answer, index) => {
         const line = document.createElement('tr');
         if (index === 0) {
           const button = document.createElement('td');
           button.textContent = row.label;
-          if (answers.length > 1) {
-            button.rowSpan = answers.length;
+          if (row.answers.length > 1) {
+            button.rowSpan = row.answers.length;
           }
           line.append(button);
         }
         const action = document.createElement('td');
-        action.textContent = named ?? 'none';
-        action.classList.toggle('free', named === undefined);
+        action.textContent = answer.text;
+        if (answer.kind !== 'rule') {
+          action.className = answer.kind;
+        }
         line.append(action);
         table.append(line);
       });
@@ -3472,6 +3477,33 @@ function renderControllers() {
     card.append(table);
     el.controllers.append(card);
   }
+}
+
+/** Said of a button rather than being something it sets off. */
+const FREE_ANSWER = { kind: 'free', text: 'none' };
+const HOMEKIT_ANSWER = { kind: 'in-homekit', text: 'In HomeKit' };
+
+/**
+ * The lines one button reads as, which both the table and the file are built
+ * from.
+ *
+ * Every rule it sets off is a line. That HomeKit hears it is a line too, said
+ * under the rules or in place of the empty line where there are none, and the
+ * two ticks in the header say which of those are worth seeing. A button
+ * nothing answers at all, with both ticks down, is not listed.
+ */
+function buttonAnswers(row) {
+  const answers = row.rules.map((named) => ({ kind: 'rule', text: named }));
+
+  if (row.homekit && state.homekitButtons) {
+    answers.push(HOMEKIT_ANSWER);
+  }
+
+  if (answers.length === 0 && state.unusedButtons) {
+    answers.push(FREE_ANSWER);
+  }
+
+  return answers;
 }
 
 /** A device somebody has marked as one whose presses are worth watching. */
@@ -3498,11 +3530,38 @@ function buttonRows(controller) {
       rows.push({
         label: describeAction(String(value)),
         rules: rulesOn(controller, property.key, String(value)),
+        homekit: heardByHomekit(controller, property, String(value)),
       });
     }
   }
 
   return rows;
+}
+
+/**
+ * Whether HomeKit hears this press.
+ *
+ * The three things the accessory is built from, asked in the same order: the
+ * property has to be published, HomeKit has to have a press for the value,
+ * and that press has to be one still ticked on its button. Which value
+ * arrives as which press is what the device said, not a reading of the name
+ * here: HomeKit divides `1_single_long` at a different place than this page
+ * does, and the accessory follows its own division.
+ */
+function heardByHomekit(controller, property, value) {
+  if (controller.rulesOnly || !(controller.exposure?.properties ?? []).includes(property.key)) {
+    return false;
+  }
+
+  const button = (property.buttons ?? []).find((candidate) => value in (candidate.events ?? {}));
+  if (!button) {
+    return false;
+  }
+
+  // No entry means every gesture, which is what a device published before the
+  // ticks existed does. An empty one means they were all turned off.
+  const allowed = controller.exposure.buttons?.[property.key]?.[button.name];
+  return allowed === undefined || allowed.includes(button.events[value]);
 }
 
 /** The action values rules were built on, for a device that lists none. */
@@ -3558,23 +3617,30 @@ function startsWithParts(rule) {
   return startsOf(rule).map((start) => [start, undefined]);
 }
 
+/** The rows worth listing, each with the lines it reads as. */
+function withAnswers(rows) {
+  return rows
+    .map((row) => ({ ...row, answers: buttonAnswers(row) }))
+    .filter((row) => row.answers.length > 0);
+}
+
 /** The overview as a page somebody can keep, next to the remote. */
 function controllersAsMarkdown() {
   const lines = [];
 
   for (const controller of byName(state.devices.filter((device) => isController(device)))) {
-    const rows = buttonRows(controller);
-    const shown = state.unusedButtons ? rows : rows.filter((row) => row.rules.length > 0);
+    const shown = withAnswers(buttonRows(controller));
     if (shown.length === 0) {
       continue;
     }
 
     // The button is written on the first of its rows and left blank under it,
-    // the same as the table says it once over as many rows as it has.
+    // the same as the table says it once over as many rows as it has. What is
+    // said about a button rather than set off by it is written in italics.
     const cells = shown.flatMap((row) =>
-      (row.rules.length > 0 ? row.rules : ['_none_']).map((named, index) => [
+      row.answers.map((answer, index) => [
         index === 0 ? row.label : '',
-        named,
+        answer.kind === 'rule' ? answer.text : `_${answer.text}_`,
       ]),
     );
     const widest = (index) =>
@@ -3595,6 +3661,11 @@ function controllersAsMarkdown() {
 
 el.unusedButtons.addEventListener('change', () => {
   state.unusedButtons = el.unusedButtons.checked;
+  renderControllers();
+});
+
+el.homekitButtons.addEventListener('change', () => {
+  state.homekitButtons = el.homekitButtons.checked;
   renderControllers();
 });
 

@@ -464,6 +464,14 @@ function describeButtons(property: NormalisedProperty): unknown {
     gestures: [...new Set(actions.flatMap((action) => (action.event === undefined ? [] : [action.event])))].sort(),
     /** Values HomeKit has no gesture for, listed so the interface can say so. */
     unsupported: actions.filter((action) => action.event === undefined).map((action) => action.value),
+    /**
+     * Which press each value arrives as, so the interface can say of a single
+     * press whether HomeKit hears it. Worked out here rather than there: the
+     * accessory is built from this reading of the value and no other.
+     */
+    events: Object.fromEntries(
+      actions.flatMap((action) => (action.event === undefined ? [] : [[action.value, action.event]])),
+    ),
   }));
 }
 

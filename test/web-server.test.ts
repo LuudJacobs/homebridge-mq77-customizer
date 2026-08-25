@@ -144,6 +144,29 @@ describe('WebServer', () => {
     expect(dual?.properties).toHaveLength(7);
   });
 
+  it('says which action value arrives as which HomeKit press', async () => {
+    const session = await signIn(context.base);
+    const body = (await (await session.fetch('/api/state')).json()) as {
+      devices: {
+        name: string;
+        properties: { key: string; buttons?: { name: string; events: Record<string, number> }[] }[];
+      }[];
+    };
+    const buttons = body.devices
+      .find((entry) => entry.name === 'slaapkamer_schakelaar-wrs02')
+      ?.properties.find((property) => property.key === 'action')?.buttons;
+
+    // Without this the interface would have to read the value itself to say
+    // whether HomeKit hears a press, and it divides these names elsewhere.
+    expect(buttons?.find((button) => button.name === 'left')?.events).toEqual({
+      single_left: 0,
+      double_left: 1,
+      hold_left: 2,
+    });
+    // A triple press is one HomeKit cannot express, so it arrives as nothing.
+    expect(buttons?.find((button) => button.name === 'left')?.events.triple_left).toBeUndefined();
+  });
+
   it('sends the words a device uses for on, off and toggle', async () => {
     const session = await signIn(context.base);
     const body = (await (await session.fetch('/api/state')).json()) as {

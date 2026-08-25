@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.1.0
+# MQ77 Customizer 1.2.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -194,7 +194,7 @@ The name reaches HomeKit only where the source names nothing itself, which is th
 
 ### Controllers
 
-The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, and the Unused buttons tick in the header hides those rows. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
+The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks in the header say which of those lines are wanted, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
 ### Map
 
