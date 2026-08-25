@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- The controller tables drop their `Button | Action` heading row, which said what the two columns say themselves. `controller-config.md` keeps it, since a markdown table cannot do without one
 - The Clear button is back on the Activity tab, at the end of the line above the log. It stands down on a phone, where emptying the log in passing is not something anybody wants
 
 - A Cycle button for sliders: one button that steps up to the top, back down to off, and up again. It starts upward whenever the level was last set elsewhere, and ignores a second press within a second
