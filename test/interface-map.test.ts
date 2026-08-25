@@ -218,6 +218,28 @@ describe('the map tab', () => {
     expect((ui.document.querySelector('#filter') as HTMLInputElement).hidden).toBe(true);
   });
 
+  it('empties the log when Clear is pressed', async () => {
+    const ui = await openInterface({ state: { devices: [] } });
+    ui.responses['/api/log'] = {
+      entries: [
+        {
+          at: Date.now(),
+          ruleId: 'r1',
+          ruleName: 'Something',
+          ruleKind: 'standard',
+          outcome: 'fired',
+          detail: '1 action sent',
+        },
+      ],
+    };
+    await ui.click(ui.byText('button.tab', 'Activity'));
+    expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
+
+    await ui.click(ui.document.querySelector('#clear-log'));
+    expect(ui.requests.some((request) => request.path === '/api/log')).toBe(true);
+    expect(ui.document.querySelector('#activity-log')!.textContent).toContain('Nothing has run');
+  });
+
   it('is in the dropdown that stands in for the tabs, since it is drawable', async () => {
     const ui = await openMap();
     const options = [...ui.document.querySelectorAll('#tab-select option')].map(

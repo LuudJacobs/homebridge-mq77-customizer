@@ -738,8 +738,12 @@ table.buttons td.in-homekit {
   font-style: italic;
 }
 
-/* Where the download sits: at the end of the line above the tables. */
-#view-controllers .rules-actions {
+/*
+ * Where the download and the clear sit: at the end of the line above what
+ * they act on, rather than at the start of it where a rule is added.
+ */
+#view-controllers .rules-actions,
+#view-activity .rules-actions {
   display: flex;
   justify-content: flex-end;
 }
@@ -1274,8 +1278,12 @@ table.buttons td.in-homekit {
     display: none;
   }
 
-  /* Saving a file to a phone leads nowhere useful, the same as the settings. */
-  #view-controllers .rules-actions {
+  /*
+   * Saving a file to a phone leads nowhere useful, the same as the settings,
+   * and emptying the log is a thing to do at a desk rather than in passing.
+   */
+  #view-controllers .rules-actions,
+  #view-activity .rules-actions {
     display: none;
   }
 
