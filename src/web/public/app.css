@@ -687,20 +687,10 @@ table.buttons {
   table-layout: fixed;
 }
 
-table.buttons th,
 table.buttons td {
   padding: 0.15rem 0.75rem;
   text-align: left;
   vertical-align: top;
-}
-
-table.buttons th {
-  font-weight: 500;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  line-height: 2.4;
 }
 
 table.buttons tr + tr td {
@@ -721,8 +711,7 @@ table.buttons tr.next-button td {
  * column is read down the page across all of them, and a width per table
  * would step in and out on the way down.
  */
-table.buttons td:first-child,
-table.buttons th:first-child {
+table.buttons td:first-child {
   width: var(--button-column, 8rem);
   white-space: nowrap;
   color: var(--muted);
@@ -1288,7 +1277,6 @@ table.buttons td.in-homekit {
   }
 
   /* The names need what room there is, so the padding gives some of it up. */
-  table.buttons th,
   table.buttons td {
     padding: 0.15rem 0.5rem;
   }

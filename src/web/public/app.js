@@ -3446,15 +3446,11 @@ function renderControllers() {
     heading.textContent = displayName(controller);
     card.append(heading);
 
+    // No heading over the columns: a button and what it does need no naming,
+    // and every card would carry the same two words over again. The file
+    // keeps them, since a markdown table is nothing without a heading row.
     const table = document.createElement('table');
     table.className = 'buttons';
-    const head = document.createElement('tr');
-    for (const column of ['Button', 'Action']) {
-      const cell = document.createElement('th');
-      cell.textContent = column;
-      head.append(cell);
-    }
-    table.append(head);
 
     shown.forEach((row, place) => {
       // A button two rules answer is a row each: one line, one thing it does.
