@@ -228,3 +228,126 @@ describe('how wide the button column is', () => {
     expect(width).toBe('9ch');
   });
 });
+
+/** What the server says about a remote's buttons: which value is which press. */
+const heard = (values: string[]) => {
+  const buttons = new Map<string, { name: string; gestures: number[]; unsupported: string[]; events: Record<string, number> }>();
+  for (const value of values) {
+    const [name, gesture] = value.split('_');
+    const press = gesture === 'double' ? 1 : gesture === 'long' ? 2 : 0;
+    const button = buttons.get(name!) ?? { name: name!, gestures: [], unsupported: [], events: {} };
+    button.events[value] = press;
+    button.gestures = [...new Set([...button.gestures, press])].sort();
+    buttons.set(name!, button);
+  }
+  return [...buttons.values()];
+};
+
+const published = (over: Record<string, unknown> = {}) => [
+  device(
+    '0xr',
+    'remote_b',
+    { label: 'Bank', room: 'Woonkamer', type: 'controller', properties: ['action'], ...over },
+    [action({ buttons: heard(['1_single', '1_double', '2_single']) })],
+  ),
+  devices[2]!,
+];
+
+async function openPublished(over: Record<string, unknown> = {}) {
+  const ui = await openInterface({ state: { devices: published(over) }, rules });
+  await ui.click(ui.byText('button.tab', 'Controllers'));
+  return ui;
+}
+
+const tick = async (ui: Awaited<ReturnType<typeof openPublished>>, id: string, on: boolean) => {
+  const box = ui.document.getElementById(id) as HTMLInputElement;
+  box.checked = on;
+  box.dispatchEvent(new ui.window.Event('change'));
+  await ui.settle();
+};
+
+describe('buttons HomeKit hears', () => {
+  it('says so instead of calling the button free, and under any rule it has', async () => {
+    const ui = await openPublished();
+
+    expect(table(ui)[0]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+      ['In HomeKit'],
+      ['1 Double', 'In HomeKit'],
+      ['2 Single', 'In HomeKit'],
+    ]);
+
+    // The button is still said once, over every line it now has.
+    const spanning = ui.document.querySelector('#controllers td[rowspan]') as HTMLTableCellElement;
+    expect(spanning.rowSpan).toBe(3);
+  });
+
+  it('falls back to none when the HomeKit lines are not wanted', async () => {
+    const ui = await openPublished();
+    await tick(ui, 'homekit-buttons', false);
+
+    expect(table(ui)[0]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+      ['1 Double', 'none'],
+      ['2 Single', 'none'],
+    ]);
+  });
+
+  it('drops the button altogether with neither tick', async () => {
+    const ui = await openPublished();
+    await tick(ui, 'homekit-buttons', false);
+    await tick(ui, 'unused-buttons', false);
+
+    expect(table(ui)[0]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+    ]);
+  });
+
+  it('hears nothing of a property that is not published', async () => {
+    const ui = await openPublished({ properties: [] });
+
+    expect(table(ui)[0]?.rows.map((row) => row[row.length - 1])).not.toContain('In HomeKit');
+  });
+
+  it('hears nothing of a gesture turned off on its button', async () => {
+    // Single press only, so the double is left to the rules engine.
+    const ui = await openPublished({ buttons: { action: { 1: [0] } } });
+
+    expect(table(ui)[0]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+      ['In HomeKit'],
+      ['1 Double', 'none'],
+      ['2 Single', 'In HomeKit'],
+    ]);
+  });
+
+  it('writes the same lines into the file, in italics', async () => {
+    const ui = await openPublished();
+    const lines = (ui.window.eval('controllersAsMarkdown()') as string)
+      .split('\n')
+      .map((line) => line.replace(/\s+\|/g, ' |'));
+
+    expect(lines).toContain('| 1 Double | _In HomeKit_ |');
+    expect(lines).not.toContain('| 1 Double | _none_ |');
+    // Under the rules it answers, with no button written beside it.
+    expect(lines[lines.findIndex((line) => line.includes('Alles uit')) + 1]).toBe('| | _In HomeKit_ |');
+
+    await tick(ui, 'homekit-buttons', false);
+    const without = ui.window.eval('controllersAsMarkdown()') as string;
+    expect(without).not.toContain('_In HomeKit_');
+    expect(without).toContain('_none_');
+  });
+
+  it('offers both ticks on this tab and nowhere else', async () => {
+    const ui = await openPublished();
+    const box = ui.document.getElementById('homekit-buttons-filter') as HTMLElement;
+    expect(box.hidden).toBe(false);
+
+    await ui.click(ui.byText('button.tab', 'Devices'));
+    expect(box.hidden).toBe(true);
+  });
+});

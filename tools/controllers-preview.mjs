@@ -22,27 +22,68 @@ import { JSDOM, VirtualConsole } from 'jsdom';
 const read = (name) =>
   readFileSync(fileURLToPath(new URL(`../src/web/public/${name}`, import.meta.url)), 'utf8');
 
-const action = (over = {}) => ({
-  key: 'action',
-  label: 'Action',
-  semantic: 'action',
-  type: 'enum',
-  category: 'primary',
-  endpoint: '',
-  readable: true,
-  writable: false,
-  publishable: false,
-  values: [
-    '1_single',
-    '1_double',
-    '1_single_long',
-    '2_single',
-    '2_double',
-    '3_single',
-    '4_single',
-  ],
-  ...over,
-});
+/**
+ * Which value HomeKit hears as which press, the way the server works it out.
+ *
+ * A word at either end of the value naming a press it has, and the rest of
+ * the value being the button. `triple` and `release` are presses HomeKit
+ * cannot express, so a value carrying one of those is heard by nobody.
+ */
+const HOMEKIT_PRESSES = { single: 0, press: 0, click: 0, toggle: 0, double: 1, hold: 2, long: 2 };
+
+const homekitButtons = (values = []) => {
+  const buttons = new Map();
+
+  for (const value of values) {
+    const parts = String(value).split('_');
+    const [head, tail] = [parts[0]?.toLowerCase(), parts[parts.length - 1]?.toLowerCase()];
+    const [name, press] =
+      parts.length > 1 && head in HOMEKIT_PRESSES
+        ? [parts.slice(1).join('_'), HOMEKIT_PRESSES[head]]
+        : parts.length > 1 && tail in HOMEKIT_PRESSES
+          ? [parts.slice(0, -1).join('_'), HOMEKIT_PRESSES[tail]]
+          : [String(value), HOMEKIT_PRESSES.single];
+
+    const button = buttons.get(name) ?? { name, gestures: [], unsupported: [], events: {} };
+    if (parts.some((part) => part === 'triple' || part === 'release')) {
+      button.unsupported.push(String(value));
+    } else {
+      button.events[String(value)] = press;
+      button.gestures = [...new Set([...button.gestures, press])].sort();
+    }
+    buttons.set(name, button);
+  }
+
+  return [...buttons.values()];
+};
+
+const DEFAULT_ACTIONS = [
+  '1_single',
+  '1_double',
+  '1_single_long',
+  '2_single',
+  '2_double',
+  '3_single',
+  '4_single',
+];
+
+const action = (over = {}) => {
+  const values = 'values' in over ? over.values : DEFAULT_ACTIONS;
+  return {
+    key: 'action',
+    label: 'Action',
+    semantic: 'action',
+    type: 'enum',
+    category: 'primary',
+    endpoint: '',
+    readable: true,
+    writable: false,
+    publishable: false,
+    ...over,
+    values,
+    buttons: homekitButtons(values),
+  };
+};
 
 const state = () => ({
   key: 'state',
@@ -230,6 +271,7 @@ function fromSettings(path, splitAction) {
         writable: false,
         publishable: false,
         values: everyButton(used.get(key) ?? [], splitAction),
+        buttons: homekitButtons(everyButton(used.get(key) ?? [], splitAction)),
       });
     }
 
