@@ -223,7 +223,7 @@ function fromSettings(path, splitAction) {
     const starts = [
       ...(rule.triggers ?? []),
       rule.trigger,
-      ...['up', 'down', 'on', 'off'].flatMap((key) =>
+      ...['up', 'down', 'on', 'off', 'cycle'].flatMap((key) =>
         Array.isArray(rule[key]) ? rule[key] : [rule[key]],
       ),
     ].filter(Boolean);
@@ -397,7 +397,10 @@ const controls = window.document.querySelector('.header-actions').outerHTML;
 // its line, and stands down on a phone, by rules hung on the section's id.
 const section = window.document.getElementById('view-controllers');
 section.removeAttribute('hidden');
-const view = `<header>${controls}</header>${section.outerHTML}`;
+// The bar the tabs live in comes too, since it is what a narrower window
+// turns into a dropdown.
+const bar = window.document.querySelector('.tab-bar').outerHTML;
+const view = `<header>${controls}</header>${bar}${section.outerHTML}`;
 const markdown = window.eval('controllersAsMarkdown()');
 if (!view.includes('controller-card')) {
   throw new Error('the interface drew nothing');
@@ -428,6 +431,7 @@ writeFileSync(
       .widths { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
       .width { flex: 1 1 24rem; min-width: 0; }
       .width.narrow { flex: 0 0 23.4375rem; }
+      .width.middle { flex: 0 0 50rem; }
       h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #8b93a4; margin: 0 0 0.5rem; }
       iframe { width: 100%; border: 1px solid #2a2f3a; border-radius: 0.75rem; background: #1b1e25; }
       pre {
@@ -445,9 +449,10 @@ writeFileSync(
   </head>
   <body>
     <h1>Controllers</h1>
-    <p>Drawn by the interface itself. The narrow column is a frame 375px wide, which is what makes the mobile layout answer: no download button there.</p>
+    <p>Drawn by the interface itself, at three widths: a window, a frame 800px wide where the tabs give way to the dropdown, and one 375px wide for a phone.</p>
     <div class="widths">
       <div class="width"><h2>Window</h2><iframe id="wide" height="900"></iframe></div>
+      <div class="width middle"><h2>Between the two</h2><iframe id="middle" height="900"></iframe></div>
       <div class="width narrow"><h2>Phone</h2><iframe id="narrow" height="900"></iframe></div>
     </div>
     <div class="file">
@@ -462,7 +467,7 @@ writeFileSync(
         css +
         'body{margin:0;padding:0.75rem;background:transparent}</style>' +
         view;
-      for (const id of ['wide', 'narrow']) {
+      for (const id of ['wide', 'middle', 'narrow']) {
         const frame = document.getElementById(id);
         frame.contentDocument.open();
         frame.contentDocument.write(page);

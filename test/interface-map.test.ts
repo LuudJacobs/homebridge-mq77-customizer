@@ -217,4 +217,24 @@ describe('the map tab', () => {
     const ui = await openMap();
     expect((ui.document.querySelector('#filter') as HTMLInputElement).hidden).toBe(true);
   });
+
+  it('is in the dropdown that stands in for the tabs, since it is drawable', async () => {
+    const ui = await openMap();
+    const options = [...ui.document.querySelectorAll('#tab-select option')].map(
+      (option) => option.textContent,
+    );
+
+    // A window too narrow for eight tabs is still wide enough for a network.
+    // Only a phone drops it, which the tab itself is hidden on as well.
+    expect(options).toEqual([
+      'Devices',
+      'Automation',
+      'Mirror devices',
+      'Sliders',
+      'Timers',
+      'Controllers',
+      'Activity',
+      'Map',
+    ]);
+  });
 });

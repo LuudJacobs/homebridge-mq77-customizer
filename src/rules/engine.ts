@@ -72,6 +72,17 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
   private readonly steps = new Map<string, { step: number; at: number }>();
   /**
+   * Which way a cycle button is going, for the sliders that have one.
+   *
+   * Nothing kept means upward, which is where it starts and what it goes
+   * back to: another of the slider's buttons forgets it here, and a level
+   * set anywhere else is noticed on the next press, since the slider is no
+   * longer where it left it.
+   */
+  private readonly cycling = new Map<string, 'up' | 'down'>();
+  /** When each cycle button last did something, for its own debounce. */
+  private readonly cycled = new Map<string, number>();
+  /**
    * What each timer last sent, so its own doing does not start it again.
    *
    * A timer watching for any change and switching a light off hears the
@@ -313,7 +324,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
-    for (const button of ['up', 'down', 'on', 'off'] as const) {
+    for (const button of ['up', 'down', 'on', 'off', 'cycle'] as const) {
       // Any of a button's triggers presses it, and one message satisfying two
       // of them is still one press.
       for (const trigger of buttonTriggers(rule, button)) {
@@ -328,6 +339,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
           continue;
         }
 
+        if (button === 'cycle' && !this.cycleAllowed(rule)) {
+          return;
+        }
         if (!this.allowed(rule)) {
           return;
         }
@@ -339,6 +353,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
   private press(rule: SliderRule, target: NormalisedProperty, button: SliderButton): void {
     const power = rule.power && this.property(rule.power);
+
+    // Any other button of the same slider starts the cycle upward again.
+    if (button !== 'cycle') {
+      this.cycling.delete(rule.id);
+    }
 
     if (button === 'on' || button === 'off') {
       if (!power?.setTopic) {
@@ -364,12 +383,19 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // Down from off comes on at the bottom of the range. Somebody pressing a
     // button at a dark light wants light, and the dimmest step is what down
     // means when there is nothing below it.
+    const going = button === 'cycle' ? this.cycleWay(rule, step, ladder) : button;
     const wanted =
-      button === 'up'
+      going === 'up'
         ? Math.min(step + 1, ladder.steps)
         : step === 0
           ? 1
           : step - 1;
+
+    if (button === 'cycle') {
+      // Where it goes from here, which the next press carries on unless
+      // something else has moved the level in the meantime.
+      this.cycling.set(rule.id, going);
+    }
 
     if (wanted === step && step === ladder.steps) {
       this.record(rule, 'skipped', `${target.label} is already at the top`, {
@@ -408,6 +434,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const onLevel = rule.onLevel ?? this.deviceOnLevel(rule);
     // Only stepping up lands on the level the device keeps. Down asked for
     // the bottom of the range, not for the light it comes on at.
+    // A cycle press is left out: it counts the steps from one end of the
+    // range to the other, and coming on somewhere in the middle of them
+    // would leave it counting from a step it never sent.
     const fromOff = button === 'up' && step === 0 && onLevel !== undefined;
     const level = fromOff ? clampLevel(onLevel as number, ladder) : levelAt(wanted, ladder);
     const landed = fromOff ? stepFor(level, ladder) : wanted;
@@ -425,18 +454,61 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       'fired',
       fromOff
         ? `${target.label} on at ${level}`
-        : `${target.label} ${button} to step ${landed} of ${ladder.steps}`,
+        : `${target.label} ${going} to step ${landed} of ${ladder.steps}`,
       {
         step: {
           label: target.label,
           // Coming on where the device says lands on a level rather than a
           // step, and the level is what happened.
-          ...(fromOff ? { level } : { direction: button, step: landed, steps: ladder.steps }),
+          ...(fromOff ? { level } : { direction: going, step: landed, steps: ladder.steps }),
           ...(step === 0 ? { cameOn: true } : {}),
           ...(landed === ladder.steps ? { at: 'max' as const } : {}),
         },
       },
     );
+  }
+
+  /**
+   * Which way a cycle press goes.
+   *
+   * Up until the top, down until off, and up again from there. Anywhere in
+   * between it carries on the way it was going, but only while the slider is
+   * still where it left the light: a level set from HomeKit or a wall switch
+   * means somebody else had a hand in it, and the next press starts upward
+   * the way the first one does.
+   */
+  private cycleWay(rule: SliderRule, step: number, ladder: Ladder): 'up' | 'down' {
+    if (step >= ladder.steps) {
+      return 'down';
+    }
+    if (step <= 0) {
+      return 'up';
+    }
+
+    const sent = this.steps.get(rule.id);
+    const ours = sent !== undefined && sent.step === step;
+    return ours ? (this.cycling.get(rule.id) ?? 'up') : 'up';
+  }
+
+  /**
+   * A debounce of its own for the cycle button.
+   *
+   * The stepping buttons deliberately have none, since a held button should
+   * run. One button doing the whole range is pressed rather than held, and a
+   * remote that sends a press twice would otherwise turn it round.
+   */
+  private cycleAllowed(rule: SliderRule): boolean {
+    const now = Date.now();
+    const limit = rule.rateLimitMs ?? DEFAULT_RATE_LIMIT_MS;
+    const last = this.cycled.get(rule.id);
+
+    if (last !== undefined && limit > 0 && now - last < limit) {
+      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`);
+      return false;
+    }
+
+    this.cycled.set(rule.id, now);
+    return true;
   }
 
   /**
@@ -935,7 +1007,7 @@ function clampWait(waitMs: unknown): number {
   return Math.min(MAX_WAIT_MS, Math.max(MIN_WAIT_MS, Math.round(wanted)));
 }
 
-type SliderButton = 'up' | 'down' | 'on' | 'off';
+type SliderButton = 'up' | 'down' | 'on' | 'off' | 'cycle';
 
 interface Ladder {
   min: number;
