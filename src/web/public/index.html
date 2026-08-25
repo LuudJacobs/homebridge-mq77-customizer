@@ -64,17 +64,20 @@
         </div>
       </header>
 
-      <select id="tab-select" class="tab-select" aria-label="Section"></select>
+      <div class="tab-bar">
+        <select id="tab-select" class="tab-select" aria-label="Section"></select>
 
-      <nav class="tabs">
-        <button id="tab-devices" type="button" class="tab active">Devices</button>
-        <button id="tab-automation" type="button" class="tab">Automation</button>
-        <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
-        <button id="tab-sliders" type="button" class="tab">Sliders</button>
-        <button id="tab-timers" type="button" class="tab">Timers</button>
-        <button id="tab-activity" type="button" class="tab">Activity</button>
-        <button id="tab-controllers" type="button" class="tab">Controllers</button>
-        <button id="tab-map" type="button" class="tab">Map</button>
+        <nav class="tabs">
+          <button id="tab-devices" type="button" class="tab active">Devices</button>
+          <button id="tab-automation" type="button" class="tab">Automation</button>
+          <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
+          <button id="tab-sliders" type="button" class="tab">Sliders</button>
+          <button id="tab-timers" type="button" class="tab">Timers</button>
+          <button id="tab-activity" type="button" class="tab">Activity</button>
+          <button id="tab-controllers" type="button" class="tab">Controllers</button>
+          <button id="tab-map" type="button" class="tab">Map</button>
+        </nav>
+
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
           Zigbee2MQTT
           <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
@@ -88,7 +91,7 @@
             />
           </svg>
         </a>
-      </nav>
+      </div>
 
       <section id="view-devices">
         <p class="hint">

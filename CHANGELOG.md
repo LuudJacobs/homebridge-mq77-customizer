@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A Cycle button for sliders: one button that steps up to the top, back down to off, and up again. It starts upward whenever the level was last set elsewhere, and ignores a second press within a second
+- The tabs become a dropdown below 960px rather than below 640px, with the Zigbee2MQTT link still at the end of the line. The Map is in the dropdown now, since a window that narrow can still draw one
+- The Controllers tab draws two tables side by side where there is room, and marks where one physical button gives way to the next
+
 ## [1.2.0] - 2026-08-25
 
 ### Added

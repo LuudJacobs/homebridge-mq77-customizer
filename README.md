@@ -176,7 +176,9 @@ Written as automations this is four to six rules that only make sense together, 
 
 Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. That is also what happens in the moments after a restart, before the device has reported anything: the first press goes to the first step, and once it has spoken the level it keeps is used. It then carries on from the nearest step to wherever it landed.
 
-Each of the four buttons takes several triggers, so one slider can be driven by more than one remote.
+Cycle is one button for the whole range, for a remote with one to spare rather than two. It steps up until the top, turns round there and steps back down to off, and from off it goes up again. It starts upward whenever the level was last set by something other than the slider, so a light dimmed from HomeKit brightens on the next press rather than carrying on down. Unlike the stepping buttons it ignores a second press within a second, since it is a button to press rather than to hold.
+
+Each button takes several triggers, so one slider can be driven by more than one remote.
 
 Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 

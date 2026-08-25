@@ -351,3 +351,21 @@ describe('buttons HomeKit hears', () => {
     expect(box.hidden).toBe(true);
   });
 });
+
+describe('one button and the next', () => {
+  it('marks the row where a physical button gives way to the next', async () => {
+    const ui = await openControllers();
+    const classes = [...ui.document.querySelectorAll('#controllers .controller-card')].map(
+      (card) => [...card.querySelectorAll('tr')].map((row) => row.className),
+    );
+
+    // `1 Single`, `1 Double`, `2 Single`: the heavier line goes above the
+    // third of them and nowhere else, the header included. In the second
+    // table the second rule of a button is a line of its own, and it is not
+    // a new button either.
+    expect(classes).toEqual([
+      ['', '', '', 'next-button'],
+      ['', '', '', '', 'next-button'],
+    ]);
+  });
+});
