@@ -391,7 +391,8 @@ header {
   white-space: nowrap;
 }
 
-.buttons {
+/* The gestures listed under an action property, stepped in under their own. */
+.gestures {
   margin: 0.1rem 0 0.5rem 1.9rem;
   padding-left: 0.75rem;
   border-left: 2px solid var(--line);
@@ -615,6 +616,76 @@ button.link:hover {
   font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
+}
+
+/* One remote and its buttons, drawn the way the activity log is drawn. */
+.controller-card {
+  margin-bottom: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.controller-card h2 {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 2;
+  border-bottom: 1px solid var(--line);
+}
+
+table.buttons {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  line-height: 2;
+  table-layout: fixed;
+}
+
+table.buttons th,
+table.buttons td {
+  padding: 0.15rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.buttons th {
+  font-weight: 500;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 2.4;
+}
+
+table.buttons tr + tr td {
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * As slim as the longest button name, and the same width in every table: the
+ * column is read down the page across all of them, and a width per table
+ * would step in and out on the way down.
+ */
+table.buttons td:first-child,
+table.buttons th:first-child {
+  width: var(--button-column, 8rem);
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* A button nothing answers, which is what the list is read for. */
+table.buttons td.free {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Where the download sits: at the end of the line above the tables. */
+#view-controllers .rules-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* A description with something to press at the end of it. */
@@ -1128,8 +1199,28 @@ button.link:hover {
     grid-column: 1 / -1;
   }
 
+  /*
+   * The three parts of a log line, one under the other: what set it off, which
+   * rule and how it ended, and what it did. Beside each other they would wrap
+   * anywhere; stacked they say the same thing in the order it is read.
+   */
+  .log-what .phrase {
+    display: block;
+  }
+
   #kind-filters {
     display: none;
+  }
+
+  /* Saving a file to a phone leads nowhere useful, the same as the settings. */
+  #view-controllers .rules-actions {
+    display: none;
+  }
+
+  /* The names need what room there is, so the padding gives some of it up. */
+  table.buttons th,
+  table.buttons td {
+    padding: 0.15rem 0.5rem;
   }
 
   /*

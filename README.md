@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.0.0
+# MQ77 Customizer 1.1.0
 
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
@@ -191,6 +191,10 @@ A rule is named by where it acts rather than where it is set off from: a button 
 Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
+
+### Controllers
+
+The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, and the Unused buttons tick in the header hides those rows. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
 ### Map
 

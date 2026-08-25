@@ -216,8 +216,51 @@ export interface LogEntry {
   /** `action` is not a rule at all, but a button press worth seeing. */
   ruleKind: 'standard' | 'mirror' | 'slider' | 'timer' | 'action';
   outcome: LogOutcome;
-  /** Why, in a sentence, for the run log in the interface. */
+  /** Why, in a sentence. What the Homebridge log gets, and the last resort. */
   detail: string;
+  /**
+   * What set it off, when a button did.
+   *
+   * The interface names devices and buttons the way the user does, which the
+   * engine has no business knowing, so an entry carries what happened rather
+   * than a sentence about it. On a press of its own this is the press.
+   */
+  press?: LogPress;
+  /** Which branch ran, for a rule that has more than one. */
+  branch?: string;
+  /** What a slider did. */
+  step?: LogStep;
+  /** What a mirror copied, and where to. */
+  copy?: LogCopy;
+}
+
+/** A button press: which device, which function, and what it said. */
+export interface LogPress extends PropertyRef {
+  value: string;
+}
+
+/** What a slider did, in parts, for the interface to word. */
+export interface LogStep {
+  /** The label of what moved, "Brightness". */
+  label: string;
+  direction?: 'up' | 'down';
+  /** Where it landed and how many there are, when it stepped. */
+  step?: number;
+  steps?: number;
+  /** What was written, when that is what there is to say. */
+  level?: number;
+  /** Worth saying only at the ends of the range. */
+  at?: 'off' | 'max';
+  /** Switched rather than stepped. */
+  power?: 'on' | 'off';
+  /** It came on as part of the same press. */
+  cameOn?: boolean;
+}
+
+/** What a mirror copied, and to where. */
+export interface LogCopy {
+  from: PropertyRef;
+  to: PropertyRef[];
 }
 
 export const DEFAULT_RATE_LIMIT_MS = 1000;
