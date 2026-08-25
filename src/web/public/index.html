@@ -51,6 +51,10 @@
               Action
             </label>
           </span>
+          <label id="unused-buttons-filter" class="toggle" for="unused-buttons" hidden>
+            <input id="unused-buttons" type="checkbox" checked />
+            Unused buttons
+          </label>
           <select id="sort" title="Sort the list"></select>
           <input id="filter" type="search" />
         </div>
@@ -65,6 +69,7 @@
         <button id="tab-sliders" type="button" class="tab">Sliders</button>
         <button id="tab-timers" type="button" class="tab">Timers</button>
         <button id="tab-activity" type="button" class="tab">Activity</button>
+        <button id="tab-controllers" type="button" class="tab">Controllers</button>
         <button id="tab-map" type="button" class="tab">Map</button>
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
           Zigbee2MQTT
@@ -139,6 +144,13 @@
           <span id="map-status" class="device-meta"></span>
         </div>
         <div id="map" class="map"><div id="map-tip" class="map-tip" hidden></div></div>
+      </section>
+
+      <section id="view-controllers" hidden>
+        <div class="rules-actions">
+          <button id="download-controllers" type="button">Download</button>
+        </div>
+        <div id="controllers"></div>
       </section>
 
       <section id="view-activity" hidden>
