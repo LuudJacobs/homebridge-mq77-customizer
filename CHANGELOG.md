@@ -6,9 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A Controllers tab, listing every button of every remote and what it sets off. Buttons nothing answers read as none and can be hidden, and the whole overview downloads as `controller-config.md` to keep beside the remote
+## [1.1.0] - 2026-08-25
 
-- A press and the rule it sets off read as one line, `Woonkamer Remote 4 Single Long → Woonkamer: All Off - ran: 2 actions sent`. Presses that set nothing off keep a line of their own, and start hidden
+### Added
+
+- A Controllers tab, listing every button of every remote and what it sets off. Buttons nothing answers read as `none` and can be hidden, and the whole overview downloads as `controller-config.md` to keep beside the remote
+
+### Changed
+
+- A press and the rule it sets off read as one line in the activity log, `Woonkamer Remote 4 Single Long → Woonkamer: All Off - ran: 2 actions sent`. Presses that set nothing off keep a line of their own, and start hidden
 - Actions read as buttons in the activity log too, `4 Single Long` rather than `4_single_long`
 - A slider says what it did in the words somebody would use: `Brightness+ 1/6`, `Brightness- 0/6 (off)`, `On to Brightness 94`
 - A mirror says which function it read and which it wrote: `Gang Voor State → Gang Achter State`
