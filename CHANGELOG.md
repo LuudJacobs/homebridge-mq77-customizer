@@ -6,12 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- The controller tables drop their `Button | Action` heading row, which said what the two columns say themselves. `controller-config.md` keeps it, since a markdown table cannot do without one
-- The Clear button is back on the Activity tab, at the end of the line above the log. It stands down on a phone, where emptying the log in passing is not something anybody wants
+## [1.3.0] - 2026-08-25
 
-- A Cycle button for sliders: one button that steps up to the top, back down to off, and up again. It starts upward whenever the level was last set elsewhere, and ignores a second press within a second
-- The tabs become a dropdown below 960px rather than below 640px, with the Zigbee2MQTT link still at the end of the line. The Map is in the dropdown now, since a window that narrow can still draw one
-- The Controllers tab draws two tables side by side where there is room, and marks where one physical button gives way to the next
+### Added
+
+- A Cycle button for sliders: one button for the whole range, stepping up to the top, back down to off, and up again. It starts upward whenever the level was last set by something else, and ignores a second press within a second, unlike the stepping buttons
+
+### Changed
+
+- The tabs become a dropdown below 960px rather than below 640px, aligned left with the Zigbee2MQTT link still at the end of the line. The Map is in the dropdown now, since a window that narrow can still draw one
+- The Controllers tab draws two tables side by side where there is room, marks where one physical button gives way to the next, and drops the `Button | Action` heading row, which said what the two columns say themselves. `controller-config.md` keeps its heading, since a markdown table cannot do without one
+
+### Fixed
+
+- The Clear button is back on the Activity tab, at the end of the line above the log. It was removed altogether when it should only have stood down on a phone, which is what it does now
 
 ## [1.2.0] - 2026-08-25
 
