@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.2.0] - 2026-08-25
+
+### Added
+
+- The Controllers tab says `In HomeKit` of a button whose press reaches HomeKit, in place of `none` where no rule answers it and underneath the rules where one does
+- A HomeKit buttons tick in the header, beside Unused buttons, says whether those lines are wanted. With both down a button nothing answers is left out entirely, in the tables and in `controller-config.md` alike
+
 ## [1.1.0] - 2026-08-25
 
 ### Added
