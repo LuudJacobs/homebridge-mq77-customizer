@@ -202,7 +202,11 @@ box.checked = true;
 box.dispatchEvent(new window.Event('change'));
 await settle();
 
-const lines = window.document.getElementById('activity-log').innerHTML;
+// The section rather than the list inside it, so the Clear button above the
+// log is drawn where the rules on the section's id put it.
+const section = window.document.getElementById('view-activity');
+section.removeAttribute('hidden');
+const lines = section.outerHTML;
 if (!lines.includes('log-line')) {
   throw new Error('the interface drew nothing');
 }
@@ -249,9 +253,7 @@ writeFileSync(
         '<!doctype html><meta charset="utf-8"><style>' +
         css +
         'body{margin:0;padding:0.75rem;background:transparent}</style>' +
-        '<div class="log">' +
-        lines +
-        '</div>';
+        lines;
       for (const id of ['wide', 'narrow']) {
         const frame = document.getElementById(id);
         frame.contentDocument.open();

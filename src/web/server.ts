@@ -161,6 +161,10 @@ export class WebServer {
       if (path === '/api/settings/backup' && request.method === 'POST') {
         return send(response, 200, { backupAt: await this.deps.store.backupNow() });
       }
+      if (path === '/api/log' && request.method === 'DELETE') {
+        this.deps.rules.clearLog();
+        return send(response, 200, { ok: true });
+      }
       if (path === '/api/log' && request.method === 'GET') {
         return send(response, 200, { entries: this.deps.rules.getLog() });
       }

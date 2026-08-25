@@ -89,6 +89,7 @@ const el = {
   sliders: document.getElementById('sliders'),
   timers: document.getElementById('timers'),
   activityLog: document.getElementById('activity-log'),
+  clearLog: document.getElementById('clear-log'),
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
@@ -4064,6 +4065,16 @@ el.tabSliders.addEventListener('click', () => showView('sliders'));
 el.tabTimers.addEventListener('click', () => showView('timers'));
 
 el.tabControllers.addEventListener('click', () => showView('controllers'));
+el.clearLog.addEventListener('click', async () => {
+  try {
+    await api('/api/log', { method: 'DELETE' });
+    state.log = [];
+    renderLog();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
+
 el.tabActivity.addEventListener('click', () => showView('activity'));
 el.tabMap.addEventListener('click', () => showView('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
