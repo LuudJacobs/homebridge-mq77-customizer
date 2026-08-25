@@ -1017,7 +1017,7 @@ function renderProperty(device, property) {
   // that can be published independently.
   if (property.buttons?.length && selectable && checkbox.checked) {
     const group = document.createElement('div');
-    group.className = 'buttons';
+    group.className = 'gestures';
     group.append(...property.buttons.map((button) => renderButton(device, property, button)));
 
     const wrapper = document.createElement('div');

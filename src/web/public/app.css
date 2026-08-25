@@ -391,7 +391,8 @@ header {
   white-space: nowrap;
 }
 
-.buttons {
+/* The gestures listed under an action property, stepped in under their own. */
+.gestures {
   margin: 0.1rem 0 0.5rem 1.9rem;
   padding-left: 0.75rem;
   border-left: 2px solid var(--line);
@@ -659,8 +660,7 @@ table.buttons th {
   line-height: 2.4;
 }
 
-table.buttons tr + tr td,
-table.buttons th {
+table.buttons tr + tr td {
   border-top: 1px solid var(--line);
 }
 

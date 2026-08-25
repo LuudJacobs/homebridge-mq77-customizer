@@ -6,3 +6,4 @@ dist/
 
 # Written by tools/log-preview.mjs, to look at rather than to keep
 log-preview.html
+controllers-preview.html

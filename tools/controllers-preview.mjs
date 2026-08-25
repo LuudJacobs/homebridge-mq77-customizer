@@ -202,20 +202,20 @@ function fromSettings(path, splitAction) {
     const properties = (exposure.properties ?? [])
       .filter((propertyKey) => propertyKey !== 'action')
       .map((propertyKey) => ({
-      key: propertyKey,
-      label: propertyKey.startsWith('state')
-        ? `State${propertyKey.slice(5).replace('_', ' ')}`
-        : propertyKey[0].toUpperCase() + propertyKey.slice(1),
-      semantic: propertyKey.startsWith('state') ? 'state' : propertyKey,
-      type: propertyKey === 'brightness' ? 'numeric' : 'binary',
-      category: 'primary',
-      endpoint: '',
-      readable: true,
-      writable: true,
-      publishable: true,
-      role: 'power',
-      onValue: 'ON',
-      offValue: 'OFF',
+        key: propertyKey,
+        label: propertyKey.startsWith('state')
+          ? `State${propertyKey.slice(5).replace('_', ' ')}`
+          : propertyKey[0].toUpperCase() + propertyKey.slice(1),
+        semantic: propertyKey.startsWith('state') ? 'state' : propertyKey,
+        type: propertyKey === 'brightness' ? 'numeric' : 'binary',
+        category: 'primary',
+        endpoint: '',
+        readable: true,
+        writable: true,
+        publishable: true,
+        role: 'power',
+        onValue: 'ON',
+        offValue: 'OFF',
       }));
 
     if (exposure.type === 'controller' || used.has(key)) {
@@ -351,7 +351,11 @@ await settle();
 // The tick lives with the other filters up in the header, so the preview
 // carries that row along with the tab underneath it.
 const controls = window.document.querySelector('.header-actions').outerHTML;
-const view = `<header>${controls}</header>${window.document.getElementById('view-controllers').innerHTML}`;
+// The section itself, not what is inside it: the download sits at the end of
+// its line, and stands down on a phone, by rules hung on the section's id.
+const section = window.document.getElementById('view-controllers');
+section.removeAttribute('hidden');
+const view = `<header>${controls}</header>${section.outerHTML}`;
 const markdown = window.eval('controllersAsMarkdown()');
 if (!view.includes('controller-card')) {
   throw new Error('the interface drew nothing');
