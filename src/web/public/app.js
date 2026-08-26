@@ -341,15 +341,14 @@ function listen() {
       }
       Object.assign(device.state, payload.changes);
       for (const propertyKey of Object.keys(payload.changes)) {
-        device.lastSeen[propertyKey] = payload.at;
         updateValue(device, propertyKey);
       }
       if (payload.reportedLastSeen !== undefined) {
         device.reportedLastSeen = payload.reportedLastSeen;
-      }
-      const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
-      if (seen) {
-        paintLastSeen(seen, device);
+        const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
+        if (seen) {
+          paintLastSeen(seen, device);
+        }
       }
     }
   };
@@ -413,15 +412,16 @@ function isTimeNamed(property) {
 }
 
 /**
- * When the device last said anything.
+ * When the device last said anything, as the device tells it.
  *
- * Taken from the newest reading of any of its functions, so it works the same
- * for every source rather than relying on one of them publishing a timestamp.
- * Only known since this plugin started, so a quiet device has none.
+ * The time a message arrived is not an answer to this: a retained one is
+ * replayed the moment we connect, which would have every retaining device
+ * looking as though it had just spoken. Zigbee2MQTT publishes the real
+ * answer when `advanced.last_seen` is turned on, and where nothing publishes
+ * one there is nothing to say, so nothing is said.
  */
 function deviceLastSeen(device) {
-  const times = Object.values(device.lastSeen ?? {});
-  return times.length > 0 ? Math.max(...times) : undefined;
+  return asDate({ key: 'last_seen' }, device.reportedLastSeen)?.getTime();
 }
 
 function formatLastSeen(at) {
@@ -1006,8 +1006,10 @@ function deviceFacts(device) {
   }
 
   if (device.reportedLastSeen !== undefined) {
+    // The timestamp as the device sent it, since the header has already said
+    // it the readable way and this is the place to check the thing itself.
+    const said = fact('last seen', String(device.reportedLastSeen));
     const moment = asDate({ key: 'last_seen' }, device.reportedLastSeen);
-    const said = fact('last seen', moment ? formatLastSeen(moment.getTime()) : String(device.reportedLastSeen));
     if (moment) {
       said.title = moment.toLocaleString();
     }

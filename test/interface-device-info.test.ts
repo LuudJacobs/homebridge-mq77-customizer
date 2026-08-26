@@ -256,7 +256,7 @@ describe('what a panel says about the device itself', () => {
     expect(facts(silent)).toEqual([]);
   });
 
-  it('shows the time a device reports for itself, read as a time', async () => {
+  it('gives the timestamp itself, since the header has said it readably', async () => {
     const ui = await openDevices([
       {
         ...device('0x1', 'hall_switch'),
@@ -265,12 +265,27 @@ describe('what a panel says about the device itself', () => {
       },
     ]);
 
-    const said = facts(ui).find(([label]) => label === 'last seen');
-    expect(said).toBeDefined();
-    // Read as a moment rather than repeated as it came off the wire.
-    expect(said?.[1]).not.toContain('2026-08-25T09:00:00Z');
+    // The place to check the thing itself, so it is repeated as it came off
+    // the wire, with the readable version on hover.
+    expect(facts(ui)).toContainEqual(['last seen', '2026-08-25T09:00:00Z']);
     expect(
       ui.document.querySelector('#devices .property.fact[title]')?.getAttribute('title'),
     ).toBeTruthy();
+  });
+
+  it('says in the header when the device was last heard, and nothing where it never says', async () => {
+    const said = await openDevices([
+      { ...device('0x1', 'hall_switch'), reportedLastSeen: '2026-08-25T09:00:00Z' },
+    ]);
+    // Readable there, rather than the timestamp: `25-08 11:00` or, on the day
+    // itself, `Today 11:00:00`.
+    const shown = said.document.querySelector('#devices .device-seen')?.textContent ?? '';
+    expect(shown).not.toBe('');
+    expect(shown).not.toContain('2026-08-25T09:00:00Z');
+
+    // A device publishing no time of its own leaves the header empty: when a
+    // message reached the broker is not an answer to when the device spoke.
+    const silent = await openDevices([device('0x2', 'attic_sensor')]);
+    expect(silent.document.querySelector('#devices .device-seen')?.textContent).toBe('');
   });
 });

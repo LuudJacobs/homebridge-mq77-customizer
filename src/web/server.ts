@@ -300,14 +300,6 @@ export class WebServer {
       const endpoints = [
         ...new Set(device.properties.map((property) => property.endpoint ?? DEVICE_ENDPOINT)),
       ];
-      const lastSeen: Record<string, number> = {};
-      for (const property of device.properties) {
-        const at = this.deps.catalog.getLastSeen(device.sourceId, device.deviceId, property.key);
-        if (at !== undefined) {
-          lastSeen[property.key] = at;
-        }
-      }
-
       return {
         sourceId: device.sourceId,
         deviceId: device.deviceId,
@@ -349,7 +341,6 @@ export class WebServer {
         reportedLastSeen: this.deps.catalog.getReportedLastSeen(device.sourceId, device.deviceId),
         exposure: this.deps.store.getExposure(key) ?? { properties: [] },
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
-        lastSeen,
       };
     });
 

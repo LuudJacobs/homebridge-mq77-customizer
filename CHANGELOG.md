@@ -6,7 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A device panel says under Diagnostics whether the broker keeps that device's messages, read from Zigbee2MQTT's own configuration, and when the device last said it was heard, where the source publishes such a thing
+- A device panel says under Diagnostics whether the broker keeps that device's messages, read from Zigbee2MQTT's own configuration, and the timestamp the device last reported for itself
+- When a device was last heard now comes from the device rather than from this plugin, which no longer keeps arrival times of its own. Zigbee2MQTT publishes it once `advanced.last_seen` is turned on; a device that publishes none shows none, since a retained message replayed on connect says nothing about when the device spoke
 - What a device is and the topic it lives on move off the card header onto the first line of the open panel, so the header reads as the name, when it was last heard, and what it became in HomeKit
 
 ## [1.3.0] - 2026-08-25

@@ -445,3 +445,25 @@ describe('state', () => {
     expect(adapter.getDevices()).toEqual([]);
   });
 });
+
+describe('a publisher that says when it spoke', () => {
+  it('passes the time on rather than timing the arrival', async () => {
+    const { adapter, mqtt } = await makeAdapter(BROADLINK);
+    const updates: { reportedLastSeen?: string | number }[] = [];
+    adapter.on('state', (update) => updates.push(update));
+
+    mqtt.deliver('broadlinkrm/fan', { state: 'ON', last_seen: '2026-08-25T09:00:00Z' });
+
+    expect(updates.at(-1)?.reportedLastSeen).toBe('2026-08-25T09:00:00Z');
+  });
+
+  it('says nothing where the publisher says nothing', async () => {
+    const { adapter, mqtt } = await makeAdapter(BROADLINK);
+    const updates: { reportedLastSeen?: string | number }[] = [];
+    adapter.on('state', (update) => updates.push(update));
+
+    mqtt.deliver('broadlinkrm/fan', { state: 'ON' });
+
+    expect(updates.at(-1)?.reportedLastSeen).toBeUndefined();
+  });
+});

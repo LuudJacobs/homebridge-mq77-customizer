@@ -32,8 +32,6 @@ export class Catalog extends EventEmitter<CatalogEvents> {
   /** Sources that have produced a catalog at least once since starting. */
   private readonly reported = new Set<string>();
   private devices: CatalogDevice[] = [];
-  /** Epoch millis a property last carried a value, keyed `sourceId:deviceId` then property key. */
-  private readonly lastSeen = new Map<string, Map<string, number>>();
   /** What each device last said about when it was heard, where it says so. */
   private readonly reportedLastSeen = new Map<string, string | number>();
 
@@ -82,7 +80,6 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     this.sources.clear();
     this.reported.clear();
     this.devices = [];
-    this.lastSeen.clear();
     this.reportedLastSeen.clear();
   }
 
@@ -131,16 +128,14 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     return this.adapters.get(sourceId)?.getState(deviceId);
   }
 
-  /** Epoch millis the property last carried a value, or undefined if never. */
-  getLastSeen(sourceId: string, deviceId: string, propertyKey: string): number | undefined {
-    return this.lastSeen.get(`${sourceId}:${deviceId}`)?.get(propertyKey);
-  }
-
   /**
-   * When the device itself last said it was heard, for a source that says so.
+   * When the device itself last said it was heard.
    *
-   * Zigbee2MQTT only publishes this when `advanced.last_seen` is turned on,
-   * so for most setups there is nothing to report and nothing is shown.
+   * The only account of it there is: when a message arrived says when the
+   * broker sent it, which for a retained one is the moment we connected
+   * rather than the moment the device spoke. Zigbee2MQTT publishes this when
+   * `advanced.last_seen` is turned on, and a device that publishes none is
+   * a device nothing can be said about.
    */
   getReportedLastSeen(sourceId: string, deviceId: string): string | number | undefined {
     return this.reportedLastSeen.get(`${sourceId}:${deviceId}`);
@@ -160,17 +155,8 @@ export class Catalog extends EventEmitter<CatalogEvents> {
   }
 
   private handleState(update: StateUpdate): void {
-    const key = deviceKey(update);
-    let seen = this.lastSeen.get(key);
-    if (!seen) {
-      seen = new Map();
-      this.lastSeen.set(key, seen);
-    }
-    for (const propertyKey of Object.keys(update.changes)) {
-      seen.set(propertyKey, update.at);
-    }
     if (update.reportedLastSeen !== undefined) {
-      this.reportedLastSeen.set(key, update.reportedLastSeen);
+      this.reportedLastSeen.set(deviceKey(update), update.reportedLastSeen);
     }
     this.emit('state', update);
   }
