@@ -214,3 +214,63 @@ describe('grouping the device list', () => {
     );
   });
 });
+
+describe('what a panel says about the device itself', () => {
+  const facts = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#devices .property.fact')].map((row) => [
+      row.querySelector('.fact-label')?.textContent,
+      row.querySelector('.value')?.textContent,
+    ]);
+
+  it('puts what the device is and where it lives on the first line of the panel', async () => {
+    const ui = await openDevices([device('0x1', 'hall_switch')]);
+    const origin = ui.document.querySelector('#devices .device-origin');
+
+    expect([...origin!.children].map((node) => node.textContent)).toEqual([
+      'SONOFF ZBMINIL2',
+      '|',
+      'zigbee2mqtt/hall_switch',
+    ]);
+    // And off the header, which now carries only the name, when it was last
+    // heard, and what it became in HomeKit.
+    expect(ui.document.querySelector('#devices summary .device-meta')).toBeNull();
+    expect(ui.document.querySelector('#devices summary .device-topic')).toBeNull();
+  });
+
+  it('says under diagnostics whether the device is retained', async () => {
+    const ui = await openDevices([{ ...device('0x1', 'hall_switch'), retained: true }]);
+
+    expect(facts(ui)).toEqual([['retained', 'true']]);
+    // The heading appears for the fact alone: this device has no diagnostic
+    // function of its own.
+    expect(
+      [...ui.document.querySelectorAll('#devices .group-title')].map((node) => node.textContent),
+    ).toContain('Diagnostics');
+  });
+
+  it('says false as plainly as true, and nothing at all when the source cannot say', async () => {
+    const off = await openDevices([{ ...device('0x1', 'hall_switch'), retained: false }]);
+    expect(facts(off)).toEqual([['retained', 'false']]);
+
+    const silent = await openDevices([device('0x1', 'hall_switch')]);
+    expect(facts(silent)).toEqual([]);
+  });
+
+  it('shows the time a device reports for itself, read as a time', async () => {
+    const ui = await openDevices([
+      {
+        ...device('0x1', 'hall_switch'),
+        retained: true,
+        reportedLastSeen: '2026-08-25T09:00:00Z',
+      },
+    ]);
+
+    const said = facts(ui).find(([label]) => label === 'last seen');
+    expect(said).toBeDefined();
+    // Read as a moment rather than repeated as it came off the wire.
+    expect(said?.[1]).not.toContain('2026-08-25T09:00:00Z');
+    expect(
+      ui.document.querySelector('#devices .property.fact[title]')?.getAttribute('title'),
+    ).toBeTruthy();
+  });
+});

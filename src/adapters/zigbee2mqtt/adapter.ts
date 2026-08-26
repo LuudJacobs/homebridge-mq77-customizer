@@ -15,7 +15,7 @@ import type {
   SourceConfig,
 } from '../types.js';
 import { flattenExposes } from './exposes.js';
-import type { Z2mDevice } from './protocol.js';
+import type { Z2mConfig, Z2mDevice } from './protocol.js';
 
 /** Topics under `<base>/` that carry bridge traffic rather than device state. */
 const BRIDGE_PREFIX = 'bridge';
@@ -43,6 +43,12 @@ export class Zigbee2mqttAdapter
   private readonly base: string;
 
   private devices: NormalisedDevice[] = [];
+  /** What `bridge/info` said about retaining, once it has said anything. */
+  private retaining?: {
+    forced: boolean;
+    fallback: boolean;
+    perDevice: Map<string, boolean>;
+  };
   /** The scan in flight, so two askers wait on one answer. */
   private mapPending?: {
     promise: Promise<NetworkMap>;
@@ -76,6 +82,15 @@ export class Zigbee2mqttAdapter
     this.unsubscribes.push(
       this.mqtt.subscribe(joinTopic(this.base, BRIDGE_PREFIX, 'state'), (message) => {
         this.handleBridgeState(message.payload);
+      }),
+    );
+
+    // `bridge/info` carries the running configuration, which is the only
+    // place the per device retain setting is written down. Retained like the
+    // catalog, so it arrives on subscribing and again on every config change.
+    this.unsubscribes.push(
+      this.mqtt.subscribe(joinTopic(this.base, BRIDGE_PREFIX, 'info'), (message) => {
+        this.handleBridgeInfo(message.payload);
       }),
     );
 
@@ -201,6 +216,59 @@ export class Zigbee2mqttAdapter
     return this.states.get(deviceId);
   }
 
+  /**
+   * Reads which devices Zigbee2MQTT retains the messages of.
+   *
+   * Three places decide it, in this order: the device's own block, the
+   * defaults every device inherits, and the broker-wide switch that turns
+   * retaining off whatever the rest says. A device that sets nothing of its
+   * own inherits, which is why the absent case is not simply false.
+   */
+  private handleBridgeInfo(payload: Buffer): void {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(payload.toString());
+    } catch (error) {
+      this.log.debug(`bridge/info is not valid JSON: ${describe(error)}`);
+      return;
+    }
+
+    const config = (raw as { config?: Z2mConfig })?.config;
+    if (!config) {
+      return;
+    }
+
+    const forced = config.mqtt?.force_disable_retain === true;
+    const fallback = config.device_options?.retain === true;
+    const perDevice = new Map<string, boolean>();
+    for (const [ieee, options] of Object.entries(config.devices ?? {})) {
+      perDevice.set(ieee, options?.retain ?? fallback);
+    }
+
+    this.retaining = { forced, fallback, perDevice };
+
+    // The catalog was built before this arrived, so it is built again with
+    // what is now known. Nothing else about a device has changed.
+    if (this.devices.length > 0) {
+      this.devices = this.devices.map((device) => ({
+        ...device,
+        retained: this.retains(device.deviceId),
+      }));
+      this.emit('devices', this.devices);
+    }
+  }
+
+  /** Whether the broker keeps this device's messages, as the bridge has it. */
+  private retains(deviceId: string): boolean | undefined {
+    if (!this.retaining) {
+      return undefined;
+    }
+    if (this.retaining.forced) {
+      return false;
+    }
+    return this.retaining.perDevice.get(deviceId) ?? this.retaining.fallback;
+  }
+
   private handleDevices(payload: Buffer): void {
     let raw: unknown;
     try {
@@ -280,6 +348,7 @@ export class Zigbee2mqttAdapter
       manufacturer: entry.definition?.vendor ?? entry.manufacturer,
       model: entry.definition?.model ?? entry.model_id,
       description: entry.definition?.description,
+      retained: this.retains(entry.ieee_address),
       properties,
     };
   }
@@ -352,12 +421,20 @@ export class Zigbee2mqttAdapter
     Object.assign(state, changes);
     this.states.set(deviceId, state);
 
+    // Not an expose, so no property carries it, but a source that publishes
+    // one is saying something no arrival time can: a retained message
+    // replayed on connect says when the device spoke, not when we heard it.
+    const reported = (parsed as { last_seen?: unknown })?.last_seen;
+
     const update: StateUpdate = {
       sourceId: this.sourceId,
       deviceId,
       changes,
       at: Date.now(),
       retained,
+      ...(typeof reported === 'string' || typeof reported === 'number'
+        ? { reportedLastSeen: reported }
+        : {}),
     };
     this.emit('state', update);
   }
