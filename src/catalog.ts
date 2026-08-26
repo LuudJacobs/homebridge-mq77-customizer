@@ -34,6 +34,8 @@ export class Catalog extends EventEmitter<CatalogEvents> {
   private devices: CatalogDevice[] = [];
   /** Epoch millis a property last carried a value, keyed `sourceId:deviceId` then property key. */
   private readonly lastSeen = new Map<string, Map<string, number>>();
+  /** What each device last said about when it was heard, where it says so. */
+  private readonly reportedLastSeen = new Map<string, string | number>();
 
   constructor(
     private readonly mqtt: MqttConnection,
@@ -81,6 +83,7 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     this.reported.clear();
     this.devices = [];
     this.lastSeen.clear();
+    this.reportedLastSeen.clear();
   }
 
   /**
@@ -133,6 +136,16 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     return this.lastSeen.get(`${sourceId}:${deviceId}`)?.get(propertyKey);
   }
 
+  /**
+   * When the device itself last said it was heard, for a source that says so.
+   *
+   * Zigbee2MQTT only publishes this when `advanced.last_seen` is turned on,
+   * so for most setups there is nothing to report and nothing is shown.
+   */
+  getReportedLastSeen(sourceId: string, deviceId: string): string | number | undefined {
+    return this.reportedLastSeen.get(`${sourceId}:${deviceId}`);
+  }
+
   private rebuild(): void {
     const devices: CatalogDevice[] = [];
     for (const [sourceId, adapter] of this.adapters) {
@@ -155,6 +168,9 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     }
     for (const propertyKey of Object.keys(update.changes)) {
       seen.set(propertyKey, update.at);
+    }
+    if (update.reportedLastSeen !== undefined) {
+      this.reportedLastSeen.set(key, update.reportedLastSeen);
     }
     this.emit('state', update);
   }

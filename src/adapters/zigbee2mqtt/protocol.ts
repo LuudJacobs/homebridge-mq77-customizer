@@ -48,3 +48,17 @@ export const ACCESS_SET = 2;
  * their features flat in the payload, unlike `composite`.
  */
 export const SPECIFIC_TYPES = new Set(['light', 'switch', 'fan', 'cover', 'lock', 'climate']);
+
+/**
+ * The parts of the `bridge/info` config we read.
+ *
+ * It carries the whole running configuration, of which one setting matters
+ * here: whether the broker keeps a device's messages for the next subscriber.
+ */
+export interface Z2mConfig {
+  mqtt?: { force_disable_retain?: boolean };
+  /** Defaults every device inherits unless its own block says otherwise. */
+  device_options?: { retain?: boolean };
+  /** Keyed by IEEE address, holding only what was set for that device. */
+  devices?: Record<string, { retain?: boolean } | undefined>;
+}

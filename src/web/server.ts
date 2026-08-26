@@ -281,6 +281,9 @@ export class WebServer {
       deviceId: update.deviceId,
       changes: update.changes,
       at: update.at,
+      ...(update.reportedLastSeen === undefined
+        ? {}
+        : { reportedLastSeen: update.reportedLastSeen }),
     });
   }
 
@@ -340,6 +343,10 @@ export class WebServer {
           role: roleFor(property),
           buttons: describeButtons(property),
         })),
+        // Two things about the device rather than about any one function of
+        // it, both worth seeing when something is not reporting as expected.
+        retained: device.retained,
+        reportedLastSeen: this.deps.catalog.getReportedLastSeen(device.sourceId, device.deviceId),
         exposure: this.deps.store.getExposure(key) ?? { properties: [] },
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
         lastSeen,
