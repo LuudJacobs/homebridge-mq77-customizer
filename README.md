@@ -182,6 +182,14 @@ Each button takes several triggers, so one slider can be driven by more than one
 
 Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 
+### What a device says about itself
+
+A device card says when the device was last heard, and its panel says the timestamp behind that along with whether the broker keeps its messages.
+
+Both come from the source rather than from this plugin. When a message reached the broker is not an answer to when a device spoke: a retained message is replayed the moment the plugin connects, which would have every retaining device looking as though it had just reported. Zigbee2MQTT publishes the real answer once `advanced.last_seen` is set to something other than `disable`, and a flat JSON publisher that puts a `last_seen` in its payload is taken at its word the same way. A device that publishes no such time shows none, and sorting by Last seen puts those last.
+
+Whether messages are retained is read from Zigbee2MQTT's own configuration, where three things decide it: the device's own `retain`, the `device_options` defaults it otherwise inherits, and `mqtt.force_disable_retain`, which overrides both. A source that keeps no such configuration says nothing rather than guessing.
+
 ### Naming and grouping
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.

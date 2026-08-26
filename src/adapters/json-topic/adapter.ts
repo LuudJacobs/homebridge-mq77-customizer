@@ -239,12 +239,19 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     }
 
     if (Object.keys(changes).length > 0) {
+      // A publisher that says when it spoke is taken at its word, the same as
+      // Zigbee2MQTT is. Nothing here can say it on the publisher's behalf.
+      const reported = (parsed as { last_seen?: unknown }).last_seen;
+
       const update: StateUpdate = {
         sourceId: this.sourceId,
         deviceId: relative,
         changes,
         at: Date.now(),
         retained,
+        ...(typeof reported === 'string' || typeof reported === 'number'
+          ? { reportedLastSeen: reported }
+          : {}),
       };
       this.emit('state', update);
     }
