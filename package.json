@@ -1,6 +1,5 @@
 {
   "name": "homebridge-mq77-customizer",
-  "private": true,
   "displayName": "MQ77 Customizer",
   "version": "1.4.1",
   "description": "Expose MQTT devices to HomeKit and link them together, configured from a web interface instead of a config form.",
