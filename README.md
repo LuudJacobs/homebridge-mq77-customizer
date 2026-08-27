@@ -112,64 +112,42 @@ The Activity tab lists what the rules have been doing, newest first, including t
 
 ## Rules
 
-Rules live in four tabs: Automation, Mirror devices, Sliders and Timers. Automation is the general one, linking devices together: when something happens on one, send something to another. The other three are shapes that would otherwise be several automations that only make sense together. All of them work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+Rules live in four tabs: Automation, Mirror devices, Sliders and Timers. Automation is the general one: when something happens on one device, send something to another. All four work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
-A rule is one or more triggers and one or more outcomes. Any trigger fires the rule. Actions can be delayed.
+Across all four:
 
-An outcome is a condition and the actions to take when it holds. The first outcome whose condition holds runs and the rest are skipped, which is if, else if and else. Any outcome may be left without a condition, which means it always holds, so nothing after it can run. That is allowed rather than prevented. The activity list says which outcome ran, by position.
+- anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
+- an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
+- a rule with several outcomes runs the first whose condition holds and skips the rest
+- picking what sets a rule off marks any value another rule already uses with a `*`, since two rules on one button press is a mistake nobody sees until both of them run
+- rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press
+- a rule will not run more often than its rate limit, one second by default, and one that runs more than twenty times in ten seconds is switched off and logged on the assumption it is setting itself off
 
-Conditions are groups joined by **or**, each group a set of tests joined by **and**, and any group can be negated with **not**. That covers every boolean expression: `(A and B) or (C and (D and E))` is the same as `(A and B) or (C and D and E)`, which is two levels. A deeper expression written by hand into `state.json` still works and is left untouched by the editor.
-
-An action either sends a fixed value or matches whatever set the rule off, which is how one device is made to follow another. A copied value is restated in the target's own terms, so a switch that says `ON` can drive one that expects `true`, and a dimmer counting to 254 can drive one counting to 100.
-
-Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
-
-A remote's actions are said as buttons rather than as wire values, `1 Single Long` for `1_single_long` and `Left Double` for `double_left`, and put in the order somebody would read them: buttons by number, then left, right and both, and within each the gestures from a single press to a hold. Anything that cannot be read as a button is left as it is. What is stored is always the value the device uses.
-
-Picking what sets a rule off marks any value another rule already uses with a `*`. Two rules on one button press is a mistake nobody sees until both of them run. Conditions are left unmarked, since asking what a device is doing is something any number of rules may do.
-
-Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
+An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run.
 
 ### Mirror devices
 
-The Mirror devices tab asks a simpler question than Automation: which devices, and which of their functions should stay in step. Every member is both a trigger and a target, so changing any one of them brings the rest into line.
+Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
 
-Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`. Where a device has more than one function with that meaning, you choose which.
-
-A member that already holds the value is left alone, and after a write the group is left to settle, one and a half seconds by default. Both are needed. The first handles the normal case where every device confirms; the second handles the one where they do not, since a device reporting its old state once more is indistinguishable from someone flipping a switch, and acting on it would send the group back the other way for ever.
-
-The cost is that flipping a mirrored device again within the settling window is ignored, and devices that disagree are retried once per window rather than as fast as they can talk. Set it per rule between 0.25 and 60 seconds. Below a quarter of a second two devices that disagree can trade places fast enough to look like the runaway the window exists to prevent.
-
-Two things guard against a pair of rules setting each other off:
-
-- a rule will not run more often than its rate limit, one second by default
-- a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
-
-An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button is absent until the panel and the stored rule agree again.
+After a write the group is left to settle, one and a half seconds by default and set per rule between 0.25 and 60 seconds. A device reporting its old state once more is indistinguishable from somebody flipping a switch, so without the pause a group that disagrees would send itself back and forth for ever. The cost is that flipping a mirrored device again inside the window is ignored.
 
 ### Timers
 
 A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
 
-The clock starts again if the same thing happens again, so a sensor seeing somebody a second time means another full wait rather than a shorter one. Starting is an event: a light saying it is still on is not somebody turning it on, so `is ON` starts a wait when the light comes on and not on every message that mentions it. It is called off the moment what started it stops being so: told to run when a light came on, it stops caring once the light is off, however that happened. For a reading rather than a state, `above 200` say, it keeps counting while the reading stays over the line and stops when it comes back under.
-
-A timer counting when Homebridge restarts is forgotten. Whatever it was going to do stays undone until something starts it again.
+The clock starts again if the same thing happens again. It is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. A timer counting when Homebridge restarts is forgotten.
 
 An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
 
 ### Sliders
 
-A dimmer driven from buttons. Pick the level, say how many steps it has, and set the buttons that move it. One press moves one step. Either button switches the device on when it is off: up goes to the level it comes on at, down to the bottom of the range, since a button pressed at a dark light is a request for light. Down from the first step switches it off rather than leaving a light at zero brightness and still on. A level nothing has reported counts as off, so the first press is a step up to one.
+A dimmer driven from buttons. One press moves one step. Down from the first step switches the device off rather than leaving a light at zero brightness and still on, and either stepping button switches it on when it is off.
 
-Written as automations this is four to six rules that only make sense together, which is why it is one object. The device stays an ordinary device: the same properties are still there for automations and mirror groups, and what a slider does shows in the Activity tab like anything else.
+Coming on from off lands where the device says it should, which Zigbee2MQTT keeps as `level_config.on_level`. "On at" sets it for a device that has no such setting, and without either it comes on at the first step.
 
-Coming on from off lands where the device says it should. Zigbee2MQTT keeps that as `level_config.on_level`, and a device that has one already knows the answer. "On at" overrides it for a device that has no such setting, and without either the slider comes on at the first step. That is also what happens in the moments after a restart, before the device has reported anything: the first press goes to the first step, and once it has spoken the level it keeps is used. It then carries on from the nearest step to wherever it landed.
+Cycle is one button for the whole range: up to the top, back down to off, and up again from there. It starts upward whenever the level was last set by something other than the slider, and ignores a second press within a second, since it is a button to press rather than to hold.
 
-Cycle is one button for the whole range, for a remote with one to spare rather than two. It steps up until the top, turns round there and steps back down to off, and from off it goes up again. It starts upward whenever the level was last set by something other than the slider, so a light dimmed from HomeKit brightens on the next press rather than carrying on down. Unlike the stepping buttons it ignores a second press within a second, since it is a button to press rather than to hold.
-
-Each button takes several triggers, so one slider can be driven by more than one remote.
-
-Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
+Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
 
 ## Keeping your settings
 
@@ -178,14 +156,6 @@ Everything set here lives in `state.json` under the Homebridge storage path, alo
 The footer offers `back up: download / upload`, along with when the last copy was taken and a way to take one now. Download hands you the lot as a file, which is the only copy that survives losing the machine it runs on. Upload takes one back, after copying what it replaces. The session secret is left out of the download and kept on upload, so a settings file is safe to keep somewhere else and putting one back does not sign you out.
 
 A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
-
-## Upgrading from MQTT Customizer
-
-The plugin used to be called MQTT Customizer. Renaming it changes the platform Homebridge looks for, so the old settings block no longer belongs to any installed plugin. Fill in this plugin's settings screen and delete the old block, or change `platform` in that block to `Mq77Customizer` if you would rather edit the JSON.
-
-Selections saved under the old name are picked up automatically the first time the renamed plugin starts. The old file is left in place rather than moved.
-
-Homebridge may offer to remove accessories belonging to the plugin under its former name. That is safe to accept.
 
 ## Links
 
