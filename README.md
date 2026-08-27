@@ -57,7 +57,7 @@ Every device found on the broker is listed with all of its functions, grouped in
 
 Per device you can also:
 
-- choose the **HomeKit tile**: Switch, Outlet, Lightbulb or Fan
+- choose the HomeKit tile: Switch, Outlet, Lightbulb or Fan
 - publish each endpoint as its own accessory, for multi channel switches
 - give it a name, a room and a kind, which this interface uses to label and group it
 
