@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.4.1] - 2026-08-27
+
+### Changed
+
+- Installing the plugin no longer asks for `sudo`, which `hb-service add` does not need
+
+### Fixed
+
+- The build's progress messages go to stderr rather than stdout, so anything reading `npm pack --json` gets JSON and nothing else
+
 ## [1.4.0] - 2026-08-27
 
 ### Added
