@@ -58,6 +58,22 @@ jobs:
           prerelease: true
           files: "*.tgz"
 
+      # Only the build somebody would install is worth keeping: the release is
+      # a rolling one, and every run before this added a tarball nobody wants
+      # any more. Pruned after the upload rather than before it, so a failed
+      # upload never leaves the release with nothing on it.
+      - name: Prune the builds before this one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ steps.pack.outputs.tarball }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/tags/test-build" \
+            --jq '.assets[] | select(.name != env.KEEP) | "\(.id) \(.name)"' |
+          while read -r id name; do
+            echo "Dropping $name"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
+          done
+
       # The whole thing, ready to paste, on the run's own page.
       #
       # The repository is private, so the plain download URL answers 404 to
