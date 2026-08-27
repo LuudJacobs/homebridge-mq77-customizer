@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.5.1] - 2026-08-27
+
+### Changed
+
+- Published from CI rather than by hand, with provenance, so what is on npm can be traced back to the commit and the workflow that built it
+
 ## [1.5.0] - 2026-08-27
 
 The first public release, on npm.
