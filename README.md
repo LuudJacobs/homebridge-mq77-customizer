@@ -1,5 +1,7 @@
 # MQ77 Customizer 1.3.0
 
+**This Homebridge plugin has been 100% vibe coded using Claude Code.**
+
 A Homebridge plugin that exposes MQTT devices to HomeKit and links them together, configured from a web interface instead of a config form. Devices and their functions are discovered from the broker, so nothing has to be typed out by hand.
 
 ## Requirements
@@ -11,88 +13,59 @@ A Homebridge plugin that exposes MQTT devices to HomeKit and links them together
 
 ## Installation
 
-Not published to npm. Install from source, which builds on install:
+Install it the way you install any Homebridge plugin, from the Plugins screen of the Homebridge UI or from the command line:
 
 ```
-npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#main
+sudo hb-service add homebridge-mq77-customizer
 ```
 
-Use `#test` instead of `#main` to run what is being tested rather than the last release.
+Until it is on npm, install it from source instead, which builds on install. Use `#test` rather than `#main` to run what is being tested:
 
-Add the platform to your Homebridge config:
-
-```json
-{
-  "platform": "Mq77Customizer",
-  "name": "MQ77 Customizer",
-  "broker": { "address": "localhost:1883" },
-  "sources": [
-    { "id": "zigbee", "adapter": "zigbee2mqtt", "baseTopic": "zigbee2mqtt" }
-  ],
-  "web": { "port": 8888, "password": "choose-one" }
-}
+```
+sudo npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#main
 ```
 
-`broker.address` is a host with an optional port, `localhost:1883` by default. Leave the port off to use 1883. If the broker wants credentials, tick `broker.requiresAuth` and fill in `broker.username` and `broker.password`.
+## Settings
 
-The web interface can switch your devices, so `web.password` is required. Without it the interface does not start.
+Everything is set in the plugin's settings form in the Homebridge UI, and each field says what it is for. There are three things to fill in:
 
-Set `web.zigbee2mqttUrl` to add a link to the Zigbee2MQTT interface in the tab bar. It has to be a full address starting with `http://` or `https://`, and is left out entirely when unset.
+- **MQTT Broker**, where your broker is and what it wants to be called
+- **Sources**, one per publisher on that broker. A Zigbee2MQTT source needs its base topic, `zigbee2mqtt` unless you changed it. With no sources at all, that is what is assumed
+- **Web Interface**, a port and a password. The interface can switch your devices, so it refuses to start without one
 
-Omitting `sources` falls back to a single Zigbee2MQTT source on base topic `zigbee2mqtt`.
+Everything else, which devices reach HomeKit and what they do between them, is set in the web interface itself.
 
-### Source options
+### Sources
 
-| Field | Meaning |
-| --- | --- |
-| `id` | Stable identifier. Changing it orphans everything configured against the source. |
-| `adapter` | `zigbee2mqtt` or `json-topic` |
-| `baseTopic` | Topic prefix the source publishes under. |
-| `topics` | Flat JSON sources only. Subscription filter, defaulting to everything under the base topic. |
-| `setTopicSuffix` | Flat JSON sources only. Usually `set`. Without it the source is read only. |
-| `rulesOnly` | Keep the devices out of HomeKit and use them only as rule triggers and targets. |
-| `devices` | Flat JSON sources only. Functions a device has that it may never report. |
+Two kinds. **Zigbee2MQTT** needs nothing but its base topic: it describes its own devices, so they arrive complete. **Flat JSON topics** reads any publisher that puts flat JSON on a topic per device, working the functions out from the keys it sees. Those accumulate across messages, so a partial update carrying one key does not redefine the device.
 
-### Flat JSON sources
+Recognised keys are `state`, `level`, `speed`, `swing`, `temperature`, `humidity` and `co2_levels`. Anything else still becomes a function, typed from its value, and stays available to the rules engine.
 
-`json-topic` reads any publisher that puts flat JSON on a topic per device. Properties are inferred from the keys seen, accumulated across messages, so a partial update carrying one key does not redefine the device.
+**Rules only** keeps a source's devices out of HomeKit while leaving them usable as rule triggers and targets. Set it where another plugin already publishes those devices, so they do not appear twice.
 
-```json
-{ "id": "broadlink", "adapter": "json-topic", "baseTopic": "broadlinkrm",
-  "setTopicSuffix": "set", "rulesOnly": true },
-{ "id": "withings", "adapter": "json-topic", "baseTopic": "withingsenv",
-  "rulesOnly": true }
-```
+**Topic filter** narrows what a flat JSON source listens to, as an MQTT filter, `+` standing for one level and `#` for the rest. Everything under the base topic by default.
 
-Recognised keys are `state`, `level`, `speed`, `swing`, `temperature`, `humidity` and `co2_levels`. Anything else still becomes a property, typed from its value, and stays available to the rules engine.
+**Command topic suffix** is what is added to a device's topic to write to it, usually `set`. Without one the source is read only.
 
-Set `rulesOnly` when another plugin already publishes those devices to HomeKit, so they can be used as triggers and targets without appearing twice.
+### Describing a device
 
-#### Describing a device
+A flat JSON topic carries no schema, so a function is only known once it has turned up in a payload. A fan that reports nothing but `state` until somebody changes its speed has no speed to tick. Name the missing functions under **Described devices** and they are there from the moment the device first reports.
 
-A flat JSON topic carries no schema, so a function is only known once it has turned up in a payload. A fan that reports nothing but `state` until someone changes its speed has no speed to tick. Name the missing functions and they are there from the moment the device first reports:
-
-```json
-{ "id": "broadlink", "adapter": "json-topic", "baseTopic": "broadlinkrm",
-  "setTopicSuffix": "set",
-  "devices": [{ "topic": "fan_office", "properties": ["speed", "swing"] }] }
-```
-
-`topic` is the part after the base topic, so `broadlinkrm/fan_office` is written as `fan_office`, though the whole topic is accepted too. Only recognised keys can be named, since a name on its own says nothing about the kind of value it carries. A function the device does report is left exactly as reported.
+A device is named by the part of its topic after the base topic: one publishing on `<base topic>/kitchen_fan` is written as `kitchen_fan`, though the whole topic is accepted too. Only the recognised keys above can be named, since a name on its own says nothing about the kind of value it carries. A function the device does report is left exactly as reported.
 
 What was described is logged at startup, so a topic that matches no device is visible rather than silent.
 
 ## Usage
 
-Open `http://<your-homebridge-host>:8888` and sign in with the password from the config. A password is required, the web interface refuses to start without one.
+Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
 
-Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
+Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
 
 Per device you can also:
 
-- choose the tile HomeKit shows, Switch, Outlet, Lightbulb or Fan
+- choose the **HomeKit tile**: Switch, Outlet, Lightbulb or Fan
 - publish each endpoint as its own accessory, for multi channel switches
-- rename the device, using the pencil in the card header, for sources that do not name devices themselves. Zigbee2MQTT does, so rename those in Zigbee2MQTT and the new name arrives here on its own
+- give it a name, a room and a kind, which this interface uses to label and group it
 
 Functions with no HomeKit equivalent are still listed and marked, and stay available to the rules engine rather than being hidden.
 
@@ -113,9 +86,43 @@ Accessory names are corrected to what HomeKit accepts, which must start and end 
 
 Button names and gestures are worked out from the action names the device publishes, so a double rocker becomes three buttons without anything being typed out. Gestures HomeKit has no equivalent for, such as triple press, stay available to the rules engine.
 
+### Naming and grouping
+
+Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
+
+A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. The device list can be sorted by Room or by Type, and the rule lists by Room. Either groups the list under headings, with anything unset last.
+
+A rule is named by where it acts rather than where it is set off from: a button in the hall turning on a lamp in the study is a study rule. Its rooms are said in front of its name, `Study: Nightlight toggle`, or `Kitchen / Study: Evening` when it reaches several, and left off under a room heading which has said it already. A rule reaching two rooms is listed under both.
+
+Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
+
+The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
+
+### What a device says about itself
+
+A device card says when the device was last heard, and its panel says the timestamp behind that along with whether the broker keeps its messages.
+
+Both come from the source rather than from this plugin. When a message reached the broker is not an answer to when a device spoke: a retained message is replayed the moment the plugin connects, which would have every retaining device looking as though it had just reported. Zigbee2MQTT publishes the real answer once `advanced.last_seen` is set to something other than `disable`, and a flat JSON publisher that puts a `last_seen` in its payload is taken at its word the same way. A device that publishes no such time shows none, and sorting by Last seen puts those last.
+
+Whether messages are retained is read from Zigbee2MQTT's own configuration, where three things decide it: the device's own `retain`, the `device_options` defaults it otherwise inherits, and `mqtt.force_disable_retain`, which overrides both. A source that keeps no such configuration says nothing rather than guessing.
+
+### Controllers
+
+The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks in the header say which of those lines are wanted, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
+
+### Map
+
+The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
+
+A scan questions every device in turn, so it takes minutes on a mesh of any size and only runs when asked for. Zigbee2MQTT only: a flat JSON source has no network to describe.
+
+### Activity
+
+The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default.
+
 ## Rules
 
-Rules live in two tabs. Automation links devices together: when something happens on one, send something to another. Rules work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+Rules live in four tabs: Automation, Mirror devices, Sliders and Timers. Automation is the general one, linking devices together: when something happens on one, send something to another. The other three are shapes that would otherwise be several automations that only make sense together. All of them work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
 A rule is one or more triggers and one or more outcomes. Any trigger fires the rule. Actions can be delayed.
 
@@ -126,6 +133,12 @@ Conditions are groups joined by **or**, each group a set of tests joined by **an
 An action either sends a fixed value or matches whatever set the rule off, which is how one device is made to follow another. A copied value is restated in the target's own terms, so a switch that says `ON` can drive one that expects `true`, and a dimmer counting to 254 can drive one counting to 100.
 
 Anything readable can be a trigger or a condition, including functions that never reach HomeKit. Anything writable can be an action.
+
+A remote's actions are said as buttons rather than as wire values, `1 Single Long` for `1_single_long` and `Left Double` for `double_left`, and put in the order somebody would read them: buttons by number, then left, right and both, and within each the gestures from a single press to a hold. Anything that cannot be read as a button is left as it is. What is stored is always the value the device uses.
+
+Picking what sets a rule off marks any value another rule already uses with a `*`. Two rules on one button press is a mistake nobody sees until both of them run. Conditions are left unmarked, since asking what a device is doing is something any number of rules may do.
+
+Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
 ### Mirror devices
 
@@ -143,20 +156,6 @@ Two things guard against a pair of rules setting each other off:
 - a rule that runs more than twenty times in ten seconds is turned off and logged, on the assumption it is triggering itself
 
 An automation or a timer can be run by hand from its panel, with the Trigger button beside Save. It runs whether or not the rule is switched on, which is the point: trying a rule is what happens before switching it on. The conditions still hold sway, since a rule that does nothing under the conditions in force is worth knowing about. Only what has been saved can be run, so the button is absent until the panel and the stored rule agree again.
-
-### Keeping your settings
-
-Everything set here lives in `state.json` under the Homebridge storage path, alongside a `backups` folder holding the last ten dated copies. One is taken when the plugin starts, before anything is touched, and at most once an hour after that.
-
-The footer offers `Settings: download / upload`. Download hands you the lot as a file, which is the only copy that survives losing the machine it runs on. Upload takes one back, after copying what it replaces. The session secret is left out of the download and kept on upload, so a settings file is safe to keep somewhere else and putting one back does not sign you out.
-
-A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
-
-A remote's actions are said as buttons rather than as wire values, `1 Single Long` for `1_single_long` and `Left Double` for `double_left`, and put in the order somebody would read them: buttons by number, then left, right and both, and within each the gestures from a single press to a hold. Anything that cannot be read as a button is left as it is. What is stored is always the value the device uses.
-
-Picking what sets a rule off marks any value another rule already uses with a `*`. Two rules on one button press is a mistake nobody sees until both of them run. Conditions are left unmarked, since asking what a device is doing is something any number of rules may do.
-
-Rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press.
 
 ### Timers
 
@@ -182,45 +181,17 @@ Each button takes several triggers, so one slider can be driven by more than one
 
 Stepping counts from what the slider was last told for a couple of seconds, rather than from what the device last reported. A held button sends faster than a light reports back, so reading the device each time would work every press out from the same value and move one step in total.
 
-### What a device says about itself
+## Keeping your settings
 
-A device card says when the device was last heard, and its panel says the timestamp behind that along with whether the broker keeps its messages.
+Everything set here lives in `state.json` under the Homebridge storage path, alongside a `backups` folder holding the last ten dated copies. One is taken when the plugin starts, before anything is touched, and at most once an hour after that.
 
-Both come from the source rather than from this plugin. When a message reached the broker is not an answer to when a device spoke: a retained message is replayed the moment the plugin connects, which would have every retaining device looking as though it had just reported. Zigbee2MQTT publishes the real answer once `advanced.last_seen` is set to something other than `disable`, and a flat JSON publisher that puts a `last_seen` in its payload is taken at its word the same way. A device that publishes no such time shows none, and sorting by Last seen puts those last.
+The footer offers `back up: download / upload`, along with when the last copy was taken and a way to take one now. Download hands you the lot as a file, which is the only copy that survives losing the machine it runs on. Upload takes one back, after copying what it replaces. The session secret is left out of the download and kept on upload, so a settings file is safe to keep somewhere else and putting one back does not sign you out.
 
-Whether messages are retained is read from Zigbee2MQTT's own configuration, where three things decide it: the device's own `retain`, the `device_options` defaults it otherwise inherits, and `mqtt.force_disable_retain`, which overrides both. A source that keeps no such configuration says nothing rather than guessing.
-
-### Naming and grouping
-
-Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
-
-A name of its own replaces the source's, with the room in front of it when both are set. A room on its own leaves the name alone, since it is there for grouping. The kind puts a small icon in the card header. The device list can be sorted by Room or by Type, and the rule lists by Room. Either groups the list under headings, with anything unset last.
-
-A rule is named by where it acts rather than where it is set off from: a button in the hall turning on a lamp in the study is a study rule. Its rooms are said in front of its name, `Study: Nightlight toggle`, or `Kitchen / Study: Evening` when it reaches several, and left off under a room heading which has said it already. A rule reaching two rooms is listed under both.
-
-Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
-
-The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
-
-### Controllers
-
-The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks in the header say which of those lines are wanted, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
-
-### Map
-
-The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
-
-A scan questions every device in turn, so it takes minutes on a mesh of any size and only runs when asked for. Zigbee2MQTT only: a flat JSON source has no network to describe.
-
-The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Each entry says whether it came from an automation or a mirror.
+A run that starts with nothing will not write over a file that has something in it. Somebody deleting their last rule is entitled to an empty file, but a run that began empty and is about to stamp on one that is not has misread something, and the file is worth more than the write. It says so in the log and in the interface rather than carrying on.
 
 ## Upgrading from MQTT Customizer
 
-The plugin used to be called MQTT Customizer. Renaming it changes the platform Homebridge looks for, so update `config.json`:
-
-```json
-"platform": "Mq77Customizer"
-```
+The plugin used to be called MQTT Customizer. Renaming it changes the platform Homebridge looks for, so the old settings block no longer belongs to any installed plugin. Fill in this plugin's settings screen and delete the old block, or change `platform` in that block to `Mq77Customizer` if you would rather edit the JSON.
 
 Selections saved under the old name are picked up automatically the first time the renamed plugin starts. The old file is left in place rather than moved.
 
