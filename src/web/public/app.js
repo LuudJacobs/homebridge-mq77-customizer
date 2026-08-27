@@ -889,7 +889,9 @@ function renderOptions(device) {
     const option = document.createElement('div');
     option.className = 'option';
     const label = document.createElement('label');
-    label.textContent = endpoint ? `Tile for ${endpoint}` : 'Tile';
+    // Named for where it ends up: the thing being chosen is what this device
+    // looks like in the Home app, not anything in this interface.
+    label.textContent = endpoint ? `HomeKit tile for ${endpoint}` : 'HomeKit tile';
     const select = document.createElement('select');
     for (const tile of state.tileTypes) {
       const choice = document.createElement('option');
