@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.4.1
+# MQ77 Customizer 1.5.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -52,6 +52,8 @@ What was described is logged at startup, so a topic that matches no device is vi
 ## Usage
 
 Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
+
+Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
 Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
 
