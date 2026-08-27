@@ -35,7 +35,7 @@ Two kinds. **Zigbee2MQTT** needs nothing but its base topic: it describes its ow
 
 Recognised keys are `state`, `level`, `speed`, `swing`, `temperature`, `humidity` and `co2_levels`. Anything else still becomes a function, typed from its value, and stays available to the rules engine.
 
-**Rules only** keeps a source's devices out of HomeKit while leaving them usable as rule triggers and targets. Set it where another plugin already publishes those devices, so they do not appear twice.
+**Rules only** keeps a source's devices out of HomeKit while leaving them usable as rule triggers and targets. Set it where another plugin already publishes those devices, so they can't appear twice.
 
 **Topic filter** narrows what a flat JSON source listens to, as an MQTT filter, `+` standing for one level and `#` for the rest. Everything under the base topic by default.
 
