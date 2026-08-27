@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.4.0
+# MQ77 Customizer 1.4.1
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -16,7 +16,7 @@ A Homebridge plugin that exposes MQTT devices to HomeKit and links them together
 Install it the way you install any Homebridge plugin, from the Plugins screen of the Homebridge UI or from the command line:
 
 ```
-sudo hb-service add homebridge-mq77-customizer
+hb-service add homebridge-mq77-customizer
 ```
 
 ## Settings

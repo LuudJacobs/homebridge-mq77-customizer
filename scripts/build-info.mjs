@@ -35,4 +35,5 @@ writeFileSync(
   `${JSON.stringify({ branch, version: packageJson.version, released }, null, 2)}\n`,
 );
 
-console.log(`Build labelled ${released ? packageJson.version : `#${branch}`}`);
+// On stderr, so `npm pack --json` gets JSON and nothing else.
+console.error(`Build labelled ${released ? packageJson.version : `#${branch}`}`);

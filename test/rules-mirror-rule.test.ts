@@ -18,8 +18,8 @@ import { Store } from '../src/store.js';
 import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
-const SWITCH = { id: '0xf044d3fffe024659', topic: 'zigbee2mqtt/woonkamer_lampen-ZB2GS' };
-const SOCKET = { id: '0xa4c138ae47fdd9c3', topic: 'zigbee2mqtt/woonkamer_bank_lamp-socket' };
+const SWITCH = { id: '0x00158dfffe000002', topic: 'zigbee2mqtt/living_room_switch-ZB2GS' };
+const SOCKET = { id: '0x00158dfffe000006', topic: 'zigbee2mqtt/living_room_lamp-socket' };
 
 function mirrorRule(overrides: Partial<MirrorRule> = {}): MirrorRule {
   return {

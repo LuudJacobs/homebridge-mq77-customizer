@@ -1,110 +1,150 @@
-# Builds a released version and hangs the tarball on that version's own
-# release, so the Pi installs what GitHub compiled rather than compiling it.
+# The test build's twin, for a released version. Fires on the version tag,
+# which is pushed after the merge to the default branch, so the tag is always
+# on merged code.
 #
-# The test build's twin, with three differences: it runs on the version tag
-# rather than on a branch, every release keeps its own asset rather than one
-# rolling one, and the version is the one already in package.json rather than
-# a prerelease invented here.
+# Three differences from test-build.yml: it runs on the tag rather than on a
+# branch, the version is the one already in package.json rather than a
+# prerelease invented here, and nothing is pruned. Every release keeps its own
+# tag and its own asset, because these are the history, where the test build is
+# only ever a drop box.
 #
-# Nothing is published to npm and no token is needed: the release is made with
-# the automatic GITHUB_TOKEN.
+# ---------------------------------------------------------------------------
+# PRIVATE REPOSITORIES ONLY. A public plugin gets its released tarball from
+# npm, so it uses publish.yml instead and does not need this file. The job
+# guard below makes the workflow a no-op if a repository is ever made public,
+# rather than quietly producing a second, worse install route.
+#
+# Fill in before use:
+#   <node-version>   the lowest major in package.json engines.node, quoted,
+#                    e.g. '20' or '22'
+#
+# Everything else is derived at run time.
+# ---------------------------------------------------------------------------
+
 name: Release build
 
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  pack:
+  build:
+    if: github.event.repository.private
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          # The lowest major still maintained of the three package.json allows.
-          node-version: 22
+          node-version: '20'
           cache: npm
 
       - name: Install
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: npm run build --if-present
 
-      # Which release this is, and what its page should say. A tag that does
-      # not match the version in package.json means one of the two was missed,
+      # A tag that does not match package.json means one of the two was missed,
       # and a build labelled with the wrong version is worse than no build.
-      - name: Work out which release this is
-        id: release
+      - name: Check the tag matches package.json
+        if: github.ref_type == 'tag'
         run: |
-          version=$(node -p "require('./package.json').version")
-          tag="${{ github.ref_type == 'tag' && github.ref_name || '' }}"
-          [ -n "$tag" ] || tag="v$version"
-
-          if [ "$tag" != "v$version" ]; then
-            echo "::error::Tag $tag does not match the version in package.json ($version)"
+          pkg=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          echo "package.json: ${pkg} / tag: ${tag}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::package.json is ${pkg} but the tag is ${tag}. Fix the version before tagging."
             exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-          # What the changelog says about this version, for the release page.
-          awk -v want="## [$version]" '
-            index($0, want) == 1 { on = 1; next }
-            on && /^## / { exit }
-            on { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            echo "No changelog section for $version" >&2
-            echo "See CHANGELOG.md" > release-notes.md
           fi
 
       - name: Pack
         id: pack
         run: |
-          npm pack
-          echo "tarball=$(ls -1 *.tgz | head -n1)" >> "$GITHUB_OUTPUT"
+          npm pack --json > pack.json
+          tarball=$(jq -r '.[0].filename' pack.json)
+          [ -f "$tarball" ] || tarball=$(ls -1 ./*.tgz | head -n1 | xargs basename)
 
-      - name: Hang it on the release
-        id: publish
-        uses: softprops/action-gh-release@v2
+          name=$(jq -r '.[0].name' pack.json)
+          glob=$(printf '%s' "$name" | sed 's#^@##; s#/#-#')
+
+          {
+            echo "tarball=$tarball"
+            echo "glob=$glob"
+            echo "version=$(jq -r '.[0].version' pack.json)"
+          } >> "$GITHUB_OUTPUT"
+          rm -f pack.json
+
+      # What the changelog says about this version, for the release page. Not
+      # every plugin keeps one, and a missing section is not worth failing over.
+      - name: Collect the release notes
+        if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            awk -v want="$VERSION" '
+              /^## / { on = index($0, want) > 0; next }
+              on { print }
+            ' CHANGELOG.md > release-notes.md
+          fi
+          if [ ! -s release-notes.md ]; then
+            echo "See CHANGELOG.md" > release-notes.md
+          fi
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          name: ${{ steps.release.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           body_path: release-notes.md
           prerelease: false
           make_latest: true
-          files: "*.tgz"
+          files: '*.tgz'
 
-      # The whole thing, ready to paste, on the run's own page. The repository
-      # is private, so the plain download URL answers 404 to anything without a
-      # token and `npm install <url>` has nowhere to put one. The asset
-      # endpoint of the API does take one, so the file is fetched with it and
-      # installed off the disk.
+      # A private repository answers 404 to an unauthenticated download, and
+      # `npm i <url>` has nowhere to put a token. The asset endpoint of the API
+      # does take one, so the file is fetched first and installed off the disk.
       - name: Say how to install it
         env:
-          ASSETS: ${{ steps.publish.outputs.assets }}
+          GH_TOKEN: ${{ github.token }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
-          TAG: ${{ steps.release.outputs.tag }}
+          GLOB: ${{ steps.pack.outputs.glob }}
         run: |
-          id=$(echo "$ASSETS" | jq -r --arg name "$TARBALL" '.[] | select(.name == $name) | .id')
-          asset="https://api.github.com/repos/${{ github.repository }}/releases/assets/$id"
-          plain="https://github.com/${{ github.repository }}/releases/download/$TAG/$TARBALL"
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            {
+              echo "## Dry run"
+              echo
+              echo "Built and packed \`${TARBALL}\`, uploaded nothing: this run is not for a tag."
+              echo "Push a \`v*\` tag to produce a real release asset."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          id=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
+            --jq ".assets[] | select(.name==\"$TARBALL\") | .id")
+          url="https://api.github.com/repos/${{ github.repository }}/releases/assets/${id}"
+          cmd="rm -f ${GLOB}-*.tgz && curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' -o ${TARBALL} ${url} && npm i ./${TARBALL}"
+
           {
-            echo "### Install $TAG"
+            echo "## Install ${{ github.ref_name }}"
             echo
-            echo 'In your Homebridge directory, with a token that can read this repository:'
+            echo "Run it in the Homebridge directory, from \`hb-shell\`."
+            echo
+            echo 'Needs `GITHUB_TOKEN` exported in that shell, set to a PAT that can read this repository.'
             echo
             echo '```bash'
-            echo "rm -f homebridge-mq77-customizer-*.tgz && curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' -o $TARBALL $asset && npm i ./$TARBALL"
+            echo "$cmd"
             echo '```'
             echo
-            echo "Then restart Homebridge. Once this repository is public, \`npm i $plain\` does the lot on its own."
+            echo "Then \`exit\` and \`sudo hb-service restart\`."
           } >> "$GITHUB_STEP_SUMMARY"

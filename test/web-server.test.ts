@@ -35,7 +35,7 @@ async function harness(
     options.sources ?? [{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }],
   );
   mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
-  mqtt.deliver('zigbee2mqtt/woonkamer_lampen-ZB2GS', { state_l1: 'ON', state_l2: 'OFF' });
+  mqtt.deliver('zigbee2mqtt/living_room_switch-ZB2GS', { state_l1: 'ON', state_l2: 'OFF' });
 
   const result: Harness = { server: undefined as never, store, base: '', syncs: 0, mqtt };
 
@@ -112,7 +112,7 @@ describe('WebServer', () => {
     expect(body.devices).toHaveLength(5);
     expect(body.tileTypes).toEqual(['Switch', 'Outlet', 'Lightbulb', 'Fan']);
 
-    const dual = body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS');
+    const dual = body.devices.find((entry) => entry.name === 'living_room_switch-ZB2GS');
     expect(dual?.state).toEqual({ state_l1: 'ON', state_l2: 'OFF' });
     expect(dual?.properties).toHaveLength(7);
   });
@@ -122,8 +122,8 @@ describe('WebServer', () => {
     const body = (await (await session.fetch('/api/state')).json()) as {
       devices: { name: string; topic?: string }[];
     };
-    expect(body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS')?.topic).toBe(
-      'zigbee2mqtt/woonkamer_lampen-ZB2GS',
+    expect(body.devices.find((entry) => entry.name === 'living_room_switch-ZB2GS')?.topic).toBe(
+      'zigbee2mqtt/living_room_switch-ZB2GS',
     );
   });
 
@@ -132,7 +132,7 @@ describe('WebServer', () => {
     const body = (await (await session.fetch('/api/state')).json()) as {
       devices: { name: string; properties: { key: string; publishable: boolean }[] }[];
     };
-    const dual = body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS');
+    const dual = body.devices.find((entry) => entry.name === 'living_room_switch-ZB2GS');
     const publishable = dual?.properties
       .filter((property) => property.publishable)
       .map((property) => property.key);
@@ -153,7 +153,7 @@ describe('WebServer', () => {
       }[];
     };
     const buttons = body.devices
-      .find((entry) => entry.name === 'slaapkamer_schakelaar-wrs02')
+      .find((entry) => entry.name === 'bedroom_rocker-wrs02')
       ?.properties.find((property) => property.key === 'action')?.buttons;
 
     // Without this the interface would have to read the value itself to say
@@ -175,7 +175,7 @@ describe('WebServer', () => {
         properties: { key: string; onValue?: unknown; offValue?: unknown; toggleValue?: unknown }[];
       }[];
     };
-    const dual = body.devices.find((entry) => entry.name === 'woonkamer_lampen-ZB2GS');
+    const dual = body.devices.find((entry) => entry.name === 'living_room_switch-ZB2GS');
     const state = dual?.properties.find((property) => property.key === 'state_l1');
 
     // Without these the interface would offer a guess at ON and OFF, which is
@@ -191,7 +191,7 @@ describe('WebServer', () => {
         properties: { key: string; onValue?: unknown; toggleValue?: unknown }[];
       }[];
     };
-    const socket = body.devices.find((entry) => entry.name === 'woonkamer_bank_lamp-socket');
+    const socket = body.devices.find((entry) => entry.name === 'living_room_lamp-socket');
     const lock = socket?.properties.find((property) => property.key === 'child_lock');
 
     expect(lock).toMatchObject({ onValue: 'LOCK', offValue: 'UNLOCK' });
@@ -204,14 +204,14 @@ describe('WebServer', () => {
       method: 'PUT',
       body: JSON.stringify({
         sourceId: 'zigbee',
-        deviceId: '0xf044d3fffe024659',
+        deviceId: '0x00158dfffe000002',
         exposure: { properties: ['state_l1'], tileTypes: { l1: 'Lightbulb' } },
       }),
     });
 
     expect(response.status).toBe(200);
     expect(context.syncs).toBe(1);
-    expect(context.store.getExposure('zigbee:0xf044d3fffe024659')).toMatchObject({
+    expect(context.store.getExposure('zigbee:0x00158dfffe000002')).toMatchObject({
       properties: ['state_l1'],
       tileTypes: { l1: 'Lightbulb' },
     });
@@ -233,12 +233,12 @@ describe('WebServer', () => {
       name: 'Left button',
       trigger: {
         sourceId: 'zigbee',
-        deviceId: '0x54ef44100169b28a',
+        deviceId: '0x00158dfffe000005',
         propertyKey: 'action',
         match: { kind: 'equals', value: 'single_left' },
       },
       actions: [
-        { sourceId: 'zigbee', deviceId: '0xf044d3fffe024659', propertyKey: 'state_l1', value: 'ON' },
+        { sourceId: 'zigbee', deviceId: '0x00158dfffe000002', propertyKey: 'state_l1', value: 'ON' },
       ],
     };
 
@@ -275,12 +275,12 @@ describe('WebServer', () => {
         name: 'An automation',
         trigger: {
           sourceId: 'zigbee',
-          deviceId: '0x54ef44100169b28a',
+          deviceId: '0x00158dfffe000005',
           propertyKey: 'action',
           match: { kind: 'equals', value: 'single_left' },
         },
         actions: [
-          { sourceId: 'zigbee', deviceId: '0xf044d3fffe024659', propertyKey: 'state_l1', value: 'ON' },
+          { sourceId: 'zigbee', deviceId: '0x00158dfffe000002', propertyKey: 'state_l1', value: 'ON' },
         ],
       }),
     });
@@ -494,14 +494,14 @@ describe('running a rule by hand', () => {
         enabled: false,
         trigger: {
           sourceId: 'zigbee',
-          deviceId: '0xf044d3fffe024659',
+          deviceId: '0x00158dfffe000002',
           propertyKey: 'state_l1',
           match: { kind: 'equals', value: 'ON' },
         },
         actions: [
           {
             sourceId: 'zigbee',
-            deviceId: '0xf044d3fffe024659',
+            deviceId: '0x00158dfffe000002',
             propertyKey: 'state_l1',
             value: 'ON',
           },
@@ -525,14 +525,14 @@ describe('running a rule by hand', () => {
         enabled: false,
         trigger: {
           sourceId: 'zigbee',
-          deviceId: '0xf044d3fffe024659',
+          deviceId: '0x00158dfffe000002',
           propertyKey: 'state_l1',
           match: { kind: 'equals', value: 'ON' },
         },
         actions: [
           {
             sourceId: 'zigbee',
-            deviceId: '0xf044d3fffe024659',
+            deviceId: '0x00158dfffe000002',
             propertyKey: 'state_l1',
             value: 'ON',
           },

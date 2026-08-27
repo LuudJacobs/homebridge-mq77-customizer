@@ -27,7 +27,7 @@ function byKey(properties: NormalisedProperty[], key: string): NormalisedPropert
 }
 
 describe('dual endpoint switch', () => {
-  const properties = flatten('woonkamer_lampen-ZB2GS');
+  const properties = flatten('living_room_switch-ZB2GS');
 
   it('flattens every property exactly once', () => {
     expect(properties.map((property) => property.key)).toEqual([
@@ -50,7 +50,7 @@ describe('dual endpoint switch', () => {
   it('reads access bits into readable and writable', () => {
     const state = byKey(properties, 'state_l1');
     expect(state.access).toEqual({ readable: true, writable: true });
-    expect(state.setTopic).toBe('zigbee2mqtt/woonkamer_lampen-ZB2GS/set');
+    expect(state.setTopic).toBe('zigbee2mqtt/living_room_switch-ZB2GS/set');
   });
 
   it('gives read only properties no set topic', () => {
@@ -81,7 +81,7 @@ describe('dual endpoint switch', () => {
 });
 
 describe('dimmer light', () => {
-  const properties = flatten('keuken_dimmer-candeo');
+  const properties = flatten('kitchen_dimmer-candeo');
 
   it('keeps specific type features flat in the payload', () => {
     expect(byKey(properties, 'state').extract).toEqual(['state']);
@@ -108,7 +108,7 @@ describe('dimmer light', () => {
 });
 
 describe('climate sensor', () => {
-  const properties = flatten('woonkamer_w100');
+  const properties = flatten('living_room_climate-w100');
 
   it('groups climate features', () => {
     expect(byKey(properties, 'system_mode').group).toBe('climate');

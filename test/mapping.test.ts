@@ -437,7 +437,7 @@ describe('the W100, which is all of it at once', () => {
   ];
 
   it('produces one accessory carrying every kind of service', () => {
-    const plans = planAccessories(device(w100, { name: 'Thermostaat woonkamer' }), {
+    const plans = planAccessories(device(w100, { name: 'Living room thermostat' }), {
       properties: w100.map((property) => property.key),
     });
     expect(plans).toHaveLength(1);
