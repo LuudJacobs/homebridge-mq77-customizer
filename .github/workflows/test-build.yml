@@ -88,15 +88,15 @@ jobs:
           id=$(echo "$ASSETS" | jq -r --arg name "$TARBALL" '.[] | select(.name == $name) | .id')
           asset="https://api.github.com/repos/${{ github.repository }}/releases/assets/$id"
           plain="https://github.com/${{ github.repository }}/releases/download/test-build/$TARBALL"
+          # One line to paste: clear out whatever was downloaded last time,
+          # fetch this build, install it from the file.
           {
             echo "### Install this build"
             echo
             echo 'In your Homebridge directory, with a token that can read this repository:'
             echo
             echo '```bash'
-            echo "curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' \\"
-            echo "  -o $TARBALL $asset"
-            echo "npm i ./$TARBALL"
+            echo "rm -f homebridge-mq77-customizer-*.tgz && curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' -o $TARBALL $asset && npm i ./$TARBALL"
             echo '```'
             echo
             echo "Then restart Homebridge. Once this repository is public, \`npm i $plain\` does the lot on its own."
