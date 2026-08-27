@@ -1,0 +1,70 @@
+# Builds the test branch and hangs the tarball on a rolling prerelease, so a
+# Raspberry Pi installs what GitHub compiled rather than compiling it itself.
+#
+# Nothing is published to npm here and no token is needed: the release is made
+# with the automatic GITHUB_TOKEN.
+name: Test build
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The lowest major still maintained of the three package.json allows.
+          node-version: 22
+          cache: npm
+
+      # `npm ci` runs `prepare`, which is the build, but the build is asked for
+      # out loud as well: a build that breaks should fail as a build rather
+      # than as an install.
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # A version no other build has, so an install on the Pi is never answered
+      # out of a cache. It lives in the runner only: nothing is committed and
+      # nothing is tagged, which is what --no-git-tag-version is for.
+      - name: Give the build a version of its own
+        run: npm version prerelease --preid=test.${{ github.run_number }} --no-git-tag-version
+
+      - name: Pack
+        id: pack
+        run: |
+          npm pack
+          echo "tarball=$(ls -1 *.tgz | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Hang it on the rolling test release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Not `test`: a tag by that name and the branch of that name would
+          # be two refs with one spelling, and git asks which you meant.
+          tag_name: test-build
+          name: Test build
+          prerelease: true
+          files: "*.tgz"
+
+      # The whole command, ready to paste, on the run's own page.
+      - name: Say how to install it
+        run: |
+          url="https://github.com/${{ github.repository }}/releases/download/test-build/${{ steps.pack.outputs.tarball }}"
+          {
+            echo "### Install this build"
+            echo
+            echo '```'
+            echo "npm install $url"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
