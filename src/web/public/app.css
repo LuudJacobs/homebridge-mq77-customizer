@@ -1197,9 +1197,14 @@ table.buttons td.in-homekit {
     grid-column: 1 / -1;
   }
 
-  /* A model and a topic on one line is a line too long here. */
+  /*
+   * A model and a topic on one line is a line too long here, so they take one
+   * each. Down the column rather than block: the parts are spans, which would
+   * otherwise run together with nothing between them.
+   */
   .device-origin {
-    display: block;
+    flex-direction: column;
+    gap: 0.1rem;
   }
 
   .device-origin-between {
