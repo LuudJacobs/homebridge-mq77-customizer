@@ -762,11 +762,19 @@ function renderDevice(device, inRoom) {
     heading.className = 'group-title';
     heading.textContent = title;
     body.append(heading);
-    if (title === 'Diagnostics') {
-      body.append(...deviceFacts(device));
-    }
     for (const property of properties) {
       body.append(renderProperty(device, property));
+    }
+    // Under the readings rather than over them, fenced off: these are said
+    // about the device, where everything above is a function of it.
+    if (title === 'Diagnostics') {
+      const facts = deviceFacts(device);
+      if (facts.length > 0) {
+        const said = document.createElement('div');
+        said.className = 'facts';
+        said.append(...facts);
+        body.append(said);
+      }
     }
   }
 

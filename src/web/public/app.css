@@ -819,8 +819,15 @@ table.buttons td.in-homekit {
 /*
  * Said about the device rather than about a function of it, so there is no
  * tick box and no tag: a name on the left and what it says on the right, in
- * line with the rows underneath.
+ * line with the rows above, with a line to say they are a different kind of
+ * thing from the readings they sit under.
  */
+.facts {
+  border-top: 1px solid var(--line);
+  margin-top: 0.45rem;
+  padding-top: 0.15rem;
+}
+
 .property.fact {
   grid-template-columns: 1fr auto;
 }
