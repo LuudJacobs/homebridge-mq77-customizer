@@ -3,4 +3,6 @@
 import { cp } from 'node:fs/promises';
 
 await cp('src/web/public', 'dist/web/public', { recursive: true });
-console.log('Copied web assets to dist/web/public');
+// On stderr: stdout belongs to whatever is reading this build's output,
+// and `npm pack --json` is one such reader.
+console.error('Copied web assets to dist/web/public');
