@@ -49,7 +49,7 @@ describe('sanitiseName', () => {
   });
 
   it('falls back when nothing usable is left', () => {
-    expect(sanitiseName('...', '0xf044d3fffe024659')).toBe('0xf044d3fffe024659');
+    expect(sanitiseName('...', '0x00158dfffe000002')).toBe('0x00158dfffe000002');
     expect(sanitiseName('', '💡')).toBe('Device');
   });
 

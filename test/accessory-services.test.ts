@@ -13,10 +13,10 @@ import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { fakeApi, type FakeApi } from './helpers/fake-homebridge.js';
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
-const W100 = { id: '0x54ef4410013bd210', topic: 'zigbee2mqtt/woonkamer_w100' };
-const DIMMER = { id: '0x1cc089fffe39c60e', topic: 'zigbee2mqtt/keuken_dimmer-candeo' };
-const ROCKER = { id: '0x54ef44100169b28a', topic: 'zigbee2mqtt/slaapkamer_schakelaar-wrs02' };
-const SOCKET = { id: '0xa4c138ae47fdd9c3', topic: 'zigbee2mqtt/woonkamer_bank_lamp-socket' };
+const W100 = { id: '0x00158dfffe000004', topic: 'zigbee2mqtt/living_room_climate-w100' };
+const DIMMER = { id: '0x00158dfffe000003', topic: 'zigbee2mqtt/kitchen_dimmer-candeo' };
+const ROCKER = { id: '0x00158dfffe000005', topic: 'zigbee2mqtt/bedroom_rocker-wrs02' };
+const SOCKET = { id: '0x00158dfffe000006', topic: 'zigbee2mqtt/living_room_lamp-socket' };
 
 interface Harness {
   manager: AccessoryManager;

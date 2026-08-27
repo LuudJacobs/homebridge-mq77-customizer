@@ -1,0 +1,37 @@
+# Runs the suite and the typecheck on GitHub, so they run somewhere other than
+# the machine the code was written on.
+#
+# The build workflows compile as part of packing, but a build that succeeds is
+# not the same as tests that pass, and neither of them would have said so.
+name: Tests
+
+on:
+  push:
+    branches: [develop, test, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The lowest major still maintained of the three package.json allows.
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
