@@ -214,3 +214,136 @@ describe('grouping the device list', () => {
     );
   });
 });
+
+describe('what a panel says about the device itself', () => {
+  const facts = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#devices .property.fact')].map((row) => [
+      row.querySelector('.fact-label')?.textContent,
+      row.querySelector('.value')?.textContent,
+    ]);
+
+  it('puts what the device is and where it lives on the first line of the panel', async () => {
+    const ui = await openDevices([device('0x1', 'hall_switch')]);
+    const origin = ui.document.querySelector('#devices .device-origin');
+
+    expect([...origin!.children].map((node) => node.textContent)).toEqual([
+      'SONOFF ZBMINIL2',
+      '|',
+      'zigbee2mqtt/hall_switch',
+    ]);
+    // And off the header, which now carries only the name, when it was last
+    // heard, and what it became in HomeKit.
+    expect(ui.document.querySelector('#devices summary .device-meta')).toBeNull();
+    expect(ui.document.querySelector('#devices summary .device-topic')).toBeNull();
+  });
+
+  it('sits under the readings it shares the heading with, fenced off from them', async () => {
+    const ui = await openDevices([
+      {
+        ...device('0x1', 'hall_switch'),
+        retained: true,
+        properties: [
+          {
+            key: 'linkquality',
+            label: 'Link quality',
+            semantic: 'linkquality',
+            type: 'numeric',
+            category: 'diagnostic',
+            endpoint: '',
+            readable: true,
+            writable: false,
+            publishable: false,
+          },
+        ],
+      },
+    ]);
+
+    const rows = [...ui.document.querySelectorAll('#devices .device-body .property')];
+    // The reading first, then the line, then what is said about the device.
+    expect(rows.map((row) => row.classList.contains('fact'))).toEqual([false, true]);
+    expect(ui.document.querySelector('#devices .facts .property.fact')).not.toBeNull();
+  });
+
+  it('says under diagnostics whether the device is retained', async () => {
+    const ui = await openDevices([{ ...device('0x1', 'hall_switch'), retained: true }]);
+
+    expect(facts(ui)).toEqual([['retained', 'true']]);
+    // The heading appears for the fact alone: this device has no diagnostic
+    // function of its own.
+    expect(
+      [...ui.document.querySelectorAll('#devices .group-title')].map((node) => node.textContent),
+    ).toContain('Diagnostics');
+  });
+
+  it('says false as plainly as true, and nothing at all when the source cannot say', async () => {
+    const off = await openDevices([{ ...device('0x1', 'hall_switch'), retained: false }]);
+    expect(facts(off)).toEqual([['retained', 'false']]);
+
+    const silent = await openDevices([device('0x1', 'hall_switch')]);
+    expect(facts(silent)).toEqual([]);
+  });
+
+  it('gives the timestamp itself, since the header has said it readably', async () => {
+    const ui = await openDevices([
+      {
+        ...device('0x1', 'hall_switch'),
+        retained: true,
+        reportedLastSeen: '2026-08-25T09:00:00Z',
+      },
+    ]);
+
+    // The place to check the thing itself, so it is repeated as it came off
+    // the wire, with the readable version on hover.
+    expect(facts(ui)).toContainEqual(['last seen', '2026-08-25T09:00:00Z']);
+    expect(
+      ui.document.querySelector('#devices .property.fact[title]')?.getAttribute('title'),
+    ).toBeTruthy();
+  });
+
+  it('says in the header when the device was last heard, and nothing where it never says', async () => {
+    const said = await openDevices([
+      { ...device('0x1', 'hall_switch'), reportedLastSeen: '2026-08-25T09:00:00Z' },
+    ]);
+    // Readable there, rather than the timestamp: `25-08 11:00` or, on the day
+    // itself, `Today 11:00:00`.
+    const shown = said.document.querySelector('#devices .device-seen')?.textContent ?? '';
+    expect(shown).not.toBe('');
+    expect(shown).not.toContain('2026-08-25T09:00:00Z');
+
+    // A device publishing no time of its own leaves the header empty: when a
+    // message reached the broker is not an answer to when the device spoke.
+    const silent = await openDevices([device('0x2', 'attic_sensor')]);
+    expect(silent.document.querySelector('#devices .device-seen')?.textContent).toBe('');
+  });
+});
+
+describe('the order functions are listed in', () => {
+  const mixed = () => ({
+    ...device('0x9', 'mixed_device'),
+    properties: [
+      { key: 'state', label: 'State', semantic: 'state', type: 'binary', category: 'primary', endpoint: '', readable: true, writable: true, publishable: true, role: 'power', onValue: 'ON', offValue: 'OFF' },
+      { key: 'brightness', label: 'Brightness', semantic: 'brightness', type: 'numeric', category: 'primary', endpoint: '', readable: true, writable: true, publishable: true, role: 'brightness', min: 0, max: 254 },
+      { key: 'linkquality', label: 'Link quality', semantic: 'linkquality', type: 'numeric', category: 'diagnostic', endpoint: '', readable: true, writable: false, publishable: false },
+      { key: 'battery', label: 'Battery', semantic: 'battery', type: 'numeric', category: 'diagnostic', endpoint: '', readable: true, writable: false, publishable: true, role: 'battery' },
+      { key: 'power_on_behavior', label: 'Power on behaviour', semantic: 'power_on_behavior', type: 'enum', category: 'config', endpoint: '', readable: true, writable: true, publishable: false, values: ['on', 'off'] },
+      { key: 'child_lock', label: 'Child lock', semantic: 'child_lock', type: 'binary', category: 'config', endpoint: '', readable: true, writable: true, publishable: true, role: 'childLock', onValue: 'LOCK', offValue: 'UNLOCK' },
+    ],
+  });
+
+  it('lists each group by name, whatever order the source gave them in', async () => {
+    const ui = await openDevices([mixed()]);
+    const keys = [...ui.document.querySelectorAll('#devices .property .key')].map(
+      (node) => node.textContent,
+    );
+
+    // Functions, then Settings, then Diagnostics, each one alphabetical.
+    expect(keys).toEqual([
+      'brightness',
+      'state',
+      'child_lock',
+      'power_on_behavior',
+      'battery',
+      'linkquality',
+    ]);
+  });
+});

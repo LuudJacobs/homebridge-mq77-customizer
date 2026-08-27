@@ -82,6 +82,15 @@ export interface NormalisedDevice {
   manufacturer?: string;
   model?: string;
   description?: string;
+  /**
+   * Whether the broker keeps this device's messages for the next subscriber.
+   *
+   * A source that holds the setting says so, which is what makes it worth
+   * showing: a device whose state is retained is known the moment we connect,
+   * where every other device is unknown until it next reports. Undefined when
+   * the source cannot say.
+   */
+  retained?: boolean;
   properties: NormalisedProperty[];
 }
 
@@ -106,4 +115,10 @@ export interface StateUpdate {
    * rather than a live change. The rules engine must not fire on these.
    */
   retained: boolean;
+  /**
+   * When the device itself says it was last heard, where a source publishes
+   * such a thing. Not the same as when this message arrived: a retained one
+   * replayed on connect carries the time of the press, not of the replay.
+   */
+  reportedLastSeen?: string | number;
 }

@@ -341,12 +341,14 @@ function listen() {
       }
       Object.assign(device.state, payload.changes);
       for (const propertyKey of Object.keys(payload.changes)) {
-        device.lastSeen[propertyKey] = payload.at;
         updateValue(device, propertyKey);
       }
-      const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
-      if (seen) {
-        paintLastSeen(seen, device);
+      if (payload.reportedLastSeen !== undefined) {
+        device.reportedLastSeen = payload.reportedLastSeen;
+        const seen = el.devices.querySelector(`[data-seen="${CSS.escape(key(device))}"]`);
+        if (seen) {
+          paintLastSeen(seen, device);
+        }
       }
     }
   };
@@ -410,15 +412,16 @@ function isTimeNamed(property) {
 }
 
 /**
- * When the device last said anything.
+ * When the device last said anything, as the device tells it.
  *
- * Taken from the newest reading of any of its functions, so it works the same
- * for every source rather than relying on one of them publishing a timestamp.
- * Only known since this plugin started, so a quiet device has none.
+ * The time a message arrived is not an answer to this: a retained one is
+ * replayed the moment we connect, which would have every retaining device
+ * looking as though it had just spoken. Zigbee2MQTT publishes the real
+ * answer when `advanced.last_seen` is turned on, and where nothing publishes
+ * one there is nothing to say, so nothing is said.
  */
 function deviceLastSeen(device) {
-  const times = Object.values(device.lastSeen ?? {});
-  return times.length > 0 ? Math.max(...times) : undefined;
+  return asDate({ key: 'last_seen' }, device.reportedLastSeen)?.getTime();
 }
 
 function formatLastSeen(at) {
@@ -727,29 +730,26 @@ function renderDevice(device, inRoom) {
   const name = document.createElement('span');
   name.className = 'device-name';
   name.textContent = displayName(device, inRoom);
-  const meta = document.createElement('span');
-  meta.className = 'device-meta';
-  meta.textContent = [device.manufacturer, device.model].filter(Boolean).join(' ');
   const seen = document.createElement('span');
   seen.className = 'device-seen';
   seen.dataset.seen = key(device);
   paintLastSeen(seen, device);
-  // Only visible once the card is open, where there is room for it.
-  const topic = document.createElement('span');
-  topic.className = 'device-topic';
-  topic.textContent = device.topic ?? '';
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
   const icon = typeIcon(device);
   if (icon) {
     summary.append(icon);
   }
-  summary.append(name, meta, seen, topic, badge);
+  // What the device is called here, when it was last heard, and what it
+  // became in HomeKit. What it is and where it lives are inside the panel,
+  // where there is room to read them.
+  summary.append(name, seen, badge);
   card.append(summary);
 
   const body = document.createElement('div');
   body.className = 'device-body';
 
+  body.append(deviceOrigin(device));
   body.append(renderDeviceInfo(device, name));
 
   const options = renderOptions(device);
@@ -765,11 +765,56 @@ function renderDevice(device, inRoom) {
     for (const property of properties) {
       body.append(renderProperty(device, property));
     }
+    // Under the readings rather than over them, fenced off: these are said
+    // about the device, where everything above is a function of it.
+    if (title === 'Diagnostics') {
+      const facts = deviceFacts(device);
+      if (facts.length > 0) {
+        const said = document.createElement('div');
+        said.className = 'facts';
+        said.append(...facts);
+        body.append(said);
+      }
+    }
   }
 
   card.append(body);
   paintBadge(badge, device);
   return card;
+}
+
+/**
+ * What the device is and where it lives, as the source has it.
+ *
+ * Neither is anything to do with this interface: they are what the device
+ * says of itself and the topic it says it on, which is why they read as they
+ * came rather than as a name somebody chose. On a narrow window they take a
+ * line each, since a topic and a model on one line is a line too long.
+ */
+function deviceOrigin(device) {
+  const line = document.createElement('p');
+  line.className = 'device-origin';
+
+  const model = [device.manufacturer, device.model].filter(Boolean).join(' ');
+  const parts = [model, device.topic].filter(Boolean);
+  if (parts.length === 0) {
+    line.hidden = true;
+    return line;
+  }
+
+  parts.forEach((text, index) => {
+    if (index > 0) {
+      const between = document.createElement('span');
+      between.className = 'device-origin-between';
+      between.textContent = '|';
+      line.append(between);
+    }
+    const part = document.createElement('span');
+    part.textContent = text;
+    line.append(part);
+  });
+
+  return line;
 }
 
 /**
@@ -852,7 +897,9 @@ function renderOptions(device) {
     const option = document.createElement('div');
     option.className = 'option';
     const label = document.createElement('label');
-    label.textContent = endpoint ? `Tile for ${endpoint}` : 'Tile';
+    // Named for where it ends up: the thing being chosen is what this device
+    // looks like in the Home app, not anything in this interface.
+    label.textContent = endpoint ? `HomeKit tile for ${endpoint}` : 'HomeKit tile';
     const select = document.createElement('select');
     for (const tile of state.tileTypes) {
       const choice = document.createElement('option');
@@ -946,8 +993,62 @@ const GROUP_ORDER = [
 function groupProperties(device) {
   return GROUP_ORDER.map(([category, title]) => [
     title,
-    device.properties.filter((property) => property.category === category),
-  ]).filter(([, properties]) => properties.length > 0);
+    // By name, since that is what is being read down. The order a source
+    // lists its functions in means something to the source and nothing to
+    // anybody looking for one of them.
+    device.properties
+      .filter((property) => property.category === category)
+      .sort((a, b) => compareNames(a.label, b.label) || compareNames(a.key, b.key)),
+  ]).filter(
+    ([title, properties]) =>
+      properties.length > 0 || (title === 'Diagnostics' && deviceFacts(device).length > 0),
+  );
+}
+
+/**
+ * What is true of the device rather than of any one of its functions.
+ *
+ * Both answer the same question from opposite ends: why a device is showing
+ * nothing. One whose messages are retained is known the moment the plugin
+ * connects; one that says when it was last heard says whether it has gone
+ * quiet, which the arrival time of a replayed message cannot.
+ */
+function deviceFacts(device) {
+  const facts = [];
+
+  if (device.retained !== undefined) {
+    facts.push(fact('retained', String(device.retained)));
+  }
+
+  if (device.reportedLastSeen !== undefined) {
+    // The timestamp as the device sent it, since the header has already said
+    // it the readable way and this is the place to check the thing itself.
+    const said = fact('last seen', String(device.reportedLastSeen));
+    const moment = asDate({ key: 'last_seen' }, device.reportedLastSeen);
+    if (moment) {
+      said.title = moment.toLocaleString();
+    }
+    facts.push(said);
+  }
+
+  return facts;
+}
+
+/** A diagnostics line: something said about the device, and what it says. */
+function fact(label, value) {
+  const row = document.createElement('div');
+  row.className = 'property unselectable fact';
+
+  const name = document.createElement('span');
+  name.className = 'fact-label';
+  name.textContent = label;
+
+  const said = document.createElement('span');
+  said.className = 'value set';
+  said.textContent = value;
+
+  row.append(name, said);
+  return row;
 }
 
 function renderProperty(device, property) {

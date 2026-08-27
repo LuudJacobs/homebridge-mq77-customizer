@@ -31,6 +31,7 @@ describe('Zigbee2mqttAdapter', () => {
     expect(mqtt.filters).toEqual([
       'zigbee2mqtt/bridge/devices',
       'zigbee2mqtt/bridge/state',
+      'zigbee2mqtt/bridge/info',
       'zigbee2mqtt/#',
       'zigbee2mqtt/bridge/response/networkmap',
     ]);
@@ -197,5 +198,80 @@ describe('Zigbee2mqttAdapter', () => {
     await adapter.stop();
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     expect(adapter.getDevices()).toEqual([]);
+  });
+});
+
+describe('what the bridge says about retaining', () => {
+  const info = (config: unknown) => ({ config });
+
+  let adapter: Zigbee2mqttAdapter;
+  let mqtt: FakeMqtt;
+
+  beforeEach(async () => {
+    ({ adapter, mqtt } = await makeAdapter());
+  });
+
+  it('says nothing until the bridge has said something', () => {
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture, { retained: true });
+
+    // Undefined rather than false: not knowing and knowing it is off are
+    // different answers, and only one of them is worth showing.
+    expect(adapter.getDevices().every((device) => device.retained === undefined)).toBe(true);
+  });
+
+  it('reads the setting a device carries, and the defaults it otherwise inherits', () => {
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture, { retained: true });
+    mqtt.deliver(
+      `${BASE}/bridge/info`,
+      info({
+        device_options: { retain: true },
+        devices: { '0xf044d3fffe024659': { retain: false } },
+      }),
+      { retained: true },
+    );
+
+    const devices = adapter.getDevices();
+    expect(devices.find((device) => device.deviceId === '0xf044d3fffe024659')?.retained).toBe(false);
+    // Everything with no block of its own inherits the default.
+    expect(devices.filter((device) => device.deviceId !== '0xf044d3fffe024659').every((device) => device.retained === true)).toBe(true);
+  });
+
+  it('reads the broker-wide switch as off for everything', () => {
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture, { retained: true });
+    mqtt.deliver(
+      `${BASE}/bridge/info`,
+      info({
+        mqtt: { force_disable_retain: true },
+        device_options: { retain: true },
+        devices: { '0xf044d3fffe024659': { retain: true } },
+      }),
+      { retained: true },
+    );
+
+    expect(adapter.getDevices().every((device) => device.retained === false)).toBe(true);
+  });
+
+  it('answers for a catalog that arrives after the config does', () => {
+    mqtt.deliver(`${BASE}/bridge/info`, info({ device_options: { retain: true } }), {
+      retained: true,
+    });
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture, { retained: true });
+
+    expect(adapter.getDevices().every((device) => device.retained === true)).toBe(true);
+  });
+
+  it('passes on what a device says about when it was last heard', () => {
+    mqtt.deliver(`${BASE}/bridge/devices`, fixture, { retained: true });
+
+    const updates: unknown[] = [];
+    adapter.on('state', (update) => updates.push(update));
+    mqtt.deliver('zigbee2mqtt/woonkamer_lampen-ZB2GS', {
+      state_l1: 'ON',
+      last_seen: '2026-08-25T09:00:00Z',
+    });
+
+    // Not an expose, so no property carries it, and a retained message would
+    // otherwise look as though the device had just spoken.
+    expect(updates[0]).toMatchObject({ reportedLastSeen: '2026-08-25T09:00:00Z' });
   });
 });

@@ -1,0 +1,103 @@
+# Builds the test branch and hangs the tarball on a rolling prerelease, so a
+# Raspberry Pi installs what GitHub compiled rather than compiling it itself.
+#
+# Nothing is published to npm here and no token is needed: the release is made
+# with the automatic GITHUB_TOKEN.
+name: Test build
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The lowest major still maintained of the three package.json allows.
+          node-version: 22
+          cache: npm
+
+      # `npm ci` runs `prepare`, which is the build, but the build is asked for
+      # out loud as well: a build that breaks should fail as a build rather
+      # than as an install.
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # A version no other build has, so an install on the Pi is never answered
+      # out of a cache. It lives in the runner only: nothing is committed and
+      # nothing is tagged, which is what --no-git-tag-version is for.
+      - name: Give the build a version of its own
+        run: npm version prerelease --preid=test.${{ github.run_number }} --no-git-tag-version
+
+      - name: Pack
+        id: pack
+        run: |
+          npm pack
+          echo "tarball=$(ls -1 *.tgz | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Hang it on the rolling test release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Not `test`: a tag by that name and the branch of that name would
+          # be two refs with one spelling, and git asks which you meant.
+          tag_name: test-build
+          name: Test build
+          prerelease: true
+          files: "*.tgz"
+
+      # Only the build somebody would install is worth keeping: the release is
+      # a rolling one, and every run before this added a tarball nobody wants
+      # any more. Pruned after the upload rather than before it, so a failed
+      # upload never leaves the release with nothing on it.
+      - name: Prune the builds before this one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ steps.pack.outputs.tarball }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/tags/test-build" \
+            --jq '.assets[] | select(.name != env.KEEP) | "\(.id) \(.name)"' |
+          while read -r id name; do
+            echo "Dropping $name"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
+          done
+
+      # The whole thing, ready to paste, on the run's own page.
+      #
+      # The repository is private, so the plain download URL answers 404 to
+      # anything without a token, and `npm install <url>` has no way to send
+      # one. The asset endpoint of the API does take one, which is why the
+      # file is fetched first and installed from disk.
+      - name: Say how to install it
+        env:
+          ASSETS: ${{ steps.release.outputs.assets }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          id=$(echo "$ASSETS" | jq -r --arg name "$TARBALL" '.[] | select(.name == $name) | .id')
+          asset="https://api.github.com/repos/${{ github.repository }}/releases/assets/$id"
+          plain="https://github.com/${{ github.repository }}/releases/download/test-build/$TARBALL"
+          # One line to paste: clear out whatever was downloaded last time,
+          # fetch this build, install it from the file.
+          {
+            echo "### Install this build"
+            echo
+            echo 'In your Homebridge directory, with a token that can read this repository:'
+            echo
+            echo '```bash'
+            echo "rm -f homebridge-mq77-customizer-*.tgz && curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' -o $TARBALL $asset && npm i ./$TARBALL"
+            echo '```'
+            echo
+            echo "Then restart Homebridge. Once this repository is public, \`npm i $plain\` does the lot on its own."
+          } >> "$GITHUB_STEP_SUMMARY"

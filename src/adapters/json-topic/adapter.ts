@@ -24,6 +24,8 @@ interface Tracked {
    * sample to look at. The first real one settles it.
    */
   unconfirmed: Set<string>;
+  /** Whether the last message on this topic was one the broker had kept. */
+  retained?: boolean;
 }
 
 /**
@@ -143,6 +145,9 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       topic: entry.topic,
       manufacturer: this.source.id,
       model: 'JSON topic',
+      // Nothing here holds the publisher's settings, so the only answer is
+      // the one the broker gave: whether what we last heard was a replay.
+      retained: entry.retained,
       properties: [...entry.properties.values()],
     }));
   }
@@ -192,6 +197,8 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       unconfirmed: new Set<string>(),
     };
     const isNew = !this.tracked.has(relative);
+    const wasRetained = entry.retained;
+    entry.retained = retained;
     this.tracked.set(relative, entry);
 
     if (isNew) {
@@ -224,7 +231,7 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
       entry.state[key] = value;
     }
 
-    if (isNew || discovered) {
+    if (isNew || discovered || wasRetained !== retained) {
       this.log.info(
         `${relative}: ${entry.properties.size} propert${entry.properties.size === 1 ? 'y' : 'ies'}`,
       );
@@ -232,12 +239,19 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     }
 
     if (Object.keys(changes).length > 0) {
+      // A publisher that says when it spoke is taken at its word, the same as
+      // Zigbee2MQTT is. Nothing here can say it on the publisher's behalf.
+      const reported = (parsed as { last_seen?: unknown }).last_seen;
+
       const update: StateUpdate = {
         sourceId: this.sourceId,
         deviceId: relative,
         changes,
         at: Date.now(),
         retained,
+        ...(typeof reported === 'string' || typeof reported === 'number'
+          ? { reportedLastSeen: reported }
+          : {}),
       };
       this.emit('state', update);
     }
