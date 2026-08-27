@@ -2,7 +2,7 @@
   "pluginAlias": "Mq77Customizer",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Everything else is configured from the web interface, not here.",
+  "headerDisplay": "Only the broker, the sources and the web interface are set here. Everything else, which devices reach HomeKit and what they do between them, is set in the plugin's own web interface: save this, restart Homebridge, then open the address shown in the Homebridge log.",
   "schema": {
     "type": "object",
     "properties": {
@@ -94,12 +94,13 @@
               "title": "Base topic",
               "type": "string",
               "required": true,
-              "default": "zigbee2mqtt"
+              "default": "zigbee2mqtt",
+              "description": "The prefix this source publishes everything under."
             },
             "topics": {
               "title": "Topic filter",
               "type": "string",
-              "description": "Defaults to everything under the base topic.",
+              "description": "Which topics to watch, as an MQTT filter. Everything under the base topic by default. Narrow it with a filter of your own, where + stands for one level and # for the rest: sensors/+/state, or sensors/#.",
               "condition": {
                 "functionBody": "return model.sources[arrayIndices].adapter === 'json-topic';"
               }
@@ -124,7 +125,7 @@
                   "topic": {
                     "title": "Device topic",
                     "type": "string",
-                    "description": "The topic under the base topic, without it. For broadlinkrm/fan_office that is fan_office."
+                    "description": "The part after the base topic. A device publishing on <base topic>/kitchen_fan is written here as kitchen_fan."
                   },
                   "properties": {
                     "title": "Functions",
@@ -133,7 +134,7 @@
                       "type": "string",
                       "title": "Function"
                     },
-                    "description": "One name per line: state, level, speed, swing, temperature, humidity, co2_levels."
+                    "description": "One per line. Only these are understood: state, level, speed, swing, temperature, humidity, co2_levels. Anything a device does report is picked up on its own and does not need naming here."
                   }
                 }
               },
@@ -249,8 +250,8 @@
       "title": "Web Interface",
       "items": [
         "web.port",
-        "web.zigbee2mqttUrl",
-        "web.password"
+        "web.password",
+        "web.zigbee2mqttUrl"
       ]
     }
   ]
