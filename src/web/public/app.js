@@ -985,7 +985,12 @@ const GROUP_ORDER = [
 function groupProperties(device) {
   return GROUP_ORDER.map(([category, title]) => [
     title,
-    device.properties.filter((property) => property.category === category),
+    // By name, since that is what is being read down. The order a source
+    // lists its functions in means something to the source and nothing to
+    // anybody looking for one of them.
+    device.properties
+      .filter((property) => property.category === category)
+      .sort((a, b) => compareNames(a.label, b.label) || compareNames(a.key, b.key)),
   ]).filter(
     ([title, properties]) =>
       properties.length > 0 || (title === 'Diagnostics' && deviceFacts(device).length > 0),

@@ -289,3 +289,34 @@ describe('what a panel says about the device itself', () => {
     expect(silent.document.querySelector('#devices .device-seen')?.textContent).toBe('');
   });
 });
+
+describe('the order functions are listed in', () => {
+  const mixed = () => ({
+    ...device('0x9', 'mixed_device'),
+    properties: [
+      { key: 'state', label: 'State', semantic: 'state', type: 'binary', category: 'primary', endpoint: '', readable: true, writable: true, publishable: true, role: 'power', onValue: 'ON', offValue: 'OFF' },
+      { key: 'brightness', label: 'Brightness', semantic: 'brightness', type: 'numeric', category: 'primary', endpoint: '', readable: true, writable: true, publishable: true, role: 'brightness', min: 0, max: 254 },
+      { key: 'linkquality', label: 'Link quality', semantic: 'linkquality', type: 'numeric', category: 'diagnostic', endpoint: '', readable: true, writable: false, publishable: false },
+      { key: 'battery', label: 'Battery', semantic: 'battery', type: 'numeric', category: 'diagnostic', endpoint: '', readable: true, writable: false, publishable: true, role: 'battery' },
+      { key: 'power_on_behavior', label: 'Power on behaviour', semantic: 'power_on_behavior', type: 'enum', category: 'config', endpoint: '', readable: true, writable: true, publishable: false, values: ['on', 'off'] },
+      { key: 'child_lock', label: 'Child lock', semantic: 'child_lock', type: 'binary', category: 'config', endpoint: '', readable: true, writable: true, publishable: true, role: 'childLock', onValue: 'LOCK', offValue: 'UNLOCK' },
+    ],
+  });
+
+  it('lists each group by name, whatever order the source gave them in', async () => {
+    const ui = await openDevices([mixed()]);
+    const keys = [...ui.document.querySelectorAll('#devices .property .key')].map(
+      (node) => node.textContent,
+    );
+
+    // Functions, then Settings, then Diagnostics, each one alphabetical.
+    expect(keys).toEqual([
+      'brightness',
+      'state',
+      'child_lock',
+      'power_on_behavior',
+      'battery',
+      'linkquality',
+    ]);
+  });
+});
