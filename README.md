@@ -19,12 +19,6 @@ Install it the way you install any Homebridge plugin, from the Plugins screen of
 sudo hb-service add homebridge-mq77-customizer
 ```
 
-Until it is on npm, install it from source instead, which builds on install. Use `#test` rather than `#main` to run what is being tested:
-
-```
-sudo npm install -g git+https://github.com/LuudJacobs/homebridge-mq77-customizer.git#main
-```
-
 ## Settings
 
 Everything is set in the plugin's settings form in the Homebridge UI, and each field says what it is for. There are three things to fill in:
