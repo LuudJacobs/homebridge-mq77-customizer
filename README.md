@@ -88,7 +88,7 @@ Marking a device as a Controller puts its button presses in the Activity tab, wi
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
 
-### What a device says about itself
+### Last seen and retainment
 
 A device card says when the device was last heard, and its panel says the timestamp behind that along with whether the broker keeps its messages.
 
