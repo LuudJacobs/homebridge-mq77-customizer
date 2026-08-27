@@ -14,8 +14,8 @@ import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { cachedAccessory, fakeApi, type FakeApi } from './helpers/fake-homebridge.js';
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
-const DUAL = '0xf044d3fffe024659';
-const DUAL_TOPIC = 'zigbee2mqtt/woonkamer_lampen-ZB2GS';
+const DUAL = '0x00158dfffe000002';
+const DUAL_TOPIC = 'zigbee2mqtt/living_room_switch-ZB2GS';
 
 interface Harness {
   manager: AccessoryManager;
@@ -63,7 +63,7 @@ describe('AccessoryManager', () => {
 
     expect(context.hb.registered).toHaveLength(1);
     const accessory = context.hb.registered[0]!;
-    expect(accessory.displayName).toBe('woonkamer_lampen-ZB2GS');
+    expect(accessory.displayName).toBe('living_room_switch-ZB2GS');
     expect(accessory.getServiceById(Service.Switch, 'state_l1')).toBeDefined();
   });
 
@@ -122,7 +122,7 @@ describe('AccessoryManager', () => {
   });
 
   it('adopts a cached accessory rather than registering a duplicate', () => {
-    context.manager.restore(cachedAccessory('woonkamer_lampen-ZB2GS', `zigbee:${DUAL}`));
+    context.manager.restore(cachedAccessory('living_room_switch-ZB2GS', `zigbee:${DUAL}`));
     expose(context.store, { properties: ['state_l1'] });
     context.manager.sync();
 
@@ -224,7 +224,7 @@ describe('starting up before the broker answers', () => {
 
   it('keeps cached accessories until the source has said what it has', async () => {
     const context = await coldStart();
-    context.manager.restore(cachedAccessory('woonkamer_lampen-ZB2GS', `zigbee:${DUAL}`));
+    context.manager.restore(cachedAccessory('living_room_switch-ZB2GS', `zigbee:${DUAL}`));
 
     // Homebridge calls this before anything has come back from the broker.
     // Removing an accessory here tells HomeKit to forget which room it is in,
@@ -235,7 +235,7 @@ describe('starting up before the broker answers', () => {
 
   it('adopts them once the catalog arrives, without registering anew', async () => {
     const context = await coldStart();
-    context.manager.restore(cachedAccessory('woonkamer_lampen-ZB2GS', `zigbee:${DUAL}`));
+    context.manager.restore(cachedAccessory('living_room_switch-ZB2GS', `zigbee:${DUAL}`));
     context.manager.sync();
 
     context.mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });

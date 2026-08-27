@@ -13,9 +13,9 @@ import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
 /** The Candeo dimmer: brightness 0 to 254, with its own on and off. */
-const DIMMER = { id: '0x1cc089fffe39c60e', topic: 'zigbee2mqtt/keuken_dimmer-candeo' };
+const DIMMER = { id: '0x00158dfffe000003', topic: 'zigbee2mqtt/kitchen_dimmer-candeo' };
 /** An Aqara rocker, whose presses drive the dimmer. */
-const ROCKER = { id: '0x54ef44100169b28a', topic: 'zigbee2mqtt/slaapkamer_schakelaar-wrs02' };
+const ROCKER = { id: '0x00158dfffe000005', topic: 'zigbee2mqtt/bedroom_rocker-wrs02' };
 
 const press = (value: string) => ({
   sourceId: 'zigbee',

@@ -12,8 +12,8 @@ import { Store } from '../src/store.js';
 import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
-const LAMP = { id: '0x1cc089fffe39c60e', topic: 'zigbee2mqtt/keuken_dimmer-candeo' };
-const SOCKET = { id: '0xa4c138ae47fdd9c3', topic: 'zigbee2mqtt/woonkamer_bank_lamp-socket' };
+const LAMP = { id: '0x00158dfffe000003', topic: 'zigbee2mqtt/kitchen_dimmer-candeo' };
+const SOCKET = { id: '0x00158dfffe000006', topic: 'zigbee2mqtt/living_room_lamp-socket' };
 
 function timerRule(overrides: Partial<TimerRule> = {}): TimerRule {
   return {

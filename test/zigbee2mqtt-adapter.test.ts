@@ -42,44 +42,44 @@ describe('Zigbee2mqttAdapter', () => {
 
     const names = adapter.getDevices().map((device) => device.deviceId);
     expect(names).toEqual([
-      '0xf044d3fffe024659',
-      '0x1cc089fffe39c60e',
-      '0x54ef4410013bd210',
-      '0x54ef44100169b28a',
-      '0xa4c138ae47fdd9c3',
+      '0x00158dfffe000002',
+      '0x00158dfffe000003',
+      '0x00158dfffe000004',
+      '0x00158dfffe000005',
+      '0x00158dfffe000006',
     ]);
   });
 
   it('skips the coordinator, disabled devices and devices with no definition', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     const ids = adapter.getDevices().map((device) => device.deviceId);
-    expect(ids).not.toContain('0x00124b0032d464c8');
+    expect(ids).not.toContain('0x00124b0000000001');
     expect(ids).not.toContain('0x0000000000000001');
     expect(ids).not.toContain('0x0000000000000002');
   });
 
   it('prefers the user description over the friendly name', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    const w100 = adapter.getDevices().find((d) => d.deviceId === '0x54ef4410013bd210');
-    expect(w100?.name).toBe('Thermostaat woonkamer');
+    const w100 = adapter.getDevices().find((d) => d.deviceId === '0x00158dfffe000004');
+    expect(w100?.name).toBe('Living room thermostat');
     expect(w100?.manufacturer).toBe('Aqara');
     expect(w100?.model).toBe('TH-S04D');
   });
 
   it('reports the topic a device lives on, which the interface searches', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    const w100 = adapter.getDevices().find((d) => d.deviceId === '0x54ef4410013bd210');
+    const w100 = adapter.getDevices().find((d) => d.deviceId === '0x00158dfffe000004');
     // Its name comes from the description, so the topic is the only place the
     // friendly name survives.
-    expect(w100?.name).toBe('Thermostaat woonkamer');
-    expect(w100?.topic).toBe('zigbee2mqtt/woonkamer_w100');
+    expect(w100?.name).toBe('Living room thermostat');
+    expect(w100?.topic).toBe('zigbee2mqtt/living_room_climate-w100');
   });
 
   it('records state for known properties', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'ON', state_l2: 'OFF' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l1: 'ON', state_l2: 'OFF' });
 
-    expect(adapter.getState('0xf044d3fffe024659')).toEqual({
+    expect(adapter.getState('0x00158dfffe000002')).toEqual({
       state_l1: 'ON',
       state_l2: 'OFF',
     });
@@ -87,13 +87,13 @@ describe('Zigbee2mqttAdapter', () => {
 
   it('reads values out of composites', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/keuken_dimmer-candeo`, {
+    mqtt.deliver(`${BASE}/kitchen_dimmer-candeo`, {
       state: 'ON',
       brightness: 128,
       level_config: { on_level: 40 },
     });
 
-    expect(adapter.getState('0x1cc089fffe39c60e')).toEqual({
+    expect(adapter.getState('0x00158dfffe000003')).toEqual({
       state: 'ON',
       brightness: 128,
       'level_config.on_level': 40,
@@ -104,20 +104,20 @@ describe('Zigbee2mqttAdapter', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     // detach_relay_outlet1 is access 2, write only, so it must not be recorded
     // even when something echoes it back.
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, {
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, {
       state_l1: 'ON',
       detach_relay_mode: { detach_relay_outlet1: 'ENABLE' },
     });
 
-    expect(adapter.getState('0xf044d3fffe024659')).toEqual({ state_l1: 'ON' });
+    expect(adapter.getState('0x00158dfffe000002')).toEqual({ state_l1: 'ON' });
   });
 
   it('merges partial updates into the known state', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'ON', state_l2: 'ON' });
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l2: 'OFF' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l1: 'ON', state_l2: 'ON' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l2: 'OFF' });
 
-    expect(adapter.getState('0xf044d3fffe024659')).toEqual({
+    expect(adapter.getState('0x00158dfffe000002')).toEqual({
       state_l1: 'ON',
       state_l2: 'OFF',
     });
@@ -128,8 +128,8 @@ describe('Zigbee2mqttAdapter', () => {
     adapter.on('state', (update) => updates.push(update));
 
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'ON' }, { retained: true });
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'OFF' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l1: 'ON' }, { retained: true });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l1: 'OFF' });
 
     expect(updates.map((update) => update.retained)).toEqual([true, false]);
     expect(updates[0]?.changes).toEqual({ state_l1: 'ON' });
@@ -140,9 +140,9 @@ describe('Zigbee2mqttAdapter', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     adapter.on('state', (update) => updates.push(update));
 
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS/set`, { state_l1: 'ON' });
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS/get`, { state_l1: '' });
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS/availability`, { state: 'online' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS/set`, { state_l1: 'ON' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS/get`, { state_l1: '' });
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS/availability`, { state: 'online' });
     mqtt.deliver(`${BASE}/bridge/logging`, { level: 'info', message: 'hello' });
 
     expect(updates).toHaveLength(0);
@@ -162,36 +162,36 @@ describe('Zigbee2mqttAdapter', () => {
     expect(adapter.getDevices()).toEqual([]);
 
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, 'not json');
-    expect(adapter.getState('0xf044d3fffe024659')).toBeUndefined();
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, 'not json');
+    expect(adapter.getState('0x00158dfffe000002')).toBeUndefined();
   });
 
   it('rebuilds topics when a device is renamed', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
     const renamed = JSON.parse(JSON.stringify(fixture)) as { friendly_name: string }[];
-    const entry = renamed.find((d) => d.friendly_name === 'woonkamer_lampen-ZB2GS');
+    const entry = renamed.find((d) => d.friendly_name === 'living_room_switch-ZB2GS');
     entry!.friendly_name = 'woonkamer_lampen';
     mqtt.deliver(`${BASE}/bridge/devices`, renamed);
 
     mqtt.deliver(`${BASE}/woonkamer_lampen`, { state_l1: 'ON' });
-    expect(adapter.getState('0xf044d3fffe024659')).toEqual({ state_l1: 'ON' });
+    expect(adapter.getState('0x00158dfffe000002')).toEqual({ state_l1: 'ON' });
 
-    const device = adapter.getDevices().find((d) => d.deviceId === '0xf044d3fffe024659');
+    const device = adapter.getDevices().find((d) => d.deviceId === '0x00158dfffe000002');
     expect(device?.properties[0]?.stateTopic).toBe('zigbee2mqtt/woonkamer_lampen');
     expect(device?.properties[0]?.setTopic).toBe('zigbee2mqtt/woonkamer_lampen/set');
   });
 
   it('forgets state for devices that leave the network', () => {
     mqtt.deliver(`${BASE}/bridge/devices`, fixture);
-    mqtt.deliver(`${BASE}/woonkamer_lampen-ZB2GS`, { state_l1: 'ON' });
-    expect(adapter.getState('0xf044d3fffe024659')).toBeDefined();
+    mqtt.deliver(`${BASE}/living_room_switch-ZB2GS`, { state_l1: 'ON' });
+    expect(adapter.getState('0x00158dfffe000002')).toBeDefined();
 
     const remaining = (fixture as { ieee_address?: string }[]).filter(
-      (device) => device.ieee_address !== '0xf044d3fffe024659',
+      (device) => device.ieee_address !== '0x00158dfffe000002',
     );
     mqtt.deliver(`${BASE}/bridge/devices`, remaining);
 
-    expect(adapter.getState('0xf044d3fffe024659')).toBeUndefined();
+    expect(adapter.getState('0x00158dfffe000002')).toBeUndefined();
   });
 
   it('stops listening after stop()', async () => {
@@ -225,15 +225,15 @@ describe('what the bridge says about retaining', () => {
       `${BASE}/bridge/info`,
       info({
         device_options: { retain: true },
-        devices: { '0xf044d3fffe024659': { retain: false } },
+        devices: { '0x00158dfffe000002': { retain: false } },
       }),
       { retained: true },
     );
 
     const devices = adapter.getDevices();
-    expect(devices.find((device) => device.deviceId === '0xf044d3fffe024659')?.retained).toBe(false);
+    expect(devices.find((device) => device.deviceId === '0x00158dfffe000002')?.retained).toBe(false);
     // Everything with no block of its own inherits the default.
-    expect(devices.filter((device) => device.deviceId !== '0xf044d3fffe024659').every((device) => device.retained === true)).toBe(true);
+    expect(devices.filter((device) => device.deviceId !== '0x00158dfffe000002').every((device) => device.retained === true)).toBe(true);
   });
 
   it('reads the broker-wide switch as off for everything', () => {
@@ -243,7 +243,7 @@ describe('what the bridge says about retaining', () => {
       info({
         mqtt: { force_disable_retain: true },
         device_options: { retain: true },
-        devices: { '0xf044d3fffe024659': { retain: true } },
+        devices: { '0x00158dfffe000002': { retain: true } },
       }),
       { retained: true },
     );
@@ -265,7 +265,7 @@ describe('what the bridge says about retaining', () => {
 
     const updates: unknown[] = [];
     adapter.on('state', (update) => updates.push(update));
-    mqtt.deliver('zigbee2mqtt/woonkamer_lampen-ZB2GS', {
+    mqtt.deliver('zigbee2mqtt/living_room_switch-ZB2GS', {
       state_l1: 'ON',
       last_seen: '2026-08-25T09:00:00Z',
     });
