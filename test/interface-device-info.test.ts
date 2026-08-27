@@ -237,6 +237,33 @@ describe('what a panel says about the device itself', () => {
     expect(ui.document.querySelector('#devices summary .device-topic')).toBeNull();
   });
 
+  it('sits under the readings it shares the heading with, fenced off from them', async () => {
+    const ui = await openDevices([
+      {
+        ...device('0x1', 'hall_switch'),
+        retained: true,
+        properties: [
+          {
+            key: 'linkquality',
+            label: 'Link quality',
+            semantic: 'linkquality',
+            type: 'numeric',
+            category: 'diagnostic',
+            endpoint: '',
+            readable: true,
+            writable: false,
+            publishable: false,
+          },
+        ],
+      },
+    ]);
+
+    const rows = [...ui.document.querySelectorAll('#devices .device-body .property')];
+    // The reading first, then the line, then what is said about the device.
+    expect(rows.map((row) => row.classList.contains('fact'))).toEqual([false, true]);
+    expect(ui.document.querySelector('#devices .facts .property.fact')).not.toBeNull();
+  });
+
   it('says under diagnostics whether the device is retained', async () => {
     const ui = await openDevices([{ ...device('0x1', 'hall_switch'), retained: true }]);
 
