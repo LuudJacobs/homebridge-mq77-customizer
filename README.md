@@ -149,7 +149,7 @@ Cycle is one button for the whole range: up to the top, back down to off, and up
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
 
-## Keeping your settings
+## Backup settings
 
 Everything set here lives in `state.json` under the Homebridge storage path, alongside a `backups` folder holding the last ten dated copies. One is taken when the plugin starts, before anything is touched, and at most once an hour after that.
 
