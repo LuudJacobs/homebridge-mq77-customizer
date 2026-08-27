@@ -48,6 +48,7 @@ jobs:
           echo "tarball=$(ls -1 *.tgz | head -n1)" >> "$GITHUB_OUTPUT"
 
       - name: Hang it on the rolling test release
+        id: release
         uses: softprops/action-gh-release@v2
         with:
           # Not `test`: a tag by that name and the branch of that name would
@@ -57,14 +58,30 @@ jobs:
           prerelease: true
           files: "*.tgz"
 
-      # The whole command, ready to paste, on the run's own page.
+      # The whole thing, ready to paste, on the run's own page.
+      #
+      # The repository is private, so the plain download URL answers 404 to
+      # anything without a token, and `npm install <url>` has no way to send
+      # one. The asset endpoint of the API does take one, which is why the
+      # file is fetched first and installed from disk.
       - name: Say how to install it
+        env:
+          ASSETS: ${{ steps.release.outputs.assets }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
-          url="https://github.com/${{ github.repository }}/releases/download/test-build/${{ steps.pack.outputs.tarball }}"
+          id=$(echo "$ASSETS" | jq -r --arg name "$TARBALL" '.[] | select(.name == $name) | .id')
+          asset="https://api.github.com/repos/${{ github.repository }}/releases/assets/$id"
+          plain="https://github.com/${{ github.repository }}/releases/download/test-build/$TARBALL"
           {
             echo "### Install this build"
             echo
+            echo 'In your Homebridge directory, with a token that can read this repository:'
+            echo
+            echo '```bash'
+            echo "curl -fL -H \"Authorization: Bearer \$GITHUB_TOKEN\" -H 'Accept: application/octet-stream' \\"
+            echo "  -o $TARBALL $asset"
+            echo "npm i ./$TARBALL"
             echo '```'
-            echo "npm install $url"
-            echo '```'
+            echo
+            echo "Then restart Homebridge. Once this repository is public, \`npm i $plain\` does the lot on its own."
           } >> "$GITHUB_STEP_SUMMARY"
