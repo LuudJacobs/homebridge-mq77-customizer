@@ -6,9 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.4.0] - 2026-08-27
+
+### Added
+
 - A device panel says under Diagnostics whether the broker keeps that device's messages, read from Zigbee2MQTT's own configuration, and the timestamp the device last reported for itself
+- Test builds and releases are built on GitHub and published as an installable tarball, so a Raspberry Pi installs what GitHub compiled rather than compiling it itself
+
+### Changed
+
 - When a device was last heard now comes from the device rather than from this plugin, which no longer keeps arrival times of its own. Zigbee2MQTT publishes it once `advanced.last_seen` is turned on; a device that publishes none shows none, since a retained message replayed on connect says nothing about when the device spoke
 - What a device is and the topic it lives on move off the card header onto the first line of the open panel, so the header reads as the name, when it was last heard, and what it became in HomeKit
+- A device's functions are listed by name within Functions, Settings and Diagnostics, and the tile picker is called what it chooses: the HomeKit tile
+- The README says what the settings are for and leaves naming them to the settings form, which describes its own fields more clearly. Installation is the command any plugin is installed with
 
 ## [1.3.0] - 2026-08-25
 
