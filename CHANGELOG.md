@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.5.0] - 2026-08-27
+
+The first public release, on npm.
+
+### Added
+
+- The web interface says plainly that it belongs on your own network: anybody past its one password can switch every device it publishes
+
+### Changed
+
+- Installed from npm, the way any Homebridge plugin is installed
+
 ## [1.4.1] - 2026-08-27
 
 ### Changed
