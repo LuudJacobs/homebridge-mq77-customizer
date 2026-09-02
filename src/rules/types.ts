@@ -310,16 +310,25 @@ export interface LogEntry {
   /**
    * The time that set it off, when the clock did.
    *
-   * Said as the rule stores it, `07:00`, rather than as a sentence: the
-   * interface words it, the way it words a press.
+   * The parts rather than a sentence, the way a press is carried: `sunset`
+   * with an offset of -30 reads as `Sunset -00:30` in the interface and as
+   * nothing at all here, since wording is the interface's business.
    */
-  firedAt?: string;
+  firedAt?: LogTime;
   /** Which branch ran, for a rule that has more than one. */
   branch?: string;
   /** What a slider did. */
   step?: LogStep;
   /** What a mirror copied, and where to. */
   copy?: LogCopy;
+}
+
+/** The time a rule was set off by, in parts. */
+export interface LogTime {
+  /** `HH:MM`, or one of the times the sun decides. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
 }
 
 /** A button press: which device, which function, and what it said. */
