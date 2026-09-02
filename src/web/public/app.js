@@ -2225,6 +2225,7 @@ function summarise(rule, inRoom) {
     phrase(...triggerParts(triggers, inRoom)),
     words(' '),
     ...(rule.kind === 'timer' ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
+    ...(rule.kind === 'timer' && rule.when ? [phrase(chunkOf('if →')), words(' ')] : []),
     phrase(
       ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
       words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
@@ -2683,6 +2684,20 @@ function drawTimer(body, draft) {
   colon.textContent = ':';
   waitRow.append(minutes, colon, seconds);
   body.append(waitRow);
+
+  // The same editor an automation uses, asked when the wait runs out. One
+  // condition over the single set of actions, so the panel takes it once
+  // rather than carrying the outcome list an automation has.
+  const head = document.createElement('div');
+  head.className = 'branch-head';
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(sectionTitle('And, optionally'));
+  const slot = document.createElement('span');
+  left.append(slot);
+  head.append(left);
+  body.append(head);
+  body.append(conditionEditor(draft, slot));
 
   body.append(sectionTitle('Then'));
   body.append(actionEditor(draft));

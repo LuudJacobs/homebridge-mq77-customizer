@@ -256,6 +256,14 @@ export interface TimerRule {
   enabled: boolean;
   /** Any of these starts the clock, and starts it again while it runs. */
   triggers?: Trigger[];
+  /**
+   * Asked when the wait runs out, and only then.
+   *
+   * Being called off is what a trigger going away does; this is something
+   * else being true or not at the moment the timer would act. One condition
+   * over the single set of actions, where an automation has a branch each.
+   */
+  when?: ConditionNode;
   /** How long to wait before doing anything. */
   waitMs: number;
   actions: Action[];
