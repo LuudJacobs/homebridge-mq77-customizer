@@ -66,7 +66,7 @@ describe('picking a time', () => {
     const ui = await openRule(automation());
     const options = pickerOptions(ui);
 
-    expect(options.at(-1)).toBe('Time');
+    expect(options.at(-1)).toBe('Current time');
     // And it is the only thing there that is not a device.
     expect(options.slice(0, -1)).toEqual(['lamp', 'remote']);
   });
@@ -179,7 +179,7 @@ describe('the rules that cannot be set off by a time', () => {
 
   it('offers no Time in a timer', async () => {
     const ui = await openRule(timer, 'Timers');
-    expect(pickerOptions(ui, '#timers')).not.toContain('Time');
+    expect(pickerOptions(ui, '#timers')).not.toContain('Current time');
   });
 });
 
@@ -301,7 +301,7 @@ describe('a time as a condition', () => {
       }),
     );
     const options = [...conditionPicker(ui).options].map((option) => option.textContent);
-    expect(options.at(-1)).toBe('Time');
+    expect(options.at(-1)).toBe('Current time');
   });
 
   it('asks for a side rather than a range, and no days', async () => {
