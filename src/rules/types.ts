@@ -88,24 +88,28 @@ export type ConditionNode =
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
   | ({ kind: 'test' } & Condition)
-  | TimeWindow;
+  | TimeCondition;
 
 /**
- * A time of day the rule is allowed to run in.
+ * Which side of a time of day it is.
  *
- * `from` and `to` are read the way `at` is. Equal ends mean the whole day
- * rather than an instant, and a window may cross midnight: 22:00 to 06:00 is
- * the night, not nothing.
+ * Said as a side rather than as a range, because that is how somebody writes
+ * one: before four in the morning, after half an hour before sunset. Both
+ * include the minute they name and run to the end of the day on their side of
+ * it, so `before 04:00` is midnight through 04:00 and `after sunset -30` is
+ * that minute through 23:59.
+ *
+ * A window is the two of them in an `any` group, which is how a night is
+ * written: after 22:00 or before 06:00. The editor already offers that, and
+ * it reads back as what was typed.
  */
-export interface TimeWindow {
+export interface TimeCondition {
   kind: 'time';
-  from: string;
-  to: string;
-  /** Offsets either side, for named times. */
-  fromOffset?: number;
-  toOffset?: number;
-  /** Absent means every day. */
-  days?: Weekday[];
+  side: 'before' | 'after';
+  /** `HH:MM` on a 24 hour clock, or one of `SUN_TIMES`. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
 }
 
 /**

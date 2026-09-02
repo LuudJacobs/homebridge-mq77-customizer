@@ -136,9 +136,11 @@ Only automations. A mirror and a slider are driven by their devices, and a timer
 The clock is whatever the machine running Homebridge thinks it is, and a rule fires during the minute it names. Four things worth knowing:
 
 - A time that passed while Homebridge was down does not fire late. A reboot at 22:59 swallows a rule set for 23:00, which is the price of never having an evening's worth of rules run at once when the machine comes back.
-- A window may cross midnight: 22:00 to 06:00 is the night, not nothing. Its days are read from the evening it opened on, so a Friday night window still holds at two on Saturday morning. Equal ends mean the whole day.
+- A condition asks about now, so it takes no days of its own. A rule that should only run on weekdays says so where it is set off.
 - On the day the clocks go forward, a rule set for a time in the missing hour does not fire, since that time never happens. On the day they go back, a rule set for the repeated hour fires once.
 - Days of the week can narrow when it runs. All seven, or none ticked, both mean every day.
+
+As a condition it is said as a side rather than a range: `is before 04:00`, or `is after sunset -30`. Both include the minute they name and run to that end of the day, so before four o'clock means midnight through four. A night is the two of them in one **or** group: after 22:00 or before 06:00.
 
 A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an offset in minutes either side, so `sunset -30` is half an hour before the sun goes down. Dawn and dusk are civil twilight, which is when it is actually dark rather than the moment the sun crosses the horizon, and for lights that is usually what is meant.
 

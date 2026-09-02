@@ -1,9 +1,9 @@
 import type { Catalog } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
 import type { Place } from './clock.js';
-import { describeTime, inWindow } from './clock.js';
+import { describeTime, onSide } from './clock.js';
 import { describeMatch, matches } from './match.js';
-import type { Condition, ConditionNode, PropertyRef, TimeWindow } from './types.js';
+import type { Condition, ConditionNode, PropertyRef, TimeCondition } from './types.js';
 
 export interface Reason {
   /** Why the expression did not hold, in a sentence for the run log. */
@@ -36,7 +36,7 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
       return test(node, lookup);
 
     case 'time':
-      return window(node, lookup);
+      return timeOfDay(node, lookup);
 
     case 'all': {
       for (const child of node.nodes) {
@@ -75,18 +75,18 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
 }
 
 /**
- * Whether the clock is inside the window.
+ * Whether the clock is on the side of the time this names.
  *
- * The reason says the window rather than the time, since a rule that did not
- * run at ten past midnight is read the next morning, when what it says about
- * "now" would be about a different now.
+ * The reason says the condition rather than the hour it was, since a rule
+ * that declined at ten past midnight is read the next morning, when what it
+ * said about "now" would be about a different now.
  */
-function window(node: TimeWindow, lookup: Lookup): Reason | undefined {
+function timeOfDay(node: TimeCondition, lookup: Lookup): Reason | undefined {
   const at = lookup.now?.() ?? new Date();
-  if (inWindow(node, at, lookup.place)) {
+  if (onSide(node, at, lookup.place)) {
     return undefined;
   }
-  return { detail: `not between ${describeTime(node.from, node.fromOffset)} and ${describeTime(node.to, node.toOffset)}` };
+  return { detail: `not ${node.side} ${describeTime(node.at, node.offset)}` };
 }
 
 function test(node: { kind: 'test' } & Condition, lookup: Lookup): Reason | undefined {
@@ -119,7 +119,7 @@ export function describe(node: ConditionNode, lookup?: Lookup): string {
     case 'not':
       return `not (${describe(node.node, lookup)})`;
     case 'time':
-      return `between ${describeTime(node.from, node.fromOffset)} and ${describeTime(node.to, node.toOffset)}`;
+      return `${node.side} ${describeTime(node.at, node.offset)}`;
     default:
       return 'an unknown condition';
   }

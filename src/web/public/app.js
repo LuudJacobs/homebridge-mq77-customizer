@@ -3204,6 +3204,11 @@ function renderGroup(group, groups, index, commit, redraw) {
         pick: watchable,
         withMatch: true,
         onChange: commit,
+        // A condition can ask the time, said as a side of one rather than as
+        // a range: a night is after 22:00 or before 06:00, in one `any` group.
+        allowTime: true,
+        asCondition: true,
+        redraw,
         onRemove:
           group.tests.length > 1
             ? () => {
@@ -3241,10 +3246,14 @@ function asExpression(conditions) {
 
 /** True when the stored expression is something this editor can show. */
 function isTwoLevel(when) {
+  // A row is a device test or a time. Anything else is somebody's own work,
+  // written by hand, and is left alone rather than flattened into rows.
+  const rowish = (node) => node.kind === 'test' || node.kind === 'time';
+
   const groupish = (node) =>
-    node.kind === 'test' ||
+    rowish(node) ||
     (node.kind === 'not' && groupish(node.node)) ||
-    (node.kind === 'all' && node.nodes.every((child) => child.kind === 'test'));
+    (node.kind === 'all' && node.nodes.every(rowish));
 
   if (when.kind === 'any') {
     return when.nodes.every(groupish);
@@ -3318,26 +3327,57 @@ function blankRef(pick) {
 /** What the device picker calls the entry that is not a device. */
 const TIME_PICK = '__time';
 
-/** Turns a trigger into a time, keeping nothing of the device it was. */
-function becomeTime(ref) {
+/**
+ * Turns a row into a time, keeping nothing of the device it was.
+ *
+ * A trigger names a time and the days it may fire on. A condition names a
+ * side of one instead: it is about now, and a rule that should only hold on
+ * weekdays says so where it is set off.
+ */
+function becomeTime(ref, asCondition) {
   for (const key of ['sourceId', 'deviceId', 'propertyKey', 'match']) {
     delete ref[key];
   }
   ref.kind = 'time';
-  ref.at = ref.at ?? '07:00';
+  ref.at = ref.at ?? (asCondition ? '22:00' : '07:00');
+  if (asCondition) {
+    ref.side = ref.side ?? 'before';
+    delete ref.days;
+  } else {
+    delete ref.side;
+  }
 }
 
 /** And back again, to whichever device the picker offers first. */
 function becomeDevice(ref, pick) {
-  for (const key of ['kind', 'at', 'offset', 'days']) {
+  for (const key of ['kind', 'at', 'offset', 'days', 'side']) {
     delete ref[key];
   }
   Object.assign(ref, blankRef(pick), { match: { kind: 'changedTo', value: '' } });
 }
 
-/** The clock, the time it names, and the days it may run on. */
+/** The time it names, and either a side of it or the days it may run on. */
 function timeParts(ref, options) {
-  const icon = clockIcon();
+  const asCondition = options.asCondition === true;
+
+  // Which side of the time holds, for a condition. Both take the minute they
+  // name, so before 04:00 still holds at four o'clock.
+  const side = document.createElement('select');
+  side.className = 'time-side';
+  for (const [value, label] of [
+    ['before', 'is before'],
+    ['after', 'is after'],
+  ]) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = label;
+    side.append(choice);
+  }
+  side.value = ref.side === 'after' ? 'after' : 'before';
+  side.addEventListener('change', () => {
+    ref.side = side.value;
+    options.onChange?.();
+  });
 
   // Which sort of time: the clock, or one the sun decides. The sun times are
   // only offered where there is a location to work them out from, but one
@@ -3369,7 +3409,7 @@ function timeParts(ref, options) {
 
   const at = document.createElement('input');
   at.type = 'time';
-  at.className = 'time-at';
+  at.className = 'delay time-at';
   at.value = ref.at ?? '07:00';
   at.addEventListener('change', () => {
     ref.at = at.value || '07:00';
@@ -3379,9 +3419,9 @@ function timeParts(ref, options) {
   // Minutes either side, which only means anything against a sun time.
   const offset = document.createElement('input');
   offset.type = 'number';
-  offset.className = 'time-offset';
+  offset.className = 'delay time-offset';
   offset.step = '5';
-  offset.placeholder = '0';
+  offset.placeholder = 'offset (m)';
   offset.title = 'Minutes before or after, so -30 is half an hour before';
   offset.value = ref.offset ?? '';
   offset.addEventListener('change', () => {
@@ -3397,7 +3437,7 @@ function timeParts(ref, options) {
   days.className = 'day-picker';
   for (const [value, label] of WEEKDAYS) {
     const toggle = document.createElement('label');
-    toggle.className = 'toggle';
+    toggle.className = 'day';
     const box = document.createElement('input');
     box.type = 'checkbox';
     // Nothing set is every day, which is what every box ticked also means.
@@ -3417,16 +3457,8 @@ function timeParts(ref, options) {
     days.append(toggle);
   }
 
-  const said = isSunTime(ref.at) ? [kinds, offset, minutesLabel()] : [kinds, at];
-  return [icon, ...said, days];
-}
-
-/** The word after the offset box, so a bare number says what it is. */
-function minutesLabel() {
-  const label = document.createElement('span');
-  label.className = 'unit';
-  label.textContent = 'min';
-  return label;
+  const time = isSunTime(ref.at) ? [kinds, offset] : [kinds, at];
+  return asCondition ? [side, ...time] : [...time, days];
 }
 
 function refRow(ref, options) {
@@ -3458,10 +3490,11 @@ function refRow(ref, options) {
   devices.value = isTime(ref) ? TIME_PICK : `${ref.sourceId}|${ref.deviceId}`;
 
   // A time names no device and no function, so the rest of the row is a time
-  // and the days it may run on rather than a property and a match.
+  // rather than a property and a match.
   if (isTime(ref)) {
     devices.addEventListener('change', () => {
       becomeDevice(ref, options.pick);
+      options.onChange?.();
       options.redraw?.();
     });
     row.append(devices, ...timeParts(ref, options));
@@ -3499,7 +3532,8 @@ function refRow(ref, options) {
 
   devices.addEventListener('change', () => {
     if (devices.value === TIME_PICK) {
-      becomeTime(ref);
+      becomeTime(ref, options.asCondition === true);
+      options.onChange?.();
       options.redraw?.();
       return;
     }
