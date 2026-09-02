@@ -200,19 +200,19 @@ describe('the times the sun decides', () => {
 
   it('offers them once a location is set', async () => {
     const ui = await openWith(timeRule('07:00'), true);
-    expect(kinds(ui)).toEqual(['At', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+    expect(kinds(ui)).toEqual(['is', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
   });
 
   it('offers none of them without one', async () => {
     const ui = await openWith(timeRule('07:00'), false);
-    expect(kinds(ui)).toEqual(['At']);
+    expect(kinds(ui)).toEqual(['is']);
   });
 
   it('keeps one already set even with no location, rather than rewriting the rule', async () => {
     const ui = await openWith(timeRule('sunset'), false);
 
     // Still listed, and still what the rule says.
-    expect(kinds(ui)).toEqual(['At', 'Sunset']);
+    expect(kinds(ui)).toEqual(['is', 'Sunset']);
     expect((ui.document.querySelector('.triggers .time-kind') as HTMLSelectElement).value).toBe(
       'sunset',
     );
