@@ -9,6 +9,12 @@ import { isSunTime } from './types.js';
 export interface Reason {
   /** Why the expression did not hold, in a sentence for the run log. */
   detail: string;
+  /**
+   * Not a condition the rule fell the wrong side of, but one that could not
+   * be asked at all. The run log says those out loud, where an ordinary
+   * refusal is left at "conditions not met".
+   */
+  unanswerable?: boolean;
 }
 
 interface Lookup {
@@ -88,7 +94,7 @@ function timeOfDay(node: TimeCondition, lookup: Lookup): Reason | undefined {
   // on the wrong side of: there is no answer at all. Saying `not after dusk`
   // would send somebody looking at the hour rather than at the location.
   if (isSunTime(node.at) && !lookup.place) {
-    return { detail: `${node.at} needs a location` };
+    return { detail: `${node.at} needs a location`, unanswerable: true };
   }
   if (onSide(node, at, lookup.place)) {
     return undefined;
