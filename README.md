@@ -129,7 +129,7 @@ An automation or a timer can be run by hand with the Trigger button beside Save,
 
 ### Times
 
-An automation can be set off by a time of day rather than by a device. Time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. A time can also be a condition: a window the rule is allowed to run in.
+An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
 
 Only automations. A mirror and a slider are driven by their devices, and a timer is a wait after something happened.
 

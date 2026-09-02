@@ -3485,7 +3485,9 @@ function refRow(ref, options) {
   if (options.allowTime) {
     const choice = document.createElement('option');
     choice.value = TIME_PICK;
-    choice.textContent = 'Time';
+    // `Current time`, not `Time`: it sits among device names, and what it
+    // offers is the clock as it stands rather than a time in the abstract.
+    choice.textContent = 'Current time';
     devices.append(choice);
   }
 
