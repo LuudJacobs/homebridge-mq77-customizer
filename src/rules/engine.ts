@@ -804,7 +804,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // called off is a different thing, and belongs to the trigger going away.
     const failed = evaluate(rule.when, catalogLookup(this.catalog, () => new Date(), this.place));
     if (failed) {
-      this.record(rule, 'conditionsFailed', failed.detail);
+      this.record(rule, failed.unanswerable ? 'failed' : 'conditionsFailed', failed.detail);
       return;
     }
 
@@ -940,6 +940,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const lookup = catalogLookup(this.catalog, () => new Date(), this.place);
     const branches = branchesOf(rule);
     const declined: string[] = [];
+    const unanswerable: string[] = [];
     let chosen: { branch: Branch; index: number } | undefined;
 
     for (const [index, branch] of branches.entries()) {
@@ -949,10 +950,18 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         break;
       }
       declined.push(`${nameOf(branch, index)}: ${failed.detail}`);
+      if (failed.unanswerable) {
+        unanswerable.push(failed.detail);
+      }
     }
 
     if (!chosen) {
-      // Not a failure. A rule whose every branch declined has done its job.
+      // Not a failure. A rule whose every branch declined has done its job,
+      // unless one of them could not be asked at all.
+      if (unanswerable.length > 0) {
+        this.record(rule, 'failed', unanswerable[0] as string);
+        return;
+      }
       this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched');
       return;
     }

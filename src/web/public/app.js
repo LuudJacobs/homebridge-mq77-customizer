@@ -1348,8 +1348,14 @@ const OUTCOME_LABELS = {
   cancelled: 'called off',
 };
 
-/** Outcomes that say everything in the word itself. */
-const WORDLESS = new Set(['cancelled']);
+/**
+ * Outcomes that say everything in the word itself.
+ *
+ * `conditions not met` is the whole of what a refusal is worth reading: which
+ * condition it was is in the rule, which is one click away, and spelling it
+ * out on every line made the log hard to scan.
+ */
+const WORDLESS = new Set(['cancelled', 'conditionsFailed']);
 
 /**
  * A log line, in the parts it reads in: what set it off, which rule and how it

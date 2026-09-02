@@ -291,6 +291,9 @@ describe('the times the sun decides', () => {
     expect(sent(mqtt)).toEqual([]);
     expect(engine.getLog()[0]?.detail).toContain('needs a location');
     expect(engine.getLog()[0]?.detail).not.toContain('not after');
+    // A failure rather than a refusal, so the log says it out loud: an
+    // ordinary `conditions not met` line does not carry its reason.
+    expect(engine.getLog()[0]?.outcome).toBe('failed');
   });
 
   it('holds a condition whose time the sun decides', async () => {
