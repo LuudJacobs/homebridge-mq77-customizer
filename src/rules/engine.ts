@@ -799,6 +799,15 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return;
     }
 
+    // Asked now rather than when the clock started: a timer is for "in ten
+    // minutes, unless", and the unless is about ten minutes from now. Being
+    // called off is a different thing, and belongs to the trigger going away.
+    const failed = evaluate(rule.when, catalogLookup(this.catalog, () => new Date(), this.place));
+    if (failed) {
+      this.record(rule, 'conditionsFailed', failed.detail);
+      return;
+    }
+
     const problems: string[] = [];
     for (const action of rule.actions ?? []) {
       const problem = this.run(action, { property: trigger, value });

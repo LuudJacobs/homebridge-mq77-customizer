@@ -202,6 +202,13 @@ function parseTimer(
   const rateLimitMs =
     typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
 
+  // The same parser an automation uses, which also reads the flat list an
+  // older rule carries.
+  const condition = parseCondition(raw.when);
+  if ('error' in condition) {
+    return { error: `Condition: ${condition.error}` };
+  }
+
   return {
     rule: {
       id,
@@ -209,6 +216,7 @@ function parseTimer(
       name,
       enabled: raw.enabled !== false,
       triggers,
+      ...(condition.node ? { when: condition.node } : {}),
       waitMs,
       actions: parsed.actions,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
