@@ -129,6 +129,26 @@ select {
   color: var(--text);
 }
 
+/*
+ * The browser's own furniture inside these boxes: a clock in a time input and
+ * a pair of arrows in a number one. Both are small targets nobody aims at,
+ * and both make a box a different width from the one beside it. Typed
+ * instead, which is what everybody does anyway.
+ */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+input[type="number"] {
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
 button {
   font: inherit;
   padding: 0.45rem 0.9rem;
@@ -1057,11 +1077,11 @@ table.buttons td.in-homekit {
 
 .day-picker .day {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   line-height: 1;
-  padding: 0.32rem 0.4rem;
+  padding: 0.25rem 0.32rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 5px;
   color: var(--muted);
   cursor: pointer;
   user-select: none;
