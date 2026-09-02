@@ -8,11 +8,13 @@ import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
+import type { Place } from './clock.js';
 import { describeTime, isNow, minuteKey, onDay } from './clock.js';
 import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
   isSlider,
+  isSunTime,
   isTimeTrigger,
   isTimer,
   DEFAULT_RATE_LIMIT_MS,
@@ -87,6 +89,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private readonly ticker: ReturnType<typeof setInterval>;
   /** The last minute each rule fired on, so a repeated minute fires once. */
   private readonly firedAt = new Map<string, string>();
+  /** The day each rule last complained about a time nothing can answer. */
+  private readonly complained = new Map<string, string>();
   /** When each mirror group was last written to, so it can be left to settle. */
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
@@ -121,6 +125,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     private readonly store: Store,
     private readonly mqtt: MqttConnection,
     private readonly log: Logger,
+    /** Where the house is, for the rules that follow the sun. */
+    private readonly place?: Place,
   ) {
     super();
 
@@ -159,10 +165,16 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         continue;
       }
 
-      const due = triggersOf(rule)
-        .filter(isTimeTrigger)
-        .find((trigger) => onDay(trigger.days, at) && isNow(trigger.at, at));
+      const times = triggersOf(rule).filter(isTimeTrigger);
+      const due = times.find(
+        (trigger) => onDay(trigger.days, at) && isNow(trigger.at, at, this.place, trigger.offset),
+      );
+
       if (!due) {
+        // A rule that cannot be answered at all says so, once a day, rather
+        // than going quiet: somebody who removed the coordinates should hear
+        // about it from the rule that needed them.
+        this.sayIfUnanswerable(rule, times, at);
         continue;
       }
 
@@ -574,6 +586,33 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Says when a rule names a time nothing can work out.
+   *
+   * A sun time with no location is the case worth shouting about: the rule
+   * looks fine, and would simply never run. Said once a day rather than four
+   * times a minute, and recorded as a failure, which is what the activity
+   * list already shows for a rule that cannot do its job.
+   */
+  private sayIfUnanswerable(rule: Rule, times: TimeTrigger[], at: Date): void {
+    const stuck = times.find((trigger) => isSunTime(trigger.at) && !this.place);
+    if (!stuck || !onDay(stuck.days, at)) {
+      return;
+    }
+
+    const today = minuteKey(at).slice(0, 10);
+    if (this.complained.get(rule.id) === today) {
+      return;
+    }
+    this.complained.set(rule.id, today);
+
+    this.record(
+      rule,
+      'failed',
+      `${stuck.at} needs a location, which is not set in the Homebridge settings`,
+    );
+  }
+
+  /**
    * Which step the dimmer is on, counted from what it was last told.
    *
    * A held button sends faster than a light reports back, so within the
@@ -888,7 +927,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     // The first branch that holds wins, the rest are skipped. That is what
     // makes else if exclusive by construction rather than by hand.
-    const lookup = catalogLookup(this.catalog, () => new Date());
+    const lookup = catalogLookup(this.catalog, () => new Date(), this.place);
     const branches = branchesOf(rule);
     const declined: string[] = [];
     let chosen: { branch: Branch; index: number } | undefined;

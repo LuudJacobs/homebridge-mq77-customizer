@@ -45,7 +45,8 @@
     "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
-    "mqtt": "^5.10.1"
+    "mqtt": "^5.10.1",
+    "suncalc": "^2.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

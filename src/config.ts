@@ -10,16 +10,58 @@ export interface WebConfig {
   zigbee2mqttUrl?: string;
 }
 
+/**
+ * Where this house is, for the rules that follow the sun.
+ *
+ * Both or neither: one coordinate on its own is not a place, and a rule set
+ * for sunset would have nothing to work out from it.
+ */
+export interface LocationConfig {
+  latitude: number;
+  longitude: number;
+}
+
 export interface PluginConfig {
   name: string;
   broker: BrokerConfig;
   sources: SourceConfig[];
   web: WebConfig;
+  /** Absent until somebody fills it in, which is what hides the sun times. */
+  location?: LocationConfig;
 }
 
 const DEFAULT_BROKER: BrokerConfig = { host: 'localhost', port: 1883 };
 export const DEFAULT_ADDRESS = 'localhost:1883';
 const DEFAULT_WEB_PORT = 8888;
+
+/**
+ * Reads the location, which is either both coordinates or nothing.
+ *
+ * Half a location is refused out loud rather than half applied: a rule set
+ * for sunset would otherwise fail every evening for a reason nobody wrote
+ * down anywhere.
+ */
+function resolveLocation(raw: unknown, log: Logger): LocationConfig | undefined {
+  const given = asObject(raw) ?? {};
+  const latitude = asNumber(given.latitude);
+  const longitude = asNumber(given.longitude);
+
+  if (latitude === undefined && longitude === undefined) {
+    return undefined;
+  }
+
+  if (latitude === undefined || longitude === undefined) {
+    log.warn('Location needs both a latitude and a longitude. Ignoring the one that is set.');
+    return undefined;
+  }
+
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+    log.warn(`Location ${latitude}, ${longitude} is not on this planet. Ignoring it.`);
+    return undefined;
+  }
+
+  return { latitude, longitude };
+}
 
 /**
  * Fills in defaults and drops entries that cannot work, logging why.
@@ -63,11 +105,13 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
   }
 
   const sources = resolveSources(raw.sources, log);
+  const location = resolveLocation(raw.location, log);
 
   return {
     name: asString(raw.name) ?? 'MQ77 Customizer',
     broker,
     sources,
+    ...(location ? { location } : {}),
     web,
   };
 }

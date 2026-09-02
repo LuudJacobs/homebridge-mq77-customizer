@@ -176,6 +176,29 @@
             "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
           }
         }
+      },
+      "location": {
+        "title": "Location",
+        "type": "object",
+        "description": "Where this house is, so rules can follow the sun. Sunrise, sunset, dawn and dusk are only offered as rule triggers once both of these are filled in. Look them up on any map; two decimal places is close enough, which is about a kilometre.",
+        "properties": {
+          "latitude": {
+            "title": "Latitude",
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "placeholder": "52.37",
+            "description": "North is positive, south is negative."
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "placeholder": "4.90",
+            "description": "East is positive, west is negative."
+          }
+        }
       }
     }
   },
@@ -252,6 +275,15 @@
         "web.port",
         "web.password",
         "web.zigbee2mqttUrl"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Location",
+      "description": "Only needed for rules that follow the sun.",
+      "items": [
+        "location.latitude",
+        "location.longitude"
       ]
     }
   ]

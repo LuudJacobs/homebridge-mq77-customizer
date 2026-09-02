@@ -8,8 +8,16 @@
  * it goes back the same `HH:MM` appears twice an hour apart, and firing is
  * remembered against the minute so it happens once.
  */
-import type { TimeWindow, Weekday } from './types.js';
-import { WEEKDAYS } from './types.js';
+import { getTimes } from 'suncalc';
+
+import type { SunTime, TimeWindow, Weekday } from './types.js';
+import { isSunTime, WEEKDAYS } from './types.js';
+
+/** Where the house is, for the times the sun decides. */
+export interface Place {
+  latitude: number;
+  longitude: number;
+}
 
 /** The day of the week, in the words a rule stores. */
 export function weekdayOf(at: Date): Weekday {
@@ -20,6 +28,46 @@ export function weekdayOf(at: Date): Weekday {
 /** Minutes since midnight, which is what a comparison wants. */
 export function minutesOf(at: Date): number {
   return at.getHours() * 60 + at.getMinutes();
+}
+
+/**
+ * What a named time comes to today, at this place, offset and all.
+ *
+ * Worked out for the day rather than once, since they move a minute or two
+ * daily. Nothing comes back on a day where the sun does not reach that point
+ * at all: far enough north, dusk and dawn go missing for weeks around
+ * midsummer long before sunrise and sunset do.
+ */
+export function sunTimeOn(name: SunTime, at: Date, place: Place, offset = 0): Date | undefined {
+  const times = getTimes(at, place.latitude, place.longitude);
+  const found = times[name];
+  if (!(found instanceof Date) || Number.isNaN(found.getTime())) {
+    return undefined;
+  }
+  return new Date(found.getTime() + offset * 60_000);
+}
+
+/**
+ * The minute a trigger names, whether it says it in numbers or in daylight.
+ *
+ * A clock time is what it says. A sun time is looked up for the day the
+ * question is asked about, which is why the place has to be known before one
+ * can be answered at all.
+ */
+export function minutesFor(
+  at: string,
+  when: Date,
+  place: Place | undefined,
+  offset = 0,
+): number | undefined {
+  if (isSunTime(at)) {
+    if (!place) {
+      return undefined;
+    }
+    const found = sunTimeOn(at, when, place, offset);
+    return found ? minutesOf(found) : undefined;
+  }
+  return minutesFrom(at);
 }
 
 /** `HH:MM` as a rule stores it, or undefined if it is not one. */
@@ -48,8 +96,8 @@ export function onDay(days: Weekday[] | undefined, at: Date): boolean {
  * The minute rather than the instant: a rule set for 07:00 fires once during
  * that minute, wherever in it the check happens to land.
  */
-export function isNow(time: string, at: Date): boolean {
-  const wanted = minutesFrom(time);
+export function isNow(time: string, at: Date, place?: Place, offset = 0): boolean {
+  const wanted = minutesFor(time, at, place, offset);
   return wanted !== undefined && wanted === minutesOf(at);
 }
 
@@ -64,9 +112,9 @@ export function isNow(time: string, at: Date): boolean {
  * still holds at one in the morning on Saturday, which is what somebody
  * picking Friday night means.
  */
-export function inWindow(window: TimeWindow, at: Date): boolean {
-  const from = minutesFrom(window.from);
-  const to = minutesFrom(window.to);
+export function inWindow(window: TimeWindow, at: Date, place?: Place): boolean {
+  const from = minutesFor(window.from, at, place, window.fromOffset ?? 0);
+  const to = minutesFor(window.to, at, place, window.toOffset ?? 0);
   if (from === undefined || to === undefined) {
     return false;
   }

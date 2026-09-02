@@ -8,6 +8,7 @@ import {
   MIN_STEPS,
   MIN_WAIT_MS,
   WEEKDAYS,
+  isSunTime,
 } from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
@@ -513,15 +514,12 @@ function parseTimeOfDay(raw: unknown, field: string): { at: string } | { error: 
     return { at };
   }
 
-  if (SUN_TIMES.includes(at.toLowerCase())) {
-    return { error: `${field} cannot be ${at} yet` };
+  if (isSunTime(at.toLowerCase())) {
+    return { at: at.toLowerCase() };
   }
 
-  return { error: `${field} should read as HH:MM, not ${at}` };
+  return { error: `${field} should read as HH:MM or a sun time, not ${at}` };
 }
-
-/** Named times the shape admits and validation does not accept yet. */
-const SUN_TIMES = ['sunrise', 'sunset', 'dawn', 'dusk'];
 
 /** Which days it may fire on. Absent, or all seven, means every day. */
 function parseDays(raw: unknown): { days?: Weekday[] } | { error: string } {

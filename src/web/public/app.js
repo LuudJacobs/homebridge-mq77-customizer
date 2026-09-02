@@ -13,6 +13,8 @@ const state = {
   unusedButtons: true,
   /** Whether it says of a button that HomeKit hears it. */
   homekitButtons: true,
+  /** Whether a location is set, which is what lets a rule follow the sun. */
+  hasLocation: false,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -268,6 +270,7 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+  state.hasLocation = snapshot.hasLocation === true;
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
@@ -1521,6 +1524,22 @@ function clockIcon() {
 /** Whether something in a rule is a time rather than a device. */
 const isTime = (entry) => entry?.kind === 'time';
 
+/**
+ * The times the sun decides, offered only where they can be worked out.
+ *
+ * A rule already set for one keeps saying so even with no location: rewriting
+ * somebody's rule to a clock time would be worse than the rule failing and
+ * saying why.
+ */
+const SUN_TIMES = [
+  ['sunrise', 'Sunrise'],
+  ['sunset', 'Sunset'],
+  ['dawn', 'Dawn'],
+  ['dusk', 'Dusk'],
+];
+
+const isSunTime = (at) => SUN_TIMES.some(([value]) => value === at);
+
 /** Days of the week, in the order a week is read. */
 const WEEKDAYS = [
   ['mon', 'Mon'],
@@ -1534,13 +1553,14 @@ const WEEKDAYS = [
 
 /** A time as it is said in a summary or a log line. */
 function describeTimeOfDay(time, offset) {
+  const said = SUN_TIMES.find(([value]) => value === time)?.[1] ?? time ?? '';
   if (!offset) {
-    return time ?? '';
+    return said;
   }
   const sign = offset < 0 ? '-' : '+';
   const total = Math.abs(offset);
   const pad = (value) => String(value).padStart(2, '0');
-  return `${time} ${sign}${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+  return `${said} ${sign}${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
 
 /** Buttons with an order of their own, before anything alphabetical. */
@@ -3316,12 +3336,57 @@ function becomeDevice(ref, pick) {
 function timeParts(ref, options) {
   const icon = clockIcon();
 
+  // Which sort of time: the clock, or one the sun decides. The sun times are
+  // only offered where there is a location to work them out from, but one
+  // already set is still listed, so opening a rule cannot quietly change it.
+  const kinds = document.createElement('select');
+  kinds.className = 'time-kind';
+  const offered = [
+    ['clock', 'At'],
+    ...SUN_TIMES.filter(([value]) => state.hasLocation || value === ref.at),
+  ];
+  for (const [value, label] of offered) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = label;
+    kinds.append(choice);
+  }
+  kinds.value = isSunTime(ref.at) ? ref.at : 'clock';
+
+  kinds.addEventListener('change', () => {
+    if (kinds.value === 'clock') {
+      ref.at = '07:00';
+      delete ref.offset;
+    } else {
+      ref.at = kinds.value;
+    }
+    options.redraw?.();
+    options.onChange?.();
+  });
+
   const at = document.createElement('input');
   at.type = 'time';
   at.className = 'time-at';
   at.value = ref.at ?? '07:00';
   at.addEventListener('change', () => {
     ref.at = at.value || '07:00';
+    options.onChange?.();
+  });
+
+  // Minutes either side, which only means anything against a sun time.
+  const offset = document.createElement('input');
+  offset.type = 'number';
+  offset.className = 'time-offset';
+  offset.step = '5';
+  offset.placeholder = '0';
+  offset.title = 'Minutes before or after, so -30 is half an hour before';
+  offset.value = ref.offset ?? '';
+  offset.addEventListener('change', () => {
+    const minutes = Number(offset.value);
+    ref.offset = offset.value !== '' && Number.isFinite(minutes) && minutes !== 0 ? minutes : undefined;
+    if (ref.offset === undefined) {
+      delete ref.offset;
+    }
     options.onChange?.();
   });
 
@@ -3349,7 +3414,16 @@ function timeParts(ref, options) {
     days.append(toggle);
   }
 
-  return [icon, at, days];
+  const said = isSunTime(ref.at) ? [kinds, offset, minutesLabel()] : [kinds, at];
+  return [icon, ...said, days];
+}
+
+/** The word after the offset box, so a bare number says what it is. */
+function minutesLabel() {
+  const label = document.createElement('span');
+  label.className = 'unit';
+  label.textContent = 'min';
+  return label;
 }
 
 function refRow(ref, options) {

@@ -140,6 +140,12 @@ The clock is whatever the machine running Homebridge thinks it is, and a rule fi
 - On the day the clocks go forward, a rule set for a time in the missing hour does not fire, since that time never happens. On the day they go back, a rule set for the repeated hour fires once.
 - Days of the week can narrow when it runs. All seven, or none ticked, both mean every day.
 
+A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an offset in minutes either side, so `sunset -30` is half an hour before the sun goes down. Dawn and dusk are civil twilight, which is when it is actually dark rather than the moment the sun crosses the horizon, and for lights that is usually what is meant.
+
+These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the activity log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
+
+Far enough north there are days when the sun never reaches one of these points, dawn and dusk long before sunrise and sunset. Those days are skipped and said in the log.
+
 ### Mirror devices
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
