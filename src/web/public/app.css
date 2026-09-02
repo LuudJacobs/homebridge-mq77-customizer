@@ -1077,9 +1077,9 @@ table.buttons td.in-homekit {
 
 .day-picker .day {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   line-height: 1;
-  padding: 0.25rem 0.32rem;
+  padding: 0.2rem 0.26rem;
   border: 1px solid var(--line);
   border-radius: 5px;
   color: var(--muted);

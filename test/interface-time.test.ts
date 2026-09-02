@@ -341,12 +341,13 @@ describe('a time as a condition', () => {
       [...(ui.document.querySelector('.conditions .time-kind') as HTMLSelectElement).options].map(
         (option) => option.textContent,
       );
-    expect(kinds(withPlace)).toEqual(['At', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+    // `Time`, not `At`: the row already reads `is after`.
+    expect(kinds(withPlace)).toEqual(['Time', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
 
     const without = await openWith(
       withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
       false,
     );
-    expect(kinds(without)).toEqual(['At']);
+    expect(kinds(without)).toEqual(['Time']);
   });
 });
