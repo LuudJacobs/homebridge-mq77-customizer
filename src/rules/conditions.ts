@@ -1,5 +1,6 @@
 import type { Catalog } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
+import type { Place } from './clock.js';
 import { describeTime, inWindow } from './clock.js';
 import { describeMatch, matches } from './match.js';
 import type { Condition, ConditionNode, PropertyRef, TimeWindow } from './types.js';
@@ -14,6 +15,8 @@ interface Lookup {
   value(ref: PropertyRef): unknown;
   /** What the clock says, for a condition that asks the time. */
   now?(): Date;
+  /** Where the house is, for a window whose ends the sun decides. */
+  place?: Place;
 }
 
 /**
@@ -80,7 +83,7 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
  */
 function window(node: TimeWindow, lookup: Lookup): Reason | undefined {
   const at = lookup.now?.() ?? new Date();
-  if (inWindow(node, at)) {
+  if (inWindow(node, at, lookup.place)) {
     return undefined;
   }
   return { detail: `not between ${describeTime(node.from, node.fromOffset)} and ${describeTime(node.to, node.toOffset)}` };
@@ -131,7 +134,7 @@ export function fromConditions(conditions: Condition[] | undefined): ConditionNo
 }
 
 /** Builds the lookup the evaluator needs from the catalog. */
-export function catalogLookup(catalog: Catalog, now?: () => Date): Lookup {
+export function catalogLookup(catalog: Catalog, now?: () => Date, place?: Place): Lookup {
   return {
     property: (ref) =>
       catalog
@@ -139,5 +142,6 @@ export function catalogLookup(catalog: Catalog, now?: () => Date): Lookup {
         ?.properties.find((property) => property.key === ref.propertyKey),
     value: (ref) => catalog.getState(ref.sourceId, ref.deviceId)?.[ref.propertyKey],
     now,
+    place,
   };
 }

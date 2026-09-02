@@ -26,7 +26,10 @@ const rule = (overrides: Partial<Rule> = {}): Rule => ({
   ...overrides,
 });
 
-async function harness(rules: Rule[]) {
+/** Amsterdam, which is where the suite's clock is set as well. */
+const HOUSE = { latitude: 52.37, longitude: 4.9 };
+
+async function harness(rules: Rule[], place?: { latitude: number; longitude: number }) {
   const directory = await mkdtemp(join(tmpdir(), 'mq77-clock-'));
   const store = new Store(join(directory, 'state.json'), silentLogger);
   await store.load();
@@ -39,7 +42,7 @@ async function harness(rules: Rule[]) {
   await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
   mqtt.deliver('zigbee2mqtt/bridge/devices', fixture, { retained: true });
 
-  const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
+  const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger, place);
   return { engine, mqtt, store };
 }
 
@@ -220,5 +223,69 @@ describe('a time as a condition', () => {
     expect(sent(mqtt)).toEqual([]);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
     expect(engine.getLog()[0]?.detail).toContain('09:00');
+  });
+});
+
+describe('the times the sun decides', () => {
+  // 2026-09-02 in Amsterdam: sunrise 06:53, sunset 20:26, dusk 21:01.
+  const sunRule = (at: string, offset?: number) =>
+    rule({ triggers: [{ kind: 'time', at, ...(offset === undefined ? {} : { offset }) }] });
+
+  it('fires at the minute the sun reaches it', async () => {
+    const { engine, mqtt } = await harness([sunRule('sunset')], HOUSE);
+
+    strike(engine, '2026-09-02T20:25:30');
+    expect(sent(mqtt)).toEqual([]);
+
+    strike(engine, '2026-09-02T20:26:10');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+  });
+
+  it('takes an offset either side', async () => {
+    const { engine, mqtt } = await harness([sunRule('sunset', -30)], HOUSE);
+
+    strike(engine, '2026-09-02T20:26:10');
+    expect(sent(mqtt)).toEqual([]);
+
+    strike(engine, '2026-09-02T19:56:10');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+  });
+
+  it('reads dusk as later than sunset, since that is the point of it', async () => {
+    const { engine, mqtt } = await harness([sunRule('dusk')], HOUSE);
+
+    strike(engine, '2026-09-02T20:26:10');
+    expect(sent(mqtt)).toEqual([]);
+
+    strike(engine, '2026-09-02T21:01:30');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+  });
+
+  it('says so, once a day, when there is no location to work it out from', async () => {
+    const { engine, mqtt } = await harness([sunRule('sunset')]);
+
+    strike(engine, '2026-09-02T20:26:10');
+    strike(engine, '2026-09-02T20:27:10');
+
+    expect(sent(mqtt)).toEqual([]);
+    const complaints = engine.getLog().filter((entry) => entry.outcome === 'failed');
+    expect(complaints).toHaveLength(1);
+    expect(complaints[0]?.detail).toContain('location');
+  });
+
+  it('leaves a clock time alone when there is no location', async () => {
+    const { engine, mqtt } = await harness([rule()]);
+
+    strike(engine, '2026-03-10T22:00:05');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+  });
+
+  it('holds a window whose ends the sun decides', async () => {
+    const dark: TimeWindow = { kind: 'time', from: 'dusk', to: 'dawn' };
+    // Dusk is 21:01 and dawn 06:17 on this date, so the night is between.
+    expect(inWindow(dark, at('2026-09-02T23:00:00'), HOUSE)).toBe(true);
+    expect(inWindow(dark, at('2026-09-02T12:00:00'), HOUSE)).toBe(false);
+    // With nowhere to work them out from, the window holds at no time at all.
+    expect(inWindow(dark, at('2026-09-02T23:00:00'))).toBe(false);
   });
 });

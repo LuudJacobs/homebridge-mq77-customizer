@@ -182,3 +182,66 @@ describe('the rules that cannot be set off by a time', () => {
     expect(pickerOptions(ui, '#timers')).not.toContain('Time');
   });
 });
+
+describe('the times the sun decides', () => {
+  const timeRule = (at: string) => automation({ triggers: [{ kind: 'time', at }] });
+
+  const kinds = (ui: { document: Document }) =>
+    [...(ui.document.querySelector('.triggers .time-kind') as HTMLSelectElement).options].map(
+      (option) => option.textContent,
+    );
+
+  async function openWith(rule: unknown, hasLocation: boolean) {
+    const ui = await openInterface({ state: { devices, hasLocation }, rules: [rule] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+    return ui;
+  }
+
+  it('offers them once a location is set', async () => {
+    const ui = await openWith(timeRule('07:00'), true);
+    expect(kinds(ui)).toEqual(['At', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+  });
+
+  it('offers none of them without one', async () => {
+    const ui = await openWith(timeRule('07:00'), false);
+    expect(kinds(ui)).toEqual(['At']);
+  });
+
+  it('keeps one already set even with no location, rather than rewriting the rule', async () => {
+    const ui = await openWith(timeRule('sunset'), false);
+
+    // Still listed, and still what the rule says.
+    expect(kinds(ui)).toEqual(['At', 'Sunset']);
+    expect((ui.document.querySelector('.triggers .time-kind') as HTMLSelectElement).value).toBe(
+      'sunset',
+    );
+
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      triggers: { at: string }[];
+    };
+    expect(saved.triggers[0]?.at).toBe('sunset');
+  });
+
+  it('offers minutes either side of a sun time, and a clock time instead', async () => {
+    const sun = await openWith(timeRule('sunset'), true);
+    expect(sun.document.querySelector('.triggers .time-offset')).not.toBeNull();
+    expect(sun.document.querySelector('.triggers .time-at')).toBeNull();
+
+    const clock = await openWith(timeRule('07:00'), true);
+    expect(clock.document.querySelector('.triggers .time-at')).not.toBeNull();
+    expect(clock.document.querySelector('.triggers .time-offset')).toBeNull();
+  });
+
+  it('says a sun time in words in the rule list, offset and all', async () => {
+    const ui = await openInterface({
+      state: { devices, hasLocation: true },
+      rules: [automation({ triggers: [{ kind: 'time', at: 'sunset', offset: -30 }] })],
+    });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+
+    const summary = ui.document.querySelector('#automation .device-meta') as HTMLElement;
+    expect(summary.textContent).toContain('Sunset -00:30');
+  });
+});

@@ -1032,6 +1032,20 @@ table.buttons td.in-homekit {
   width: 7.5rem;
 }
 
+.time-kind {
+  width: auto;
+}
+
+/* Minutes either side of a sun time, which is a small number. */
+.time-offset {
+  width: 5rem;
+}
+
+.unit {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .day-picker {
   display: inline-flex;
   flex-wrap: wrap;

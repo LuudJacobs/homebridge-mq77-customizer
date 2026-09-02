@@ -18,6 +18,23 @@ export interface Trigger extends PropertyRef {
   match: Match;
 }
 
+/**
+ * The times the sun decides, rather than the clock.
+ *
+ * Four of the many `suncalc` works out. Dawn and dusk are civil twilight,
+ * which is when it is actually dark, where sunrise and sunset are the moments
+ * the sun crosses the horizon: for lights, twilight is usually what somebody
+ * means. The rest, the golden hours and the nautical twilights, are not
+ * offered.
+ */
+export const SUN_TIMES = ['sunrise', 'sunset', 'dawn', 'dusk'] as const;
+
+export type SunTime = (typeof SUN_TIMES)[number];
+
+export function isSunTime(at: string): at is SunTime {
+  return (SUN_TIMES as readonly string[]).includes(at);
+}
+
 /** Days a time trigger may fire on, in the order a week is read. */
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
@@ -26,16 +43,15 @@ export type Weekday = (typeof WEEKDAYS)[number];
 /**
  * A time of day, rather than something a device did.
  *
- * `at` is parsed rather than assumed to be `HH:MM`. A clock time is all it
- * holds today; a named solar event, `sunset` with an `offset` of -30 for half
- * an hour before it, is what it will hold once the sun times land, and the
- * shape admits one now so no stored rule has to be reshaped then.
+ * `at` is either a clock time, `HH:MM`, or one of the four the sun decides,
+ * with an `offset` in minutes either side: `sunset` at -30 is half an hour
+ * before the sun goes down.
  */
 export interface TimeTrigger {
   kind: 'time';
-  /** `HH:MM` on a 24 hour clock. */
+  /** `HH:MM` on a 24 hour clock, or one of `SUN_TIMES`. */
   at: string;
-  /** Minutes either side, for a named time. Meaningless on a clock time. */
+  /** Minutes either side, for a sun time. Meaningless on a clock time. */
   offset?: number;
   /** Absent means every day. */
   days?: Weekday[];
