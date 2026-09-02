@@ -167,6 +167,31 @@ describe('the timers tab', () => {
     expect(saved.waitMs).toBeGreaterThan(0);
   });
 
+  it('saves a timer whose condition has just been taken off again', async () => {
+    // The panel sends nothing where the condition was, which the server has
+    // to read as no condition rather than as one it cannot understand.
+    const ui = await openTimers([
+      timer({
+        when: {
+          kind: 'test',
+          ...ref('0xa'),
+          match: { kind: 'equals', value: 'ON' },
+        },
+      }),
+    ]);
+
+    await ui.click(ui.byText('button', 'Remove group', '#timers'));
+    await ui.click(ui.byText('button.primary', 'Save', '#timers'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      when?: unknown;
+    };
+    expect(saved.when).toBeUndefined();
+    expect(ui.document.querySelector('#timers .error')?.textContent ?? '').not.toContain(
+      'unknown condition',
+    );
+  });
+
   it('adds one from the tab, off to begin with', async () => {
     const ui = await openInterface({ state: { devices }, rules: [] });
     await ui.click(ui.byText('button.tab', 'Timers'));
