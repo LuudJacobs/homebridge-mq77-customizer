@@ -127,6 +127,19 @@ Across all four:
 
 An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run.
 
+### Times
+
+An automation can be set off by a time of day rather than by a device. Time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. A time can also be a condition: a window the rule is allowed to run in.
+
+Only automations. A mirror and a slider are driven by their devices, and a timer is a wait after something happened.
+
+The clock is whatever the machine running Homebridge thinks it is, and a rule fires during the minute it names. Four things worth knowing:
+
+- A time that passed while Homebridge was down does not fire late. A reboot at 22:59 swallows a rule set for 23:00, which is the price of never having an evening's worth of rules run at once when the machine comes back.
+- A window may cross midnight: 22:00 to 06:00 is the night, not nothing. Its days are read from the evening it opened on, so a Friday night window still holds at two on Saturday morning. Equal ends mean the whole day.
+- On the day the clocks go forward, a rule set for a time in the missing hour does not fire, since that time never happens. On the day they go back, a rule set for the repeated hour fires once.
+- Days of the week can narrow when it runs. All seven, or none ticked, both mean every day.
+
 ### Mirror devices
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
