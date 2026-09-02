@@ -160,6 +160,8 @@ A wait between one thing and another: a light coming on, thirty seconds, the lig
 
 The clock starts again if the same thing happens again. It is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. A timer counting when Homebridge restarts is forgotten.
 
+A timer can also ask a question, the way an automation does. It is asked once, when the wait runs out: "turn the light off in ten minutes, unless somebody is home by then". Being called off is a different thing and belongs to the trigger going away, so a condition turning false during the wait does not abandon it; the question is simply asked at the end. One condition over the timer's actions, where an automation has one per outcome.
+
 An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
 
 ### Sliders
