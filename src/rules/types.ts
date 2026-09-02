@@ -88,24 +88,28 @@ export type ConditionNode =
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
   | ({ kind: 'test' } & Condition)
-  | TimeWindow;
+  | TimeCondition;
 
 /**
- * A time of day the rule is allowed to run in.
+ * Which side of a time of day it is.
  *
- * `from` and `to` are read the way `at` is. Equal ends mean the whole day
- * rather than an instant, and a window may cross midnight: 22:00 to 06:00 is
- * the night, not nothing.
+ * Said as a side rather than as a range, because that is how somebody writes
+ * one: before four in the morning, after half an hour before sunset. Both
+ * include the minute they name and run to the end of the day on their side of
+ * it, so `before 04:00` is midnight through 04:00 and `after sunset -30` is
+ * that minute through 23:59.
+ *
+ * A window is the two of them in an `any` group, which is how a night is
+ * written: after 22:00 or before 06:00. The editor already offers that, and
+ * it reads back as what was typed.
  */
-export interface TimeWindow {
+export interface TimeCondition {
   kind: 'time';
-  from: string;
-  to: string;
-  /** Offsets either side, for named times. */
-  fromOffset?: number;
-  toOffset?: number;
-  /** Absent means every day. */
-  days?: Weekday[];
+  side: 'before' | 'after';
+  /** `HH:MM` on a 24 hour clock, or one of `SUN_TIMES`. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
 }
 
 /**
@@ -318,16 +322,25 @@ export interface LogEntry {
   /**
    * The time that set it off, when the clock did.
    *
-   * Said as the rule stores it, `07:00`, rather than as a sentence: the
-   * interface words it, the way it words a press.
+   * The parts rather than a sentence, the way a press is carried: `sunset`
+   * with an offset of -30 reads as `Sunset -00:30` in the interface and as
+   * nothing at all here, since wording is the interface's business.
    */
-  firedAt?: string;
+  firedAt?: LogTime;
   /** Which branch ran, for a rule that has more than one. */
   branch?: string;
   /** What a slider did. */
   step?: LogStep;
   /** What a mirror copied, and where to. */
   copy?: LogCopy;
+}
+
+/** The time a rule was set off by, in parts. */
+export interface LogTime {
+  /** `HH:MM`, or one of the times the sun decides. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
 }
 
 /** A button press: which device, which function, and what it said. */

@@ -24,8 +24,8 @@ import type {
   Rule,
   SliderRule,
   TimerRule,
+  TimeCondition,
   TimeTrigger,
-  TimeWindow,
   Trigger,
   Weekday,
 } from './types.js';
@@ -438,28 +438,22 @@ function parseCondition(raw: unknown): { node?: ConditionNode } | { error: strin
   }
 
   if (raw.kind === 'time') {
-    const from = parseTimeOfDay(raw.from, 'A time window');
-    if ('error' in from) {
-      return from;
-    }
-    const to = parseTimeOfDay(raw.to, 'A time window');
-    if ('error' in to) {
-      return to;
-    }
-    const days = parseDays(raw.days);
-    if ('error' in days) {
-      return { error: `A time window: ${days.error}` };
+    const side = raw.side === 'after' ? 'after' : raw.side === 'before' ? 'before' : undefined;
+    if (!side) {
+      return { error: 'A time condition is either before or after a time' };
     }
 
-    const fromOffset = parseOffset(raw.fromOffset);
-    const toOffset = parseOffset(raw.toOffset);
-    const node: TimeWindow = {
+    const at = parseTimeOfDay(raw.at, 'A time condition');
+    if ('error' in at) {
+      return at;
+    }
+
+    const offset = parseOffset(raw.offset);
+    const node: TimeCondition = {
       kind: 'time',
-      from: from.at,
-      to: to.at,
-      ...(fromOffset === undefined ? {} : { fromOffset }),
-      ...(toOffset === undefined ? {} : { toOffset }),
-      ...days,
+      side,
+      at: at.at,
+      ...(offset === undefined ? {} : { offset }),
     };
     return { node };
   }

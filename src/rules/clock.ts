@@ -10,7 +10,7 @@
  */
 import { getTimes } from 'suncalc';
 
-import type { SunTime, TimeWindow, Weekday } from './types.js';
+import type { SunTime, TimeCondition, Weekday } from './types.js';
 import { isSunTime, WEEKDAYS } from './types.js';
 
 /** Where the house is, for the times the sun decides. */
@@ -102,44 +102,18 @@ export function isNow(time: string, at: Date, place?: Place, offset = 0): boolea
 }
 
 /**
- * Whether the time of day sits inside a window.
+ * Whether the clock is on the side of a time that a condition names.
  *
- * A window may cross midnight: 22:00 to 06:00 is the night rather than
- * nothing at all. Equal ends are the whole day rather than an instant, since
- * a window of no length is not a thing anybody means to set.
- *
- * The day is the day the window opens on. A night window that began on Friday
- * still holds at one in the morning on Saturday, which is what somebody
- * picking Friday night means.
+ * The named minute counts on both sides: a rule set for `before 04:00` should
+ * hold at four o'clock itself rather than having stopped a minute earlier.
  */
-export function inWindow(window: TimeWindow, at: Date, place?: Place): boolean {
-  const from = minutesFor(window.from, at, place, window.fromOffset ?? 0);
-  const to = minutesFor(window.to, at, place, window.toOffset ?? 0);
-  if (from === undefined || to === undefined) {
+export function onSide(node: TimeCondition, at: Date, place?: Place): boolean {
+  const wanted = minutesFor(node.at, at, place, node.offset ?? 0);
+  if (wanted === undefined) {
     return false;
   }
-
   const now = minutesOf(at);
-
-  if (from === to) {
-    return onDay(window.days, at);
-  }
-
-  if (from < to) {
-    return now >= from && now < to && onDay(window.days, at);
-  }
-
-  // Crosses midnight, so it is two pieces: this evening, or this morning
-  // carried over from yesterday evening.
-  if (now >= from) {
-    return onDay(window.days, at);
-  }
-  if (now < to) {
-    const yesterday = new Date(at.getTime());
-    yesterday.setDate(yesterday.getDate() - 1);
-    return onDay(window.days, yesterday);
-  }
-  return false;
+  return node.side === 'before' ? now <= wanted : now >= wanted;
 }
 
 /** A time as the interface and the run log say it. */

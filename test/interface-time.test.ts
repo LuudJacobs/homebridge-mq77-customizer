@@ -66,7 +66,7 @@ describe('picking a time', () => {
     const ui = await openRule(automation());
     const options = pickerOptions(ui);
 
-    expect(options.at(-1)).toBe('Time');
+    expect(options.at(-1)).toBe('Current time');
     // And it is the only thing there that is not a device.
     expect(options.slice(0, -1)).toEqual(['lamp', 'remote']);
   });
@@ -154,7 +154,7 @@ describe('a time in the lists', () => {
           ruleKind: 'standard',
           outcome: 'fired',
           detail: '1 action sent',
-          firedAt: '22:00',
+          firedAt: { at: '22:00' },
         },
       ],
     });
@@ -179,7 +179,7 @@ describe('the rules that cannot be set off by a time', () => {
 
   it('offers no Time in a timer', async () => {
     const ui = await openRule(timer, 'Timers');
-    expect(pickerOptions(ui, '#timers')).not.toContain('Time');
+    expect(pickerOptions(ui, '#timers')).not.toContain('Current time');
   });
 });
 
@@ -200,19 +200,19 @@ describe('the times the sun decides', () => {
 
   it('offers them once a location is set', async () => {
     const ui = await openWith(timeRule('07:00'), true);
-    expect(kinds(ui)).toEqual(['At', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+    expect(kinds(ui)).toEqual(['is', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
   });
 
   it('offers none of them without one', async () => {
     const ui = await openWith(timeRule('07:00'), false);
-    expect(kinds(ui)).toEqual(['At']);
+    expect(kinds(ui)).toEqual(['is']);
   });
 
   it('keeps one already set even with no location, rather than rewriting the rule', async () => {
     const ui = await openWith(timeRule('sunset'), false);
 
     // Still listed, and still what the rule says.
-    expect(kinds(ui)).toEqual(['At', 'Sunset']);
+    expect(kinds(ui)).toEqual(['is', 'Sunset']);
     expect((ui.document.querySelector('.triggers .time-kind') as HTMLSelectElement).value).toBe(
       'sunset',
     );
@@ -243,5 +243,111 @@ describe('the times the sun decides', () => {
 
     const summary = ui.document.querySelector('#automation .device-meta') as HTMLElement;
     expect(summary.textContent).toContain('Sunset -00:30');
+  });
+});
+
+describe('a sun time in the activity log', () => {
+  it('reads in words with its offset, the way the rule list says it', async () => {
+    const ui = await openInterface({
+      state: { devices, hasLocation: true },
+      rules: [],
+      log: [
+        {
+          at: Date.now(),
+          ruleId: 'r1',
+          ruleName: 'Evening',
+          ruleKind: 'standard',
+          outcome: 'fired',
+          detail: '1 action sent',
+          firedAt: { at: 'sunset', offset: -30 },
+        },
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Activity'));
+
+    const line = ui.document.querySelector('#activity-log .log-line') as HTMLElement;
+    expect(line.textContent).toContain('Sunset -00:30');
+    expect(line.querySelector('svg.type-icon.clock')).not.toBeNull();
+  });
+});
+
+describe('a time as a condition', () => {
+  const withCondition = (when?: unknown) =>
+    automation({
+      triggers: [{ ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } }],
+      branches: [
+        {
+          ...(when ? { when } : {}),
+          actions: [{ ...ref('0xa'), value: 'ON' }],
+        },
+      ],
+    });
+
+  async function openWith(rule: unknown, hasLocation = true) {
+    const ui = await openInterface({ state: { devices, hasLocation }, rules: [rule] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+    return ui;
+  }
+
+  const conditionPicker = (ui: { document: Document }) =>
+    ui.document.querySelector('.conditions .device-picker') as HTMLSelectElement;
+
+  it('offers Time at the bottom of the condition picker too', async () => {
+    const ui = await openWith(
+      withCondition({
+        kind: 'all',
+        nodes: [{ kind: 'test', ...ref('0xa'), match: { kind: 'equals', value: 'ON' } }],
+      }),
+    );
+    const options = [...conditionPicker(ui).options].map((option) => option.textContent);
+    expect(options.at(-1)).toBe('Current time');
+  });
+
+  it('asks for a side rather than a range, and no days', async () => {
+    const ui = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+    );
+
+    const side = ui.document.querySelector('.conditions .time-side') as HTMLSelectElement;
+    expect([...side.options].map((option) => option.textContent)).toEqual(['is before', 'is after']);
+    expect(side.value).toBe('after');
+    // A condition is about now: which days is the trigger's business.
+    expect(ui.document.querySelector('.conditions .day-picker')).toBeNull();
+  });
+
+  it('saves and reopens saying the same thing', async () => {
+    const ui = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'before', at: '04:00' }] }),
+    );
+
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when: { nodes: { kind: string; side: string; at: string }[] } }[];
+    };
+    expect(saved.branches[0]?.when.nodes[0]).toMatchObject({
+      kind: 'time',
+      side: 'before',
+      at: '04:00',
+    });
+  });
+
+  it('offers the sun times in a condition only with a location', async () => {
+    const withPlace = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+      true,
+    );
+    const kinds = (ui: { document: Document }) =>
+      [...(ui.document.querySelector('.conditions .time-kind') as HTMLSelectElement).options].map(
+        (option) => option.textContent,
+      );
+    // `Time`, not `At`: the row already reads `is after`.
+    expect(kinds(withPlace)).toEqual(['Time', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+
+    const without = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+      false,
+    );
+    expect(kinds(without)).toEqual(['Time']);
   });
 });

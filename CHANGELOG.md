@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A timer can ask a condition before it acts, asked once when the wait runs out
 
 - A time can be one the sun decides: sunrise, sunset, dawn or dusk, with an offset either side. Needs a location, set in the Homebridge settings, and without one they are not offered
+- A time can be a condition as well as a trigger, said as a side: `is before 04:00`, `is after sunset -30`. A night is the two of them in one or group
 - An automation can be set off by a time of day, and a condition can ask what time it is. Time sits at the bottom of the trigger picker and carries a clock in the rule list and the activity log. Only automations: a mirror and a slider are driven by their devices, and a timer is a wait after something happened
 
 ## [1.5.2] - 2026-08-28

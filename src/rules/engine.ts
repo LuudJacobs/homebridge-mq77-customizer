@@ -9,7 +9,7 @@ import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
 import type { Place } from './clock.js';
-import { describeTime, isNow, minuteKey, onDay } from './clock.js';
+import { isNow, minuteKey, onDay } from './clock.js';
 import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
@@ -39,6 +39,7 @@ import {
   type Match,
   type Rule,
   type AutomationTrigger,
+  type LogTime,
   type SliderRule,
   type TimeTrigger,
   type TimerRule,
@@ -71,7 +72,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** The press the rules are being run for, if a press is what arrived. */
   private pressed?: LogPress;
   /** The time the rules are being run for, if the clock is what reached one. */
-  private struck?: string;
+  private struck?: LogTime;
 
   /** Whether any rule answered that press. */
   private answered = false;
@@ -185,7 +186,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       this.firedAt.set(rule.id, minute);
 
       this.pressed = undefined;
-      this.struck = describeTime(due.at, due.offset);
+      this.struck = { at: due.at, ...(due.offset ? { offset: due.offset } : {}) };
       this.fire(rule, { property: undefined, value: undefined, time: due });
       this.struck = undefined;
     }
@@ -608,7 +609,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.record(
       rule,
       'failed',
-      `${stuck.at} needs a location, which is not set in the Homebridge settings`,
+      `${stuck.at} needs a location`,
     );
   }
 
