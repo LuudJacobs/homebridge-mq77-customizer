@@ -609,7 +609,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.record(
       rule,
       'failed',
-      `${stuck.at} needs a location, which is not set in the Homebridge settings`,
+      `${stuck.at} needs a location`,
     );
   }
 

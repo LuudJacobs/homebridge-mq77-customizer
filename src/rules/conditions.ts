@@ -86,9 +86,9 @@ function timeOfDay(node: TimeCondition, lookup: Lookup): Reason | undefined {
   const at = lookup.now?.() ?? new Date();
   // A sun time with nowhere to work it out from is not a clock the rule was
   // on the wrong side of: there is no answer at all. Saying `not after dusk`
-  // would send somebody looking at the hour rather than at the settings.
+  // would send somebody looking at the hour rather than at the location.
   if (isSunTime(node.at) && !lookup.place) {
-    return { detail: `${node.at} needs a location, which is not set in the Homebridge settings` };
+    return { detail: `${node.at} needs a location` };
   }
   if (onSide(node, at, lookup.place)) {
     return undefined;
