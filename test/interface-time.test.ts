@@ -154,7 +154,7 @@ describe('a time in the lists', () => {
           ruleKind: 'standard',
           outcome: 'fired',
           detail: '1 action sent',
-          firedAt: '22:00',
+          firedAt: { at: '22:00' },
         },
       ],
     });
@@ -243,5 +243,30 @@ describe('the times the sun decides', () => {
 
     const summary = ui.document.querySelector('#automation .device-meta') as HTMLElement;
     expect(summary.textContent).toContain('Sunset -00:30');
+  });
+});
+
+describe('a sun time in the activity log', () => {
+  it('reads in words with its offset, the way the rule list says it', async () => {
+    const ui = await openInterface({
+      state: { devices, hasLocation: true },
+      rules: [],
+      log: [
+        {
+          at: Date.now(),
+          ruleId: 'r1',
+          ruleName: 'Evening',
+          ruleKind: 'standard',
+          outcome: 'fired',
+          detail: '1 action sent',
+          firedAt: { at: 'sunset', offset: -30 },
+        },
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Activity'));
+
+    const line = ui.document.querySelector('#activity-log .log-line') as HTMLElement;
+    expect(line.textContent).toContain('Sunset -00:30');
+    expect(line.querySelector('svg.type-icon.clock')).not.toBeNull();
   });
 });

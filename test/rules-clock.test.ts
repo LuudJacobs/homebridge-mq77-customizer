@@ -111,7 +111,7 @@ describe('a time as a trigger', () => {
     const { engine } = await harness([rule()]);
 
     strike(engine, '2026-03-10T22:00:05');
-    expect(engine.getLog()[0]).toMatchObject({ outcome: 'fired', firedAt: '22:00' });
+    expect(engine.getLog()[0]).toMatchObject({ outcome: 'fired', firedAt: { at: '22:00' } });
   });
 
   it('makes up nothing for a minute that passed while it was not running', async () => {

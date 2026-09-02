@@ -1394,7 +1394,10 @@ function logParts(entry) {
     // The clock set it off, and reads the way a press does.
     const chunk = document.createElement('span');
     chunk.className = 'chunk';
-    chunk.append(clockIcon(), document.createTextNode(`${entry.firedAt} →`));
+    chunk.append(
+      clockIcon(),
+      document.createTextNode(`${describeTimeOfDay(entry.firedAt.at, entry.firedAt.offset)} →`),
+    );
     parts.push(phrase(chunk), words(' '));
   }
 
