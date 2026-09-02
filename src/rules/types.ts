@@ -18,6 +18,44 @@ export interface Trigger extends PropertyRef {
   match: Match;
 }
 
+/** Days a time trigger may fire on, in the order a week is read. */
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * A time of day, rather than something a device did.
+ *
+ * `at` is parsed rather than assumed to be `HH:MM`. A clock time is all it
+ * holds today; a named solar event, `sunset` with an `offset` of -30 for half
+ * an hour before it, is what it will hold once the sun times land, and the
+ * shape admits one now so no stored rule has to be reshaped then.
+ */
+export interface TimeTrigger {
+  kind: 'time';
+  /** `HH:MM` on a 24 hour clock. */
+  at: string;
+  /** Minutes either side, for a named time. Meaningless on a clock time. */
+  offset?: number;
+  /** Absent means every day. */
+  days?: Weekday[];
+}
+
+/**
+ * What may set an automation off.
+ *
+ * Only an automation: a mirror and a slider are driven by their devices, and a
+ * timer is a wait after something happened, where a clock is not something
+ * happening to a device. Keeping the union here rather than widening `Trigger`
+ * means a timer cannot hold one by type, and validation turns away anything
+ * hand written into one.
+ */
+export type AutomationTrigger = Trigger | TimeTrigger;
+
+export function isTimeTrigger(trigger: AutomationTrigger): trigger is TimeTrigger {
+  return (trigger as TimeTrigger).kind === 'time';
+}
+
 export interface Condition extends PropertyRef {
   match: Match;
 }
@@ -33,7 +71,26 @@ export type ConditionNode =
   | { kind: 'all'; nodes: ConditionNode[] }
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
-  | ({ kind: 'test' } & Condition);
+  | ({ kind: 'test' } & Condition)
+  | TimeWindow;
+
+/**
+ * A time of day the rule is allowed to run in.
+ *
+ * `from` and `to` are read the way `at` is. Equal ends mean the whole day
+ * rather than an instant, and a window may cross midnight: 22:00 to 06:00 is
+ * the night, not nothing.
+ */
+export interface TimeWindow {
+  kind: 'time';
+  from: string;
+  to: string;
+  /** Offsets either side, for named times. */
+  fromOffset?: number;
+  toOffset?: number;
+  /** Absent means every day. */
+  days?: Weekday[];
+}
 
 /**
  * Where an action's value comes from.
@@ -77,8 +134,8 @@ export interface Rule {
    * `trigger` is what earlier versions stored, a single one. It is read as a
    * list of one and rewritten on next save.
    */
-  triggers?: Trigger[];
-  trigger?: Trigger;
+  triggers?: AutomationTrigger[];
+  trigger?: AutomationTrigger;
   /**
    * Tested against the values currently known, when present.
    *

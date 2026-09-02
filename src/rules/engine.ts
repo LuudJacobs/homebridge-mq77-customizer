@@ -12,6 +12,7 @@ import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
   isSlider,
+  isTimeTrigger,
   isTimer,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
@@ -34,6 +35,7 @@ import {
   type PropertyRef,
   type Match,
   type Rule,
+  type AutomationTrigger,
   type SliderRule,
   type TimerRule,
   type Trigger,
@@ -184,7 +186,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       // Any trigger will do, and one message satisfying two of them is still
       // one thing happening.
-      for (const trigger of triggersOf(rule)) {
+      for (const trigger of deviceTriggersOf(rule)) {
         if (!(trigger.propertyKey in update.changes)) {
           continue;
         }
@@ -600,8 +602,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     // Pretends to be the rule's own trigger holding whatever that device
-    // says now, so an action copying the trigger has something to copy.
-    const trigger = triggersOf(rule)[0];
+    // says now, so an action copying the trigger has something to copy. A time
+    // trigger holds no value, so the first device one is what is borrowed.
+    const trigger = deviceTriggersOf(rule)[0];
     const value = trigger
       ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
       : undefined;
@@ -636,7 +639,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
     }
 
-    for (const trigger of triggersOf(rule)) {
+    for (const trigger of deviceTriggersOf(rule)) {
       if (!(trigger.propertyKey in update.changes)) {
         continue;
       }
@@ -1076,7 +1079,7 @@ function nameOf(branch: Branch, index: number): string {
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
-function triggersOf(rule: Rule | TimerRule): Trigger[] {
+function triggersOf(rule: Rule | TimerRule): AutomationTrigger[] {
   if (rule.triggers?.length) {
     return rule.triggers;
   }
@@ -1084,6 +1087,17 @@ function triggersOf(rule: Rule | TimerRule): Trigger[] {
     return [];
   }
   return rule.trigger ? [rule.trigger] : [];
+}
+
+/**
+ * The triggers a message can satisfy, which is all of them but a time.
+ *
+ * A time trigger is answered by the clock rather than by anything arriving, so
+ * it is left out here rather than tested against every message and never
+ * matching.
+ */
+function deviceTriggersOf(rule: Rule | TimerRule): Trigger[] {
+  return triggersOf(rule).filter((trigger): trigger is Trigger => !isTimeTrigger(trigger));
 }
 
 function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): boolean {
