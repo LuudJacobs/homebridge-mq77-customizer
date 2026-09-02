@@ -428,6 +428,33 @@ function parseCondition(raw: unknown): { node?: ConditionNode } | { error: strin
     return { node: parsed.node ? { kind: 'not', node: parsed.node } : undefined };
   }
 
+  if (raw.kind === 'time') {
+    const from = parseTimeOfDay(raw.from, 'A time window');
+    if ('error' in from) {
+      return from;
+    }
+    const to = parseTimeOfDay(raw.to, 'A time window');
+    if ('error' in to) {
+      return to;
+    }
+    const days = parseDays(raw.days);
+    if ('error' in days) {
+      return { error: `A time window: ${days.error}` };
+    }
+
+    const fromOffset = parseOffset(raw.fromOffset);
+    const toOffset = parseOffset(raw.toOffset);
+    const node: TimeWindow = {
+      kind: 'time',
+      from: from.at,
+      to: to.at,
+      ...(fromOffset === undefined ? {} : { fromOffset }),
+      ...(toOffset === undefined ? {} : { toOffset }),
+      ...days,
+    };
+    return { node };
+  }
+
   if (raw.kind === 'test') {
     const ref = parseRef(raw);
     if (!ref) {

@@ -1,7 +1,8 @@
 import type { Catalog } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
+import { describeTime, inWindow } from './clock.js';
 import { describeMatch, matches } from './match.js';
-import type { Condition, ConditionNode, PropertyRef } from './types.js';
+import type { Condition, ConditionNode, PropertyRef, TimeWindow } from './types.js';
 
 export interface Reason {
   /** Why the expression did not hold, in a sentence for the run log. */
@@ -11,6 +12,8 @@ export interface Reason {
 interface Lookup {
   property(ref: PropertyRef): NormalisedProperty | undefined;
   value(ref: PropertyRef): unknown;
+  /** What the clock says, for a condition that asks the time. */
+  now?(): Date;
 }
 
 /**
@@ -28,6 +31,9 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
   switch (node.kind) {
     case 'test':
       return test(node, lookup);
+
+    case 'time':
+      return window(node, lookup);
 
     case 'all': {
       for (const child of node.nodes) {
@@ -65,6 +71,21 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
   }
 }
 
+/**
+ * Whether the clock is inside the window.
+ *
+ * The reason says the window rather than the time, since a rule that did not
+ * run at ten past midnight is read the next morning, when what it says about
+ * "now" would be about a different now.
+ */
+function window(node: TimeWindow, lookup: Lookup): Reason | undefined {
+  const at = lookup.now?.() ?? new Date();
+  if (inWindow(node, at)) {
+    return undefined;
+  }
+  return { detail: `not between ${describeTime(node.from, node.fromOffset)} and ${describeTime(node.to, node.toOffset)}` };
+}
+
 function test(node: { kind: 'test' } & Condition, lookup: Lookup): Reason | undefined {
   const property = lookup.property(node);
   if (!property) {
@@ -94,6 +115,8 @@ export function describe(node: ConditionNode, lookup?: Lookup): string {
       return node.nodes.map((child) => describe(child, lookup)).join(' or ');
     case 'not':
       return `not (${describe(node.node, lookup)})`;
+    case 'time':
+      return `between ${describeTime(node.from, node.fromOffset)} and ${describeTime(node.to, node.toOffset)}`;
     default:
       return 'an unknown condition';
   }
@@ -108,12 +131,13 @@ export function fromConditions(conditions: Condition[] | undefined): ConditionNo
 }
 
 /** Builds the lookup the evaluator needs from the catalog. */
-export function catalogLookup(catalog: Catalog): Lookup {
+export function catalogLookup(catalog: Catalog, now?: () => Date): Lookup {
   return {
     property: (ref) =>
       catalog
         .getDevice(ref.sourceId, ref.deviceId)
         ?.properties.find((property) => property.key === ref.propertyKey),
     value: (ref) => catalog.getState(ref.sourceId, ref.deviceId)?.[ref.propertyKey],
+    now,
   };
 }

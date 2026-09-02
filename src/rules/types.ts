@@ -291,6 +291,13 @@ export interface LogEntry {
    * than a sentence about it. On a press of its own this is the press.
    */
   press?: LogPress;
+  /**
+   * The time that set it off, when the clock did.
+   *
+   * Said as the rule stores it, `07:00`, rather than as a sentence: the
+   * interface words it, the way it words a press.
+   */
+  firedAt?: string;
   /** Which branch ran, for a rule that has more than one. */
   branch?: string;
   /** What a slider did. */
