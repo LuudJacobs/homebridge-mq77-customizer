@@ -765,13 +765,6 @@ table.buttons td.in-homekit {
   justify-content: flex-end;
 }
 
-/* A word about the row it sits in, said quietly beside it. */
-.rule-row .row-hint {
-  color: var(--muted);
-  font-size: 0.8rem;
-  align-self: center;
-}
-
 /* A description with something to press at the end of it. */
 .hint-row {
   display: flex;

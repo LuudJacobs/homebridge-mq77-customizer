@@ -208,16 +208,6 @@ describe('the times the sun decides', () => {
     expect(kinds(ui)).toEqual(['is']);
   });
 
-  it('says beside the row why they are not there, and stops saying it once they are', async () => {
-    const without = await openWith(timeRule('07:00'), false);
-    expect(without.document.querySelector('.triggers .row-hint')?.textContent).toContain(
-      'Set a location in the plugin settings',
-    );
-
-    const withPlace = await openWith(timeRule('07:00'), true);
-    expect(withPlace.document.querySelector('.triggers .row-hint')).toBeNull();
-  });
-
   it('keeps one already set even with no location, rather than rewriting the rule', async () => {
     const ui = await openWith(timeRule('sunset'), false);
 
