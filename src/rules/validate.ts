@@ -7,11 +7,13 @@ import {
   MIN_SETTLE_MS,
   MIN_STEPS,
   MIN_WAIT_MS,
+  WEEKDAYS,
 } from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
   Action,
   AnyRule,
+  AutomationTrigger,
   Branch,
   ConditionNode,
   Condition,
@@ -21,7 +23,10 @@ import type {
   Rule,
   SliderRule,
   TimerRule,
+  TimeTrigger,
+  TimeWindow,
   Trigger,
+  Weekday,
 } from './types.js';
 
 const MATCH_KINDS = ['changed', 'equals', 'notEquals', 'changedTo', 'above', 'below'];
@@ -58,9 +63,18 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
 
   // Several triggers, any of which fires the rule. Earlier versions stored one.
   const given = Array.isArray(raw.triggers) ? raw.triggers : [raw.trigger];
-  const triggers: Trigger[] = [];
+  const triggers: AutomationTrigger[] = [];
 
   for (const entry of given) {
+    if (saysTime(entry)) {
+      const time = parseTimeTrigger(entry);
+      if ('error' in time) {
+        return time;
+      }
+      triggers.push(time.trigger);
+      continue;
+    }
+
     const ref = parseRef(entry);
     if (!ref) {
       return { error: 'The trigger needs a device and a function' };
@@ -153,6 +167,10 @@ function parseTimer(
 ): { rule: TimerRule } | { error: string } {
   const triggers: Trigger[] = [];
   for (const entry of Array.isArray(raw.triggers) ? raw.triggers : []) {
+    if (saysTime(entry)) {
+      return { error: 'Only an automation can be set off by a time' };
+    }
+
     const ref = parseRef(entry);
     if (!ref) {
       return { error: 'The trigger needs a device and a function' };
@@ -229,6 +247,10 @@ function parseSlider(
     const triggers: Trigger[] = [];
 
     for (const entry of given) {
+      if (saysTime(entry)) {
+        return { error: 'Only an automation can be set off by a time' };
+      }
+
       const ref = parseRef(entry);
       if (!ref) {
         return { error: `The ${button} button needs a device and a function` };
@@ -406,6 +428,33 @@ function parseCondition(raw: unknown): { node?: ConditionNode } | { error: strin
     return { node: parsed.node ? { kind: 'not', node: parsed.node } : undefined };
   }
 
+  if (raw.kind === 'time') {
+    const from = parseTimeOfDay(raw.from, 'A time window');
+    if ('error' in from) {
+      return from;
+    }
+    const to = parseTimeOfDay(raw.to, 'A time window');
+    if ('error' in to) {
+      return to;
+    }
+    const days = parseDays(raw.days);
+    if ('error' in days) {
+      return { error: `A time window: ${days.error}` };
+    }
+
+    const fromOffset = parseOffset(raw.fromOffset);
+    const toOffset = parseOffset(raw.toOffset);
+    const node: TimeWindow = {
+      kind: 'time',
+      from: from.at,
+      to: to.at,
+      ...(fromOffset === undefined ? {} : { fromOffset }),
+      ...(toOffset === undefined ? {} : { toOffset }),
+      ...days,
+    };
+    return { node };
+  }
+
   if (raw.kind === 'test') {
     const ref = parseRef(raw);
     if (!ref) {
@@ -444,6 +493,104 @@ function parseMatch(raw: unknown): { match: Match } | { error: string } {
     return { error: `${kind} needs a value` };
   }
   return { match: { kind, value } as Match };
+}
+
+/**
+ * A time of day as it is stored: `HH:MM` on a 24 hour clock.
+ *
+ * Read rather than assumed, since a named solar event will be written here
+ * once the sun times land. Anything that is not a clock time is turned away by
+ * name, so `sunset` says it is not known yet rather than "not a time".
+ */
+function parseTimeOfDay(raw: unknown, field: string): { at: string } | { error: string } {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return { error: `${field} needs a time` };
+  }
+
+  const at = raw.trim();
+  const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(at);
+  if (clock) {
+    return { at };
+  }
+
+  if (SUN_TIMES.includes(at.toLowerCase())) {
+    return { error: `${field} cannot be ${at} yet` };
+  }
+
+  return { error: `${field} should read as HH:MM, not ${at}` };
+}
+
+/** Named times the shape admits and validation does not accept yet. */
+const SUN_TIMES = ['sunrise', 'sunset', 'dawn', 'dusk'];
+
+/** Which days it may fire on. Absent, or all seven, means every day. */
+function parseDays(raw: unknown): { days?: Weekday[] } | { error: string } {
+  if (raw === undefined || raw === null) {
+    return {};
+  }
+
+  const given = asArray(raw);
+  const days: Weekday[] = [];
+  for (const entry of given) {
+    const day = typeof entry === 'string' ? entry.trim().toLowerCase() : '';
+    if (!WEEKDAYS.includes(day as Weekday)) {
+      return { error: `${String(entry)} is not a day` };
+    }
+    if (!days.includes(day as Weekday)) {
+      days.push(day as Weekday);
+    }
+  }
+
+  // Every day is how it reads with nothing set, so store nothing.
+  if (days.length === 0 || days.length === WEEKDAYS.length) {
+    return {};
+  }
+
+  // Kept in the order a week is read rather than the order they were ticked.
+  return { days: WEEKDAYS.filter((day) => days.includes(day)) };
+}
+
+/** Minutes either side of a named time, and nothing at all on a clock time. */
+function parseOffset(raw: unknown): number | undefined {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw === 0) {
+    return undefined;
+  }
+  return clamp(Math.round(raw), -720, 720);
+}
+
+/**
+ * A trigger that is a time rather than a device.
+ *
+ * Only an automation may hold one. A timer, a mirror and a slider share the
+ * `Trigger` shape, so nothing but this stops one being written into them by
+ * hand, and a rule saved with a trigger quietly dropped would never fire and
+ * never say why.
+ */
+function parseTimeTrigger(raw: unknown): { trigger: TimeTrigger } | { error: string } {
+  const at = parseTimeOfDay(isObject(raw) ? raw.at : undefined, 'A time trigger');
+  if ('error' in at) {
+    return at;
+  }
+
+  const days = parseDays(isObject(raw) ? raw.days : undefined);
+  if ('error' in days) {
+    return { error: `A time trigger: ${days.error}` };
+  }
+
+  const offset = parseOffset(isObject(raw) ? raw.offset : undefined);
+  return {
+    trigger: {
+      kind: 'time',
+      at: at.at,
+      ...(offset === undefined ? {} : { offset }),
+      ...days,
+    },
+  };
+}
+
+/** Whether something written down is meant to be a time rather than a device. */
+function saysTime(raw: unknown): boolean {
+  return isObject(raw) && raw.kind === 'time';
 }
 
 function parseRef(raw: unknown): PropertyRef | undefined {

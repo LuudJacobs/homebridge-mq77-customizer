@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- An automation can be set off by a time of day, and a condition can ask what time it is. Time sits at the bottom of the trigger picker and carries a clock in the rule list and the activity log. Only automations: a mirror and a slider are driven by their devices, and a timer is a wait after something happened
+
 ## [1.5.2] - 2026-08-28
 
 ### Changed

@@ -1018,6 +1018,32 @@ table.buttons td.in-homekit {
   color: var(--muted);
 }
 
+/* The clock a time trigger carries, drawn like a device's kind. */
+.type-icon.clock {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A time and the days it runs on, on the row where a property would be. */
+.time-at {
+  width: 7.5rem;
+}
+
+.day-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.day-picker .toggle {
+  font-size: 0.78rem;
+  gap: 0.25rem;
+}
+
 /* Beside running text rather than in a row of its own, so it sits on the
    line instead of stretching it. */
 .device-meta .type-icon,

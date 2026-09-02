@@ -8,10 +8,12 @@ import type { MqttConnection } from '../mqtt/client.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
+import { describeTime, isNow, minuteKey, onDay } from './clock.js';
 import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
   isSlider,
+  isTimeTrigger,
   isTimer,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
@@ -34,7 +36,9 @@ import {
   type PropertyRef,
   type Match,
   type Rule,
+  type AutomationTrigger,
   type SliderRule,
+  type TimeTrigger,
   type TimerRule,
   type Trigger,
 } from './types.js';
@@ -64,9 +68,25 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
   /** The press the rules are being run for, if a press is what arrived. */
   private pressed?: LogPress;
+  /** The time the rules are being run for, if the clock is what reached one. */
+  private struck?: string;
 
   /** Whether any rule answered that press. */
   private answered = false;
+  /**
+   * The clock, looked at rather than scheduled against.
+   *
+   * A time trigger is answered by asking, every few seconds, what the local
+   * time is now, rather than by working out when the next one falls and
+   * waiting for it. That is what makes the two awkward days behave: a time in
+   * the hour the clock skips never appears, so it never fires, and a time in
+   * the hour the clock repeats appears twice but is remembered as one minute,
+   * so it fires once. It also means an edit needs no rescheduling and a
+   * restart cannot leave a stale wait behind.
+   */
+  private readonly ticker: ReturnType<typeof setInterval>;
+  /** The last minute each rule fired on, so a repeated minute fires once. */
+  private readonly firedAt = new Map<string, string>();
   /** When each mirror group was last written to, so it can be left to settle. */
   private readonly settling = new Map<string, number>();
   /** Where each slider was last told to go, and when. See STEP_MEMORY_MS. */
@@ -103,6 +123,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     private readonly log: Logger,
   ) {
     super();
+
+    this.ticker = setInterval(() => this.readClock(new Date()), CLOCK_TICK_MS);
+    // Nothing here should hold Homebridge open on its own.
+    this.ticker.unref?.();
   }
 
   /** The run log, newest first. */
@@ -111,10 +135,48 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   stop(): void {
+    clearInterval(this.ticker);
     for (const timer of this.timers) {
       clearTimeout(timer);
     }
     this.timers.clear();
+  }
+
+  /**
+   * Fires the automations whose time has come.
+   *
+   * Public so a test can say what the time is rather than wait for it. The
+   * minute a rule fires on is remembered, so a minute that comes round twice
+   * on the night the clocks go back fires it once, and a minute that never
+   * comes at all on the night they go forward fires it never.
+   *
+   * Nothing is made up for a minute that passed while the plugin was down:
+   * this only ever looks at the minute it is in.
+   */
+  readClock(at: Date): void {
+    for (const rule of this.store.data.rules) {
+      if (!rule.enabled || isMirror(rule) || isSlider(rule) || isTimer(rule)) {
+        continue;
+      }
+
+      const due = triggersOf(rule)
+        .filter(isTimeTrigger)
+        .find((trigger) => onDay(trigger.days, at) && isNow(trigger.at, at));
+      if (!due) {
+        continue;
+      }
+
+      const minute = minuteKey(at);
+      if (this.firedAt.get(rule.id) === minute) {
+        continue;
+      }
+      this.firedAt.set(rule.id, minute);
+
+      this.pressed = undefined;
+      this.struck = describeTime(due.at, due.offset);
+      this.fire(rule, { property: undefined, value: undefined, time: due });
+      this.struck = undefined;
+    }
   }
 
   handleState(update: StateUpdate): void {
@@ -184,7 +246,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       // Any trigger will do, and one message satisfying two of them is still
       // one thing happening.
-      for (const trigger of triggersOf(rule)) {
+      for (const trigger of deviceTriggersOf(rule)) {
         if (!(trigger.propertyKey in update.changes)) {
           continue;
         }
@@ -600,8 +662,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     // Pretends to be the rule's own trigger holding whatever that device
-    // says now, so an action copying the trigger has something to copy.
-    const trigger = triggersOf(rule)[0];
+    // says now, so an action copying the trigger has something to copy. A time
+    // trigger holds no value, so the first device one is what is borrowed.
+    const trigger = deviceTriggersOf(rule)[0];
     const value = trigger
       ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
       : undefined;
@@ -614,7 +677,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return true;
     }
 
-    this.fire(rule, { property: trigger ?? { sourceId: '', deviceId: '', propertyKey: '' }, value });
+    this.fire(rule, { property: trigger, value });
     return true;
   }
 
@@ -636,7 +699,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
     }
 
-    for (const trigger of triggersOf(rule)) {
+    for (const trigger of deviceTriggersOf(rule)) {
       if (!(trigger.propertyKey in update.changes)) {
         continue;
       }
@@ -806,7 +869,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.record(rule, 'disabled', 'Fired too often');
   }
 
-  private fire(rule: Rule, trigger: { property: PropertyRef; value: unknown }): void {
+  private fire(rule: Rule, trigger: Fired): void {
     const now = Date.now();
     const limit = rule.rateLimitMs ?? DEFAULT_RATE_LIMIT_MS;
     const last = this.lastFired.get(rule.id);
@@ -825,7 +888,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     // The first branch that holds wins, the rest are skipped. That is what
     // makes else if exclusive by construction rather than by hand.
-    const lookup = catalogLookup(this.catalog);
+    const lookup = catalogLookup(this.catalog, () => new Date());
     const branches = branchesOf(rule);
     const declined: string[] = [];
     let chosen: { branch: Branch; index: number } | undefined;
@@ -869,7 +932,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** Returns a problem, or undefined when the action was sent. */
   private run(
     action: Action,
-    trigger: { property: PropertyRef; value: unknown },
+    trigger: Fired,
   ): string | undefined {
     const property = this.property(action);
     if (!property) {
@@ -908,10 +971,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private resolve(
     action: Action,
     target: NormalisedProperty,
-    trigger: { property: PropertyRef; value: unknown },
+    trigger: Fired,
   ): string | number | boolean | undefined {
     if (action.valueFrom?.kind !== 'trigger') {
       return action.value;
+    }
+    // A clock holds no value, so there is nothing for such an action to copy.
+    if (!trigger.property) {
+      return undefined;
     }
     const source = this.property(trigger.property);
     if (!source) {
@@ -962,6 +1029,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       outcome,
       detail,
       ...(this.pressed ? { press: this.pressed } : {}),
+      ...(this.struck ? { firedAt: this.struck } : {}),
       ...parts,
     };
     this.entries.push(entry);
@@ -1005,6 +1073,22 @@ function justBecameTrue(match: Match, before: unknown): boolean {
  * switch straight afterwards still counts.
  */
 const SELF_ECHO_MS = 2000;
+
+/** How often the clock is looked at. Well inside a minute, so none is missed. */
+const CLOCK_TICK_MS = 15_000;
+
+/**
+ * What set a rule off.
+ *
+ * A device holding a value, or the clock reaching a time. An action copying
+ * the trigger has something to copy in the first case and nothing in the
+ * second, which is the whole of the difference here.
+ */
+interface Fired {
+  property?: PropertyRef;
+  value: unknown;
+  time?: TimeTrigger;
+}
 
 /** Keeps a wait inside what the interface offers, whatever was stored. */
 function clampWait(waitMs: unknown): number {
@@ -1076,7 +1160,7 @@ function nameOf(branch: Branch, index: number): string {
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
-function triggersOf(rule: Rule | TimerRule): Trigger[] {
+function triggersOf(rule: Rule | TimerRule): AutomationTrigger[] {
   if (rule.triggers?.length) {
     return rule.triggers;
   }
@@ -1084,6 +1168,17 @@ function triggersOf(rule: Rule | TimerRule): Trigger[] {
     return [];
   }
   return rule.trigger ? [rule.trigger] : [];
+}
+
+/**
+ * The triggers a message can satisfy, which is all of them but a time.
+ *
+ * A time trigger is answered by the clock rather than by anything arriving, so
+ * it is left out here rather than tested against every message and never
+ * matching.
+ */
+function deviceTriggersOf(rule: Rule | TimerRule): Trigger[] {
+  return triggersOf(rule).filter((trigger): trigger is Trigger => !isTimeTrigger(trigger));
 }
 
 function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): boolean {
