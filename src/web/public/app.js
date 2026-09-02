@@ -1545,13 +1545,13 @@ const isSunTime = (at) => SUN_TIMES.some(([value]) => value === at);
 
 /** Days of the week, in the order a week is read. */
 const WEEKDAYS = [
-  ['mon', 'Mon'],
-  ['tue', 'Tue'],
-  ['wed', 'Wed'],
-  ['thu', 'Thu'],
-  ['fri', 'Fri'],
-  ['sat', 'Sat'],
-  ['sun', 'Sun'],
+  ['mon', 'mon'],
+  ['tue', 'tue'],
+  ['wed', 'wed'],
+  ['thu', 'thu'],
+  ['fri', 'fri'],
+  ['sat', 'sat'],
+  ['sun', 'sun'],
 ];
 
 /** A time as it is said in a summary or a log line. */
