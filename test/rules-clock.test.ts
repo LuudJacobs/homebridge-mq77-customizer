@@ -6,9 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Catalog } from '../src/catalog.js';
 import { silentLogger } from '../src/logger.js';
-import { inWindow } from '../src/rules/clock.js';
+import { onSide } from '../src/rules/clock.js';
 import { RulesEngine } from '../src/rules/engine.js';
-import type { Rule, TimeWindow } from '../src/rules/types.js';
+import type { Rule, TimeCondition } from '../src/rules/types.js';
 import { Store } from '../src/store.js';
 import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import { FakeMqtt } from './helpers/fake-mqtt.js';
@@ -172,49 +172,47 @@ describe('the two days the clock is not a straight line', () => {
 });
 
 describe('a time as a condition', () => {
-  const window = (over: Partial<TimeWindow> = {}): TimeWindow => ({
+  const before = (at: string, offset?: number): TimeCondition => ({
     kind: 'time',
-    from: '22:00',
-    to: '06:00',
-    ...over,
+    side: 'before',
+    at,
+    ...(offset === undefined ? {} : { offset }),
+  });
+  const after = (at: string, offset?: number): TimeCondition => ({
+    ...before(at, offset),
+    side: 'after',
   });
 
-  it('holds through the night when the window crosses midnight', () => {
-    expect(inWindow(window(), at('2026-03-10T23:00:00'))).toBe(true);
-    expect(inWindow(window(), at('2026-03-11T02:00:00'))).toBe(true);
-    expect(inWindow(window(), at('2026-03-11T12:00:00'))).toBe(false);
-    expect(inWindow(window(), at('2026-03-11T21:59:00'))).toBe(false);
+  it('holds up to and including the minute it names, and not past it', () => {
+    expect(onSide(before('04:00'), at('2026-03-10T00:00:00'))).toBe(true);
+    expect(onSide(before('04:00'), at('2026-03-10T03:59:00'))).toBe(true);
+    // The minute it names counts: a rule set for four holds at four.
+    expect(onSide(before('04:00'), at('2026-03-10T04:00:30'))).toBe(true);
+    expect(onSide(before('04:00'), at('2026-03-10T04:01:00'))).toBe(false);
   });
 
-  it('holds inside a plain window and not outside it', () => {
-    const day = window({ from: '09:00', to: '17:00' });
-    expect(inWindow(day, at('2026-03-10T08:59:00'))).toBe(false);
-    expect(inWindow(day, at('2026-03-10T09:00:00'))).toBe(true);
-    expect(inWindow(day, at('2026-03-10T16:59:00'))).toBe(true);
-    // The far end is the moment it closes, so it is already shut.
-    expect(inWindow(day, at('2026-03-10T17:00:00'))).toBe(false);
+  it('holds from the minute it names to the end of the day, the other way round', () => {
+    expect(onSide(after('22:00'), at('2026-03-10T21:59:00'))).toBe(false);
+    expect(onSide(after('22:00'), at('2026-03-10T22:00:10'))).toBe(true);
+    expect(onSide(after('22:00'), at('2026-03-10T23:59:00'))).toBe(true);
   });
 
-  it('reads equal ends as the whole day rather than as an instant', () => {
-    const always = window({ from: '12:00', to: '12:00' });
-    expect(inWindow(always, at('2026-03-10T03:00:00'))).toBe(true);
-    expect(inWindow(always, at('2026-03-10T12:00:00'))).toBe(true);
+  it('makes a night out of the two of them, which is what an any group is for', async () => {
+    // After 22:00 or before 06:00: the two sides of midnight, in one group.
+    const night = { kind: 'any' as const, nodes: [after('22:00'), before('06:00')] };
+    const { engine, mqtt } = await harness([
+      rule({ triggers: [{ kind: 'time', at: '23:00' }], when: night }),
+    ]);
+
+    strike(engine, '2026-03-10T23:00:05');
+    expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
   });
 
-  it('reads the days of a night window from the evening it started', () => {
-    // Friday night, which is Friday evening and the small hours of Saturday.
-    const friday = window({ days: ['fri'] });
-    expect(inWindow(friday, at('2026-03-13T23:00:00'))).toBe(true);
-    expect(inWindow(friday, at('2026-03-14T02:00:00'))).toBe(true);
-    // Saturday evening belongs to Saturday, which was not asked for.
-    expect(inWindow(friday, at('2026-03-14T23:00:00'))).toBe(false);
-  });
-
-  it('turns a rule away when the clock is outside the window, and says so', async () => {
+  it('turns a rule away when the clock is on the other side, and says which', async () => {
     const { engine, mqtt } = await harness([
       rule({
         triggers: [{ kind: 'time', at: '22:00' }],
-        when: { kind: 'all', nodes: [window({ from: '09:00', to: '17:00' })] },
+        when: { kind: 'all', nodes: [before('09:00')] },
       }),
     ]);
 
@@ -222,7 +220,7 @@ describe('a time as a condition', () => {
 
     expect(sent(mqtt)).toEqual([]);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
-    expect(engine.getLog()[0]?.detail).toContain('09:00');
+    expect(engine.getLog()[0]?.detail).toContain('not before 09:00');
   });
 });
 
@@ -280,12 +278,12 @@ describe('the times the sun decides', () => {
     expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
   });
 
-  it('holds a window whose ends the sun decides', async () => {
-    const dark: TimeWindow = { kind: 'time', from: 'dusk', to: 'dawn' };
-    // Dusk is 21:01 and dawn 06:17 on this date, so the night is between.
-    expect(inWindow(dark, at('2026-09-02T23:00:00'), HOUSE)).toBe(true);
-    expect(inWindow(dark, at('2026-09-02T12:00:00'), HOUSE)).toBe(false);
-    // With nowhere to work them out from, the window holds at no time at all.
-    expect(inWindow(dark, at('2026-09-02T23:00:00'))).toBe(false);
+  it('holds a condition whose time the sun decides', async () => {
+    const afterDusk: TimeCondition = { kind: 'time', side: 'after', at: 'dusk' };
+    // Dusk is 21:01 on this date in Amsterdam.
+    expect(onSide(afterDusk, at('2026-09-02T23:00:00'), HOUSE)).toBe(true);
+    expect(onSide(afterDusk, at('2026-09-02T12:00:00'), HOUSE)).toBe(false);
+    // With nowhere to work it out from, it holds at no time at all.
+    expect(onSide(afterDusk, at('2026-09-02T23:00:00'))).toBe(false);
   });
 });

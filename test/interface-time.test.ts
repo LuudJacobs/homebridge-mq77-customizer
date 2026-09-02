@@ -270,3 +270,83 @@ describe('a sun time in the activity log', () => {
     expect(line.querySelector('svg.type-icon.clock')).not.toBeNull();
   });
 });
+
+describe('a time as a condition', () => {
+  const withCondition = (when?: unknown) =>
+    automation({
+      triggers: [{ ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } }],
+      branches: [
+        {
+          ...(when ? { when } : {}),
+          actions: [{ ...ref('0xa'), value: 'ON' }],
+        },
+      ],
+    });
+
+  async function openWith(rule: unknown, hasLocation = true) {
+    const ui = await openInterface({ state: { devices, hasLocation }, rules: [rule] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+    return ui;
+  }
+
+  const conditionPicker = (ui: { document: Document }) =>
+    ui.document.querySelector('.conditions .device-picker') as HTMLSelectElement;
+
+  it('offers Time at the bottom of the condition picker too', async () => {
+    const ui = await openWith(
+      withCondition({
+        kind: 'all',
+        nodes: [{ kind: 'test', ...ref('0xa'), match: { kind: 'equals', value: 'ON' } }],
+      }),
+    );
+    const options = [...conditionPicker(ui).options].map((option) => option.textContent);
+    expect(options.at(-1)).toBe('Time');
+  });
+
+  it('asks for a side rather than a range, and no days', async () => {
+    const ui = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+    );
+
+    const side = ui.document.querySelector('.conditions .time-side') as HTMLSelectElement;
+    expect([...side.options].map((option) => option.textContent)).toEqual(['is before', 'is after']);
+    expect(side.value).toBe('after');
+    // A condition is about now: which days is the trigger's business.
+    expect(ui.document.querySelector('.conditions .day-picker')).toBeNull();
+  });
+
+  it('saves and reopens saying the same thing', async () => {
+    const ui = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'before', at: '04:00' }] }),
+    );
+
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when: { nodes: { kind: string; side: string; at: string }[] } }[];
+    };
+    expect(saved.branches[0]?.when.nodes[0]).toMatchObject({
+      kind: 'time',
+      side: 'before',
+      at: '04:00',
+    });
+  });
+
+  it('offers the sun times in a condition only with a location', async () => {
+    const withPlace = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+      true,
+    );
+    const kinds = (ui: { document: Document }) =>
+      [...(ui.document.querySelector('.conditions .time-kind') as HTMLSelectElement).options].map(
+        (option) => option.textContent,
+      );
+    expect(kinds(withPlace)).toEqual(['At', 'Sunrise', 'Sunset', 'Dawn', 'Dusk']);
+
+    const without = await openWith(
+      withCondition({ kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] }),
+      false,
+    );
+    expect(kinds(without)).toEqual(['At']);
+  });
+});
