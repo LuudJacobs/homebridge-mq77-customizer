@@ -278,6 +278,21 @@ describe('the times the sun decides', () => {
     expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
   });
 
+  it('says the location is missing, rather than which side of dusk it was', async () => {
+    const { engine, mqtt } = await harness([
+      rule({
+        triggers: [{ kind: 'time', at: '22:00' }],
+        when: { kind: 'all', nodes: [{ kind: 'time', side: 'after', at: 'dusk' }] },
+      }),
+    ]);
+
+    strike(engine, '2026-09-02T22:00:05');
+
+    expect(sent(mqtt)).toEqual([]);
+    expect(engine.getLog()[0]?.detail).toContain('needs a location');
+    expect(engine.getLog()[0]?.detail).not.toContain('not after');
+  });
+
   it('holds a condition whose time the sun decides', async () => {
     const afterDusk: TimeCondition = { kind: 'time', side: 'after', at: 'dusk' };
     // Dusk is 21:01 on this date in Amsterdam.
