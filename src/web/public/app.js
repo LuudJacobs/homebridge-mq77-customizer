@@ -3385,7 +3385,9 @@ function timeParts(ref, options) {
   const kinds = document.createElement('select');
   kinds.className = 'time-kind';
   const offered = [
-    ['clock', 'At'],
+    // `At 22:00` is how a trigger names a time, but a condition already reads
+    // `is after`, and `is after At` is not English.
+    ['clock', asCondition ? 'Time' : 'At'],
     ...SUN_TIMES.filter(([value]) => state.hasLocation || value === ref.at),
   ];
   for (const [value, label] of offered) {
