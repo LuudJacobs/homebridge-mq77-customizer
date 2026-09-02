@@ -3460,16 +3460,8 @@ function timeParts(ref, options) {
     days.append(toggle);
   }
 
-  // Why the list is only the clock. Drawn beside the row that is short of
-  // them rather than as a notice somewhere else, since this is the moment
-  // somebody goes looking for sunset and does not find it.
-  const missing = document.createElement('span');
-  missing.className = 'row-hint';
-  missing.textContent = 'Set a location in the plugin settings for sunrise and sunset';
-
   const time = isSunTime(ref.at) ? [kinds, offset] : [kinds, at];
-  const said = state.hasLocation ? [] : [missing];
-  return asCondition ? [side, ...time, ...said] : [...time, days, ...said];
+  return asCondition ? [side, ...time] : [...time, days];
 }
 
 function refRow(ref, options) {
