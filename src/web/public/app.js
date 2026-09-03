@@ -1340,7 +1340,7 @@ const OUTCOME_LABELS = {
   // filters and the colour still tell apart. Read out they are both a rule
   // that decided not to.
   rateLimited: 'ignored',
-  conditionsFailed: 'conditions not met',
+  conditionsFailed: 'ignored',
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'ignored',
@@ -1348,14 +1348,8 @@ const OUTCOME_LABELS = {
   cancelled: 'called off',
 };
 
-/**
- * Outcomes that say everything in the word itself.
- *
- * `conditions not met` is the whole of what a refusal is worth reading: which
- * condition it was is in the rule, which is one click away, and spelling it
- * out on every line made the log hard to scan.
- */
-const WORDLESS = new Set(['cancelled', 'conditionsFailed']);
+/** Outcomes that say everything in the word itself. */
+const WORDLESS = new Set(['cancelled']);
 
 /**
  * A log line, in the parts it reads in: what set it off, which rule and how it
@@ -1434,6 +1428,12 @@ function pressWords(press) {
 function describeOutcome(entry) {
   if (WORDLESS.has(entry.outcome)) {
     return '';
+  }
+
+  // Which condition it was is in the rule, a click away. On the line it only
+  // made the log harder to read.
+  if (entry.outcome === 'conditionsFailed') {
+    return 'Conditions not met';
   }
 
   if (entry.copy) {
