@@ -211,7 +211,7 @@ describe('what a log line says', () => {
       await lines([
         entry({ outcome: 'conditionsFailed', detail: "'Outcome 1': not before 09:00" }),
       ]),
-    ).toEqual(['Woonkamer: All Off - conditions not met']);
+    ).toEqual(['Woonkamer: All Off - ignored: Conditions not met']);
   });
 
   it('still says why a rule could not be asked at all', async () => {
