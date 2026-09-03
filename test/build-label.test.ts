@@ -14,14 +14,21 @@ const script = fileURLToPath(new URL('../scripts/build-info.mjs', import.meta.ur
  * It reads git and rewrites package.json, so it is worth running for real
  * rather than trusting a description of what it does.
  */
-function label(branch: string | null): { info: Record<string, unknown>; packageJson: string } {
+function label(
+  branch: string | null,
+  options: { version?: string; env?: Record<string, string> } = {},
+): { info: Record<string, unknown>; packageJson: string } {
   const directory = mkdtempSync(join(tmpdir(), 'mq77-label-'));
   mkdirSync(join(directory, 'dist'));
   mkdirSync(join(directory, 'scripts'));
   cpSync(script, join(directory, 'scripts', 'build-info.mjs'));
   writeFileSync(
     join(directory, 'package.json'),
-    JSON.stringify({ name: 'x', version: '1.2.3', displayName: 'MQ77 Customizer' }, null, 2),
+    JSON.stringify(
+      { name: 'x', version: options.version ?? '1.2.3', displayName: 'MQ77 Customizer' },
+      null,
+      2,
+    ),
   );
 
   const git = (...args: string[]) => execFileSync('git', args, { cwd: directory, stdio: 'ignore' });
@@ -33,7 +40,13 @@ function label(branch: string | null): { info: Record<string, unknown>; packageJ
     git('commit', '-qm', 'first');
   }
 
-  execFileSync('node', ['scripts/build-info.mjs'], { cwd: directory, stdio: 'ignore' });
+  execFileSync('node', ['scripts/build-info.mjs'], {
+    cwd: directory,
+    stdio: 'ignore',
+    // The labeller reads the environment a build on GitHub sets, and the
+    // suite itself may be running inside one.
+    env: { ...process.env, GITHUB_REF_NAME: '', ...options.env },
+  });
 
   return {
     info: JSON.parse(readFileSync(join(directory, 'dist/build-info.json'), 'utf8')),
@@ -58,6 +71,23 @@ describe('the build label', () => {
 
   it('treats no git as released, which is what an npm install looks like', () => {
     expect(label(null).info).toMatchObject({ branch: null, released: true });
+  });
+
+  it('takes the branch from the build environment when the checkout is detached', () => {
+    // A build on GitHub, and an install from a hosted git URL, both arrive
+    // with no branch to ask about.
+    expect(label(null, { env: { GITHUB_REF_NAME: 'test' } }).info).toMatchObject({
+      branch: 'test',
+      released: false,
+    });
+  });
+
+  it('treats a stamped version as unreleased, whatever branch it came from', () => {
+    expect(label('main', { version: '1.6.0-test.12' }).info).toMatchObject({
+      branch: 'main',
+      released: false,
+    });
+    expect(label(null, { version: '1.6.0-test.12' }).info).toMatchObject({ released: false });
   });
 
   it('leaves the working tree alone', () => {

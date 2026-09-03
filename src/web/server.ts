@@ -561,7 +561,10 @@ function buildLabel(): string {
         version: string;
         released: boolean;
       };
-      cachedLabel = info.released ? info.version : `#${info.branch}`;
+      // An unreleased build says which branch it came from. One that cannot
+      // name a branch says its version, which was stamped for that build and
+      // carries a tail saying as much.
+      cachedLabel = info.released || !info.branch ? info.version : `#${info.branch}`;
     } catch {
       // Built without the labeller, which is not worth failing over.
       cachedLabel = '';
