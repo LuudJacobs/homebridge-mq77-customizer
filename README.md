@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.5.2
+# MQ77 Customizer 1.6.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -127,6 +127,27 @@ Across all four:
 
 An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run.
 
+### Times
+
+An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
+
+Only automations. A mirror and a slider are driven by their devices, and a timer is a wait after something happened.
+
+The clock is whatever the machine running Homebridge thinks it is, and a rule fires during the minute it names. Four things worth knowing:
+
+- A time that passed while Homebridge was down does not fire late. A reboot at 22:59 swallows a rule set for 23:00, which is the price of never having an evening's worth of rules run at once when the machine comes back.
+- A condition asks about now, so it takes no days of its own. A rule that should only run on weekdays says so where it is set off.
+- On the day the clocks go forward, a rule set for a time in the missing hour does not fire, since that time never happens. On the day they go back, a rule set for the repeated hour fires once.
+- Days of the week can narrow when it runs. All seven, or none ticked, both mean every day.
+
+As a condition it is said as a side rather than a range: `is before 04:00`, or `is after sunset -30`. Both include the minute they name and run to that end of the day, so before four o'clock means midnight through four. A night is the two of them in one **or** group: after 22:00 or before 06:00.
+
+A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an offset in minutes either side, so `sunset -30` is half an hour before the sun goes down. Dawn and dusk are civil twilight, which is when it is actually dark rather than the moment the sun crosses the horizon, and for lights that is usually what is meant.
+
+These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the activity log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
+
+Far enough north there are days when the sun never reaches one of these points, dawn and dusk long before sunrise and sunset. Those days are skipped and said in the log.
+
 ### Mirror devices
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
@@ -138,6 +159,8 @@ After a write the group is left to settle, one and a half seconds by default and
 A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
 
 The clock starts again if the same thing happens again. It is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. A timer counting when Homebridge restarts is forgotten.
+
+A timer can also ask a question, the way an automation does. It is asked once, when the wait runs out: "turn the light off in ten minutes, unless somebody is home by then". Being called off is a different thing and belongs to the trigger going away, so a condition turning false during the wait does not abandon it; the question is simply asked at the end. One condition over the timer's actions, where an automation has one per outcome.
 
 An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
 

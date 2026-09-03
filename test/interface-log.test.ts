@@ -204,6 +204,22 @@ describe('what a log line says', () => {
     ]);
   });
 
+  it('leaves a refused rule at the words themselves, whatever the reason was', async () => {
+    // Which condition it was is in the rule, a click away. On the line it
+    // only made the log harder to read.
+    expect(
+      await lines([
+        entry({ outcome: 'conditionsFailed', detail: "'Outcome 1': not before 09:00" }),
+      ]),
+    ).toEqual(['Woonkamer: All Off - ignored: Conditions not met']);
+  });
+
+  it('still says why a rule could not be asked at all', async () => {
+    expect(
+      await lines([entry({ outcome: 'failed', detail: 'dusk needs a location' })]),
+    ).toEqual(['Woonkamer: All Off - failed: dusk needs a location']);
+  });
+
   it('calls a rule that held itself back ignored', async () => {
     expect(
       await lines([entry({ outcome: 'rateLimited', detail: 'Fired 651ms ago, minimum 1000ms' })]),

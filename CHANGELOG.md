@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.6.0] - 2026-09-03
+
+### Added
+
+- A time of day can set an automation off, on the days it is given
+- A time can be a condition too, as a side: `is before 04:00`, `is after sunset -30`
+- Sunrise, sunset, dawn and dusk, with an offset in minutes either side
+- A latitude and longitude in the plugin settings, which the sun times need
+- A timer can ask a condition before it acts
+
+### Changed
+
+- A rule turned away by its conditions reads as `ignored: Conditions not met`
+- A test build says `#test` in the footer rather than the version it was cut from
+
 ## [1.5.2] - 2026-08-28
 
 ### Changed

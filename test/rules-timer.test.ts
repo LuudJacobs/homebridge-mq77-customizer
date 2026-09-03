@@ -308,3 +308,112 @@ describe('a timer watching a number', () => {
     }
   });
 });
+
+describe('a timer that asks a question first', () => {
+  const gated = (holds: boolean) => ({
+    ...timerRule(),
+    when: {
+      kind: 'all' as const,
+      nodes: [
+        {
+          kind: 'test' as const,
+          sourceId: 'zigbee',
+          deviceId: SOCKET.id,
+          propertyKey: 'state',
+          match: { kind: 'equals' as const, value: holds ? 'ON' : 'OFF' },
+        },
+      ],
+    },
+  });
+
+  it('does what it always did when the condition holds', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([gated(true)]);
+      // The socket has to have said something, or the condition is not false
+      // so much as unanswerable.
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(mqtt.published).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does nothing when it does not, and says which condition turned it away', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([gated(false)]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(mqtt.published).toEqual([]);
+      const last = engine.getLog()[0];
+      expect(last).toMatchObject({ outcome: 'conditionsFailed' });
+      expect(last?.detail).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The editor offers the clock among a timer's conditions, though never as
+  // what sets one off. A wait that only matters at night is written here.
+  const atNight = (): TimerRule => ({
+    ...timerRule(),
+    when: { kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] },
+  });
+
+  it('can ask the clock, and is turned away by day', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-02T12:00:00'));
+      const { engine, mqtt } = await harness([atNight()]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(mqtt.published).toEqual([]);
+      expect(engine.getLog()[0]).toMatchObject({ outcome: 'conditionsFailed' });
+      expect(engine.getLog()[0]?.detail).toContain('not after 22:00');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('acts once the clock is on the right side of it', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-02T23:00:00'));
+      const { mqtt } = await harness([atNight()]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(mqtt.published).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still reads as called off when the trigger goes away, not as a condition failing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([gated(true)]);
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(engine.getLog().some((entry) => entry.outcome === 'cancelled')).toBe(true);
+      expect(engine.getLog().some((entry) => entry.outcome === 'conditionsFailed')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

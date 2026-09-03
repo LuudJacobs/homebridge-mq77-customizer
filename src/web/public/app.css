@@ -117,6 +117,7 @@ input[type="number"],
 input[type="password"],
 input[type="search"],
 input[type="text"],
+input[type="time"],
 select {
   font: inherit;
   height: 2.3rem;
@@ -126,6 +127,26 @@ select {
   border-radius: 7px;
   background: var(--bg);
   color: var(--text);
+}
+
+/*
+ * The browser's own furniture inside these boxes: a clock in a time input and
+ * a pair of arrows in a number one. Both are small targets nobody aims at,
+ * and both make a box a different width from the one beside it. Typed
+ * instead, which is what everybody does anyway.
+ */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+input[type="number"] {
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
 }
 
 button {
@@ -1016,6 +1037,71 @@ table.buttons td.in-homekit {
   flex: none;
   align-self: center;
   color: var(--muted);
+}
+
+/* The clock a time trigger carries, drawn like a device's kind. */
+.type-icon.clock {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/*
+ * A time and the days it runs on, on the row where a property would be, and
+ * built like the wait a timer takes: the same box, the same width.
+ */
+.rule-row input.time-at,
+.rule-row input.time-offset {
+  width: 6rem;
+  min-width: 0;
+}
+
+.time-kind,
+.time-side {
+  width: auto;
+}
+
+/*
+ * Seven of them on one row, so each is a badge rather than a tick box with a
+ * word beside it. Monospaced, since they are all three letters and a column
+ * of ragged widths reads as a mistake.
+ */
+.day-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.day-picker .day {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.64rem;
+  line-height: 1;
+  padding: 0.2rem 0.26rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.day-picker .day input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.day-picker .day:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.day-picker .day:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Beside running text rather than in a row of its own, so it sits on the

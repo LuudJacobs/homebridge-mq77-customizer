@@ -39,6 +39,14 @@ const FAILED_LOGIN_DELAY_MS = 500;
 
 export interface WebServerDeps {
   config: WebConfig;
+  /**
+   * Whether a location is set, which is all the interface needs to know.
+   *
+   * Not the coordinates themselves: the editor only asks so it can decide
+   * whether to offer the sun times, and where the house is has no business
+   * being served to a browser.
+   */
+  hasLocation?: boolean;
   catalog: Catalog;
   store: Store;
   rules: RulesEngine;
@@ -348,6 +356,7 @@ export class WebServer {
       devices,
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
+      hasLocation: this.deps.hasLocation === true,
       build: buildLabel(),
       backupAt: this.deps.store.lastBackup(),
       refusedToWrite: this.deps.store.refusedToWrite,
@@ -552,7 +561,10 @@ function buildLabel(): string {
         version: string;
         released: boolean;
       };
-      cachedLabel = info.released ? info.version : `#${info.branch}`;
+      // An unreleased build says which branch it came from. One that cannot
+      // name a branch says its version, which was stamped for that build and
+      // carries a tail saying as much.
+      cachedLabel = info.released || !info.branch ? info.version : `#${info.branch}`;
     } catch {
       // Built without the labeller, which is not worth failing over.
       cachedLabel = '';

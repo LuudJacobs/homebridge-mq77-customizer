@@ -176,6 +176,32 @@
             "description": "Required to open the web interface. It can switch your devices, so the interface will not start without one."
           }
         }
+      },
+      "location": {
+        "title": "Location",
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "title": "Latitude",
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "placeholder": "52.37",
+            "x-schema-form": {
+              "type": "number"
+            }
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "placeholder": "4.90",
+            "x-schema-form": {
+              "type": "number"
+            }
+          }
+        }
       }
     }
   },
@@ -252,6 +278,14 @@
         "web.port",
         "web.password",
         "web.zigbee2mqttUrl"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Location",
+      "items": [
+        "location.latitude",
+        "location.longitude"
       ]
     }
   ]

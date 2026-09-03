@@ -18,6 +18,60 @@ export interface Trigger extends PropertyRef {
   match: Match;
 }
 
+/**
+ * The times the sun decides, rather than the clock.
+ *
+ * Four of the many `suncalc` works out. Dawn and dusk are civil twilight,
+ * which is when it is actually dark, where sunrise and sunset are the moments
+ * the sun crosses the horizon: for lights, twilight is usually what somebody
+ * means. The rest, the golden hours and the nautical twilights, are not
+ * offered.
+ */
+export const SUN_TIMES = ['sunrise', 'sunset', 'dawn', 'dusk'] as const;
+
+export type SunTime = (typeof SUN_TIMES)[number];
+
+export function isSunTime(at: string): at is SunTime {
+  return (SUN_TIMES as readonly string[]).includes(at);
+}
+
+/** Days a time trigger may fire on, in the order a week is read. */
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * A time of day, rather than something a device did.
+ *
+ * `at` is either a clock time, `HH:MM`, or one of the four the sun decides,
+ * with an `offset` in minutes either side: `sunset` at -30 is half an hour
+ * before the sun goes down.
+ */
+export interface TimeTrigger {
+  kind: 'time';
+  /** `HH:MM` on a 24 hour clock, or one of `SUN_TIMES`. */
+  at: string;
+  /** Minutes either side, for a sun time. Meaningless on a clock time. */
+  offset?: number;
+  /** Absent means every day. */
+  days?: Weekday[];
+}
+
+/**
+ * What may set an automation off.
+ *
+ * Only an automation: a mirror and a slider are driven by their devices, and a
+ * timer is a wait after something happened, where a clock is not something
+ * happening to a device. Keeping the union here rather than widening `Trigger`
+ * means a timer cannot hold one by type, and validation turns away anything
+ * hand written into one.
+ */
+export type AutomationTrigger = Trigger | TimeTrigger;
+
+export function isTimeTrigger(trigger: AutomationTrigger): trigger is TimeTrigger {
+  return (trigger as TimeTrigger).kind === 'time';
+}
+
 export interface Condition extends PropertyRef {
   match: Match;
 }
@@ -33,7 +87,30 @@ export type ConditionNode =
   | { kind: 'all'; nodes: ConditionNode[] }
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
-  | ({ kind: 'test' } & Condition);
+  | ({ kind: 'test' } & Condition)
+  | TimeCondition;
+
+/**
+ * Which side of a time of day it is.
+ *
+ * Said as a side rather than as a range, because that is how somebody writes
+ * one: before four in the morning, after half an hour before sunset. Both
+ * include the minute they name and run to the end of the day on their side of
+ * it, so `before 04:00` is midnight through 04:00 and `after sunset -30` is
+ * that minute through 23:59.
+ *
+ * A window is the two of them in an `any` group, which is how a night is
+ * written: after 22:00 or before 06:00. The editor already offers that, and
+ * it reads back as what was typed.
+ */
+export interface TimeCondition {
+  kind: 'time';
+  side: 'before' | 'after';
+  /** `HH:MM` on a 24 hour clock, or one of `SUN_TIMES`. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
+}
 
 /**
  * Where an action's value comes from.
@@ -77,8 +154,8 @@ export interface Rule {
    * `trigger` is what earlier versions stored, a single one. It is read as a
    * list of one and rewritten on next save.
    */
-  triggers?: Trigger[];
-  trigger?: Trigger;
+  triggers?: AutomationTrigger[];
+  trigger?: AutomationTrigger;
   /**
    * Tested against the values currently known, when present.
    *
@@ -183,6 +260,14 @@ export interface TimerRule {
   enabled: boolean;
   /** Any of these starts the clock, and starts it again while it runs. */
   triggers?: Trigger[];
+  /**
+   * Asked when the wait runs out, and only then.
+   *
+   * Being called off is what a trigger going away does; this is something
+   * else being true or not at the moment the timer would act. One condition
+   * over the single set of actions, where an automation has a branch each.
+   */
+  when?: ConditionNode;
   /** How long to wait before doing anything. */
   waitMs: number;
   actions: Action[];
@@ -234,12 +319,28 @@ export interface LogEntry {
    * than a sentence about it. On a press of its own this is the press.
    */
   press?: LogPress;
+  /**
+   * The time that set it off, when the clock did.
+   *
+   * The parts rather than a sentence, the way a press is carried: `sunset`
+   * with an offset of -30 reads as `Sunset -00:30` in the interface and as
+   * nothing at all here, since wording is the interface's business.
+   */
+  firedAt?: LogTime;
   /** Which branch ran, for a rule that has more than one. */
   branch?: string;
   /** What a slider did. */
   step?: LogStep;
   /** What a mirror copied, and where to. */
   copy?: LogCopy;
+}
+
+/** The time a rule was set off by, in parts. */
+export interface LogTime {
+  /** `HH:MM`, or one of the times the sun decides. */
+  at: string;
+  /** Minutes either side, for a sun time. */
+  offset?: number;
 }
 
 /** A button press: which device, which function, and what it said. */

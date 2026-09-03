@@ -38,7 +38,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
     );
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
-    this.rules = new RulesEngine(this.catalog, this.store, this.mqtt, log);
+    this.rules = new RulesEngine(this.catalog, this.store, this.mqtt, log, this.settings.location);
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -93,6 +93,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
 
     this.web = new WebServer({
       config: this.settings.web,
+      hasLocation: this.settings.location !== undefined,
       catalog: this.catalog,
       store: this.store,
       rules: this.rules,

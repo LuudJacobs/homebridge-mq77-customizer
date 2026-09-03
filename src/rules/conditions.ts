@@ -1,16 +1,29 @@
 import type { Catalog } from '../catalog.js';
 import type { NormalisedProperty } from '../model/types.js';
+import type { Place } from './clock.js';
+import { describeTime, onSide } from './clock.js';
 import { describeMatch, matches } from './match.js';
-import type { Condition, ConditionNode, PropertyRef } from './types.js';
+import type { Condition, ConditionNode, PropertyRef, TimeCondition } from './types.js';
+import { isSunTime } from './types.js';
 
 export interface Reason {
   /** Why the expression did not hold, in a sentence for the run log. */
   detail: string;
+  /**
+   * Not a condition the rule fell the wrong side of, but one that could not
+   * be asked at all. The run log says those out loud, where an ordinary
+   * refusal is left at "conditions not met".
+   */
+  unanswerable?: boolean;
 }
 
 interface Lookup {
   property(ref: PropertyRef): NormalisedProperty | undefined;
   value(ref: PropertyRef): unknown;
+  /** What the clock says, for a condition that asks the time. */
+  now?(): Date;
+  /** Where the house is, for a window whose ends the sun decides. */
+  place?: Place;
 }
 
 /**
@@ -28,6 +41,9 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
   switch (node.kind) {
     case 'test':
       return test(node, lookup);
+
+    case 'time':
+      return timeOfDay(node, lookup);
 
     case 'all': {
       for (const child of node.nodes) {
@@ -65,6 +81,27 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
   }
 }
 
+/**
+ * Whether the clock is on the side of the time this names.
+ *
+ * The reason says the condition rather than the hour it was, since a rule
+ * that declined at ten past midnight is read the next morning, when what it
+ * said about "now" would be about a different now.
+ */
+function timeOfDay(node: TimeCondition, lookup: Lookup): Reason | undefined {
+  const at = lookup.now?.() ?? new Date();
+  // A sun time with nowhere to work it out from is not a clock the rule was
+  // on the wrong side of: there is no answer at all. Saying `not after dusk`
+  // would send somebody looking at the hour rather than at the location.
+  if (isSunTime(node.at) && !lookup.place) {
+    return { detail: `${node.at} needs a location`, unanswerable: true };
+  }
+  if (onSide(node, at, lookup.place)) {
+    return undefined;
+  }
+  return { detail: `not ${node.side} ${describeTime(node.at, node.offset)}` };
+}
+
 function test(node: { kind: 'test' } & Condition, lookup: Lookup): Reason | undefined {
   const property = lookup.property(node);
   if (!property) {
@@ -94,6 +131,8 @@ export function describe(node: ConditionNode, lookup?: Lookup): string {
       return node.nodes.map((child) => describe(child, lookup)).join(' or ');
     case 'not':
       return `not (${describe(node.node, lookup)})`;
+    case 'time':
+      return `${node.side} ${describeTime(node.at, node.offset)}`;
     default:
       return 'an unknown condition';
   }
@@ -108,12 +147,14 @@ export function fromConditions(conditions: Condition[] | undefined): ConditionNo
 }
 
 /** Builds the lookup the evaluator needs from the catalog. */
-export function catalogLookup(catalog: Catalog): Lookup {
+export function catalogLookup(catalog: Catalog, now?: () => Date, place?: Place): Lookup {
   return {
     property: (ref) =>
       catalog
         .getDevice(ref.sourceId, ref.deviceId)
         ?.properties.find((property) => property.key === ref.propertyKey),
     value: (ref) => catalog.getState(ref.sourceId, ref.deviceId)?.[ref.propertyKey],
+    now,
+    place,
   };
 }

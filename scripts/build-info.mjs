@@ -18,17 +18,25 @@ function branchName() {
     })
       .toString()
       .trim();
-    // Detached, so there is no branch to name.
-    return branch && branch !== 'HEAD' ? branch : null;
+    if (branch && branch !== 'HEAD') {
+      return branch;
+    }
   } catch {
     // No git at all, which is what an npm install looks like.
-    return null;
   }
+  // A build on GitHub checks the branch out detached, and says which it was
+  // here instead. This is how a test tarball knows it is not a release.
+  return process.env.GITHUB_REF_NAME || null;
 }
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const branch = branchName();
-const released = branch === null || branch === 'main';
+// A version with a tail on it (`1.6.0-test.12`) was stamped for one build and
+// never released, whatever branch it was cut from. Nothing else says so: an
+// install from a hosted git URL is unpacked from a tarball with no git in it,
+// so the branch cannot be asked for at that point.
+const stamped = packageJson.version.includes('-');
+const released = (branch === null || branch === 'main') && !stamped;
 
 writeFileSync(
   'dist/build-info.json',
@@ -36,4 +44,6 @@ writeFileSync(
 );
 
 // On stderr, so `npm pack --json` gets JSON and nothing else.
-console.error(`Build labelled ${released ? packageJson.version : `#${branch}`}`);
+console.error(
+  `Build labelled ${released ? packageJson.version : branch ? `#${branch}` : packageJson.version}`,
+);

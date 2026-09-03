@@ -89,16 +89,20 @@ jobs:
       - name: Install
         run: npm ci
 
+      # A version no other build has, so an install on the Pi is never answered
+      # out of a cache. It lives in the runner only: --no-git-tag-version means
+      # nothing is committed and nothing is tagged.
+      #
+      # Before the build rather than after it: the build writes the version
+      # into the label the plugin shows, and a label saying the last release
+      # is exactly what a test build must not say.
+      - name: Stamp a version for this run
+        run: npm version prerelease --preid=test.${{ github.run_number }} --no-git-tag-version
+
       # --if-present so the same file works for the plain-JavaScript plugins
       # that have nothing to compile.
       - name: Build
         run: npm run build --if-present
-
-      # A version no other build has, so an install on the Pi is never answered
-      # out of a cache. It lives in the runner only: --no-git-tag-version means
-      # nothing is committed and nothing is tagged.
-      - name: Stamp a version for this run
-        run: npm version prerelease --preid=test.${{ github.run_number }} --no-git-tag-version
 
       - name: Pack
         id: pack

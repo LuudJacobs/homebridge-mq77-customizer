@@ -13,6 +13,8 @@ const state = {
   unusedButtons: true,
   /** Whether it says of a button that HomeKit hears it. */
   homekitButtons: true,
+  /** Whether a location is set, which is what lets a rule follow the sun. */
+  hasLocation: false,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -268,6 +270,7 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
+  state.hasLocation = snapshot.hasLocation === true;
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
@@ -1337,7 +1340,7 @@ const OUTCOME_LABELS = {
   // filters and the colour still tell apart. Read out they are both a rule
   // that decided not to.
   rateLimited: 'ignored',
-  conditionsFailed: 'conditions not met',
+  conditionsFailed: 'ignored',
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'ignored',
@@ -1387,6 +1390,15 @@ function logParts(entry) {
       ),
       words(' '),
     );
+  } else if (entry.firedAt) {
+    // The clock set it off, and reads the way a press does.
+    const chunk = document.createElement('span');
+    chunk.className = 'chunk';
+    chunk.append(
+      clockIcon(),
+      document.createTextNode(`${describeTimeOfDay(entry.firedAt.at, entry.firedAt.offset)} →`),
+    );
+    parts.push(phrase(chunk), words(' '));
   }
 
   parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? ':' : ''}`)));
@@ -1416,6 +1428,12 @@ function pressWords(press) {
 function describeOutcome(entry) {
   if (WORDLESS.has(entry.outcome)) {
     return '';
+  }
+
+  // Which condition it was is in the rule, a click away. On the line it only
+  // made the log harder to read.
+  if (entry.outcome === 'conditionsFailed') {
+    return 'Conditions not met';
   }
 
   if (entry.copy) {
@@ -1488,6 +1506,71 @@ const GESTURES = [
   'toggle',
   'release',
 ];
+
+/**
+ * The clock, drawn where a device's kind is drawn.
+ *
+ * Deliberately not in `TYPE_PATHS`: that table is what the kind picker offers,
+ * and a clock is not something a lamp can be.
+ */
+const SVG = 'http://www.w3.org/2000/svg';
+
+const CLOCK_PATHS = ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 7v5l3.5 2'];
+
+function clockIcon() {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'type-icon clock');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const drawing of CLOCK_PATHS) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', drawing);
+    svg.append(path);
+  }
+  return svg;
+}
+
+/** Whether something in a rule is a time rather than a device. */
+const isTime = (entry) => entry?.kind === 'time';
+
+/**
+ * The times the sun decides, offered only where they can be worked out.
+ *
+ * A rule already set for one keeps saying so even with no location: rewriting
+ * somebody's rule to a clock time would be worse than the rule failing and
+ * saying why.
+ */
+const SUN_TIMES = [
+  ['sunrise', 'Sunrise'],
+  ['sunset', 'Sunset'],
+  ['dawn', 'Dawn'],
+  ['dusk', 'Dusk'],
+];
+
+const isSunTime = (at) => SUN_TIMES.some(([value]) => value === at);
+
+/** Days of the week, in the order a week is read. */
+const WEEKDAYS = [
+  ['mon', 'mon'],
+  ['tue', 'tue'],
+  ['wed', 'wed'],
+  ['thu', 'thu'],
+  ['fri', 'fri'],
+  ['sat', 'sat'],
+  ['sun', 'sun'],
+];
+
+/** A time as it is said in a summary or a log line. */
+function describeTimeOfDay(time, offset) {
+  const said = SUN_TIMES.find(([value]) => value === time)?.[1] ?? time ?? '';
+  if (!offset) {
+    return said;
+  }
+  const sign = offset < 0 ? '-' : '+';
+  const total = Math.abs(offset);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${said} ${sign}${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
 
 /** Buttons with an order of their own, before anything alphabetical. */
 const BUTTONS = ['left', 'right', 'both'];
@@ -1897,6 +1980,11 @@ function describeTrigger(trigger) {
   if (!trigger) {
     return 'Nothing yet';
   }
+  // A time names no property to read a label off, and reads as the sentence
+  // the editor writes: `Time is 22:00`, `Time is sunset -00:30`.
+  if (isTime(trigger)) {
+    return `Time is ${describeTimeOfDay(trigger.at, trigger.offset)}`;
+  }
   const property = findProperty(trigger);
   const label = property?.label ?? trigger.propertyKey ?? 'something';
   const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
@@ -1928,12 +2016,16 @@ function renderByTrigger(container, rules) {
 
     const triggers = ruleTriggers(rule);
     for (const [index, trigger] of (triggers.length ? triggers : [undefined]).entries()) {
-      const device = trigger && findDevice(trigger);
-      const key = device ? `${device.sourceId}|${device.deviceId}` : '';
+      // The clock is a heading of its own. It names no device, but it is not
+      // a device that has gone missing either, which is what the last group
+      // is for.
+      const clock = isTime(trigger);
+      const device = !clock && trigger ? findDevice(trigger) : undefined;
+      const key = clock ? TIME_PICK : device ? `${device.sourceId}|${device.deviceId}` : '';
       if (!groups.has(key)) {
         groups.set(key, {
-          name: device ? displayName(device) : 'No device',
-          known: Boolean(device),
+          name: clock ? 'Current time' : device ? displayName(device) : 'No device',
+          known: clock || Boolean(device),
           entries: [],
         });
       }
@@ -2024,6 +2116,30 @@ function renderRule(rule, occurrence, inRoom) {
 }
 
 /** A device as it is named here, with its kind drawn in front of it. */
+/**
+ * What set a rule off: a device, or the clock.
+ *
+ * A time carries the clock where a device carries its kind, so a rule that
+ * runs at seven reads as one at a glance.
+ */
+function triggerParts(triggers, inRoom) {
+  const first = triggers[0];
+  if (!isTime(first)) {
+    return deviceParts(first, `${andMore(distinctDevices(triggers))} →`, inRoom);
+  }
+
+  const chunk = document.createElement('span');
+  chunk.className = 'chunk';
+  chunk.append(clockIcon());
+  const rest = triggers.length - 1;
+  chunk.append(
+    document.createTextNode(
+      `${describeTimeOfDay(first.at, first.offset)}${rest > 0 ? ` +${rest}` : ''} →`,
+    ),
+  );
+  return [chunk];
+}
+
 function deviceParts(ref, suffix = '', inRoom) {
   // A device or a reference to one, since the log already holds the device.
   const device = ref && (ref.properties ? ref : findDevice(ref));
@@ -2124,9 +2240,10 @@ function summarise(rule, inRoom) {
   const outcomes = rule.branches?.length ?? 1;
 
   return [
-    phrase(...deviceParts(triggers[0], `${andMore(distinctDevices(triggers))} →`, inRoom)),
+    phrase(...triggerParts(triggers, inRoom)),
     words(' '),
     ...(rule.kind === 'timer' ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
+    ...(rule.kind === 'timer' && rule.when ? [phrase(chunkOf('if →')), words(' ')] : []),
     phrase(
       ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
       words(outcomes > 1 && rule.kind !== 'timer' ? ` - ${outcomes} outcomes` : ''),
@@ -2345,6 +2462,10 @@ function drawWhenThen(body, draft) {
           withMatch: true,
           starts: true,
           ruleId: draft.id,
+          // Only here: a mirror and a slider are driven by their devices, and
+          // a timer is a wait after something happened.
+          allowTime: true,
+          redraw: drawTriggers,
           // Any of them fires the rule, so the last one cannot be removed.
           onRemove:
             draft.triggers.length > 1
@@ -2581,6 +2702,20 @@ function drawTimer(body, draft) {
   colon.textContent = ':';
   waitRow.append(minutes, colon, seconds);
   body.append(waitRow);
+
+  // The same editor an automation uses, asked when the wait runs out. One
+  // condition over the single set of actions, so the panel takes it once
+  // rather than carrying the outcome list an automation has.
+  const head = document.createElement('div');
+  head.className = 'branch-head';
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(sectionTitle('And, optionally'));
+  const slot = document.createElement('span');
+  left.append(slot);
+  head.append(left);
+  body.append(head);
+  body.append(conditionEditor(draft, slot));
 
   body.append(sectionTitle('Then'));
   body.append(actionEditor(draft));
@@ -3099,6 +3234,11 @@ function renderGroup(group, groups, index, commit, redraw) {
         pick: watchable,
         withMatch: true,
         onChange: commit,
+        // A condition can ask the time, said as a side of one rather than as
+        // a range: a night is after 22:00 or before 06:00, in one `any` group.
+        allowTime: true,
+        asCondition: true,
+        redraw,
         onRemove:
           group.tests.length > 1
             ? () => {
@@ -3136,10 +3276,14 @@ function asExpression(conditions) {
 
 /** True when the stored expression is something this editor can show. */
 function isTwoLevel(when) {
+  // A row is a device test or a time. Anything else is somebody's own work,
+  // written by hand, and is left alone rather than flattened into rows.
+  const rowish = (node) => node.kind === 'test' || node.kind === 'time';
+
   const groupish = (node) =>
-    node.kind === 'test' ||
+    rowish(node) ||
     (node.kind === 'not' && groupish(node.node)) ||
-    (node.kind === 'all' && node.nodes.every((child) => child.kind === 'test'));
+    (node.kind === 'all' && node.nodes.every(rowish));
 
   if (when.kind === 'any') {
     return when.nodes.every(groupish);
@@ -3210,6 +3354,146 @@ function blankRef(pick) {
  * The same row serves triggers, conditions and actions, since all three are a
  * reference into the same normalised model.
  */
+/** What the device picker calls the entry that is not a device. */
+const TIME_PICK = '__time';
+
+/**
+ * Turns a row into a time, keeping nothing of the device it was.
+ *
+ * A trigger names a time and the days it may fire on. A condition names a
+ * side of one instead: it is about now, and a rule that should only hold on
+ * weekdays says so where it is set off.
+ */
+function becomeTime(ref, asCondition) {
+  for (const key of ['sourceId', 'deviceId', 'propertyKey', 'match']) {
+    delete ref[key];
+  }
+  ref.kind = 'time';
+  ref.at = ref.at ?? (asCondition ? '22:00' : '07:00');
+  if (asCondition) {
+    ref.side = ref.side ?? 'before';
+    delete ref.days;
+  } else {
+    delete ref.side;
+  }
+}
+
+/** And back again, to whichever device the picker offers first. */
+function becomeDevice(ref, pick) {
+  for (const key of ['kind', 'at', 'offset', 'days', 'side']) {
+    delete ref[key];
+  }
+  Object.assign(ref, blankRef(pick), { match: { kind: 'changedTo', value: '' } });
+}
+
+/** The time it names, and either a side of it or the days it may run on. */
+function timeParts(ref, options) {
+  const asCondition = options.asCondition === true;
+
+  // Which side of the time holds, for a condition. Both take the minute they
+  // name, so before 04:00 still holds at four o'clock.
+  const side = document.createElement('select');
+  side.className = 'time-side';
+  for (const [value, label] of [
+    ['before', 'is before'],
+    ['after', 'is after'],
+  ]) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = label;
+    side.append(choice);
+  }
+  side.value = ref.side === 'after' ? 'after' : 'before';
+  side.addEventListener('change', () => {
+    ref.side = side.value;
+    options.onChange?.();
+  });
+
+  // Which sort of time: the clock, or one the sun decides. The sun times are
+  // only offered where there is a location to work them out from, but one
+  // already set is still listed, so opening a rule cannot quietly change it.
+  const kinds = document.createElement('select');
+  kinds.className = 'time-kind';
+  const offered = [
+    // The row reads as a sentence about the clock: `Current time is 22:00`
+    // where it sets a rule off, and `Current time is after Time 22:00` where
+    // it is asked about, the side saying the `is` there.
+    ['clock', asCondition ? 'Time' : 'is'],
+    ...SUN_TIMES.filter(([value]) => state.hasLocation || value === ref.at),
+  ];
+  for (const [value, label] of offered) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = label;
+    kinds.append(choice);
+  }
+  kinds.value = isSunTime(ref.at) ? ref.at : 'clock';
+
+  kinds.addEventListener('change', () => {
+    if (kinds.value === 'clock') {
+      ref.at = '07:00';
+      delete ref.offset;
+    } else {
+      ref.at = kinds.value;
+    }
+    options.redraw?.();
+    options.onChange?.();
+  });
+
+  const at = document.createElement('input');
+  at.type = 'time';
+  at.className = 'delay time-at';
+  at.value = ref.at ?? '07:00';
+  at.addEventListener('change', () => {
+    ref.at = at.value || '07:00';
+    options.onChange?.();
+  });
+
+  // Minutes either side, which only means anything against a sun time.
+  const offset = document.createElement('input');
+  offset.type = 'number';
+  offset.className = 'delay time-offset';
+  offset.step = '5';
+  offset.placeholder = 'offset (m)';
+  offset.title = 'Minutes before or after, so -30 is half an hour before';
+  offset.value = ref.offset ?? '';
+  offset.addEventListener('change', () => {
+    const minutes = Number(offset.value);
+    ref.offset = offset.value !== '' && Number.isFinite(minutes) && minutes !== 0 ? minutes : undefined;
+    if (ref.offset === undefined) {
+      delete ref.offset;
+    }
+    options.onChange?.();
+  });
+
+  const days = document.createElement('span');
+  days.className = 'day-picker';
+  for (const [value, label] of WEEKDAYS) {
+    const toggle = document.createElement('label');
+    toggle.className = 'day';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    // Nothing set is every day, which is what every box ticked also means.
+    box.checked = !ref.days?.length || ref.days.includes(value);
+    box.addEventListener('change', () => {
+      const chosen = WEEKDAYS.map(([day]) => day).filter((day) =>
+        day === value ? box.checked : (!ref.days?.length || ref.days.includes(day)),
+      );
+      // Every day, or none left, both read as every day.
+      ref.days = chosen.length === 0 || chosen.length === WEEKDAYS.length ? undefined : chosen;
+      if (ref.days === undefined) {
+        delete ref.days;
+      }
+      options.onChange?.();
+    });
+    toggle.append(box, document.createTextNode(label));
+    days.append(toggle);
+  }
+
+  const time = isSunTime(ref.at) ? [kinds, offset] : [kinds, at];
+  return asCondition ? [side, ...time] : [...time, days];
+}
+
 function refRow(ref, options) {
   const row = document.createElement('div');
   row.className = 'rule-row';
@@ -3227,7 +3511,36 @@ function refRow(ref, options) {
     choice.textContent = displayName(device);
     devices.append(choice);
   }
-  devices.value = `${ref.sourceId}|${ref.deviceId}`;
+  // Under the devices rather than among them: the picker is read looking for a
+  // device, which is what nearly every trigger is.
+  if (options.allowTime) {
+    const choice = document.createElement('option');
+    choice.value = TIME_PICK;
+    // `Current time`, not `Time`: it sits among device names, and what it
+    // offers is the clock as it stands rather than a time in the abstract.
+    choice.textContent = 'Current time';
+    devices.append(choice);
+  }
+
+  devices.value = isTime(ref) ? TIME_PICK : `${ref.sourceId}|${ref.deviceId}`;
+
+  // A time names no device and no function, so the rest of the row is a time
+  // rather than a property and a match.
+  if (isTime(ref)) {
+    devices.addEventListener('change', () => {
+      becomeDevice(ref, options.pick);
+      options.onChange?.();
+      options.redraw?.();
+    });
+    row.append(devices, ...timeParts(ref, options));
+    if (options.onRemove) {
+      row.append(addButton('✕', options.onRemove));
+    }
+    if (options.trailing) {
+      row.append(options.trailing);
+    }
+    return row;
+  }
 
   const properties = document.createElement('select');
   const fillProperties = () => {
@@ -3253,6 +3566,12 @@ function refRow(ref, options) {
   const changed = () => options.onChange?.();
 
   devices.addEventListener('change', () => {
+    if (devices.value === TIME_PICK) {
+      becomeTime(ref, options.asCondition === true);
+      options.onChange?.();
+      options.redraw?.();
+      return;
+    }
     const [sourceId, deviceId] = devices.value.split('|');
     ref.sourceId = sourceId;
     ref.deviceId = deviceId;
@@ -3799,7 +4118,6 @@ function repaint() {
   }
 }
 
-const SVG = 'http://www.w3.org/2000/svg';
 /** Room for one device box, and the gaps around it. */
 const NODE_WIDTH = 132;
 const NODE_HEIGHT = 34;
