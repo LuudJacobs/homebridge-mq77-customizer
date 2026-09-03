@@ -209,6 +209,30 @@ describe('listing automations under their trigger', () => {
     expect(meta).toEqual(['State becomes 1_single', 'State becomes 2_double']);
   });
 
+  it('gives the clock a heading of its own, not the one for a device that has gone', async () => {
+    const evening = automation('r5', 'Evening', '0xa', '0xc', {
+      triggers: [{ kind: 'time', at: '22:00' }],
+    });
+    const dusk = automation('r6', 'Dusk', '0xa', '0xc', {
+      triggers: [{ kind: 'time', at: 'sunset', offset: -30 }],
+    });
+
+    const ui = await openTab('Automation', [shelly, evening, dusk]);
+    await sortBy(ui, 'trigger');
+
+    expect(headings(ui)).toContain('Current time');
+    expect(headings(ui)).not.toContain('No device');
+
+    // And the line under it says what the clock said, rather than falling
+    // back to the word for a property it has not got.
+    const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
+      (node) => node.textContent,
+    );
+    expect(meta).toContain('Time is 22:00');
+    expect(meta).toContain('Time is Sunset -00:30');
+    expect(meta).not.toContain('something');
+  });
+
   it('lists a rule once per trigger, under each device', async () => {
     const both = automation('r4', 'Either', '0xa', '0xc', {
       triggers: [

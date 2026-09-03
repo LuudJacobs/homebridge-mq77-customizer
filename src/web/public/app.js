@@ -1980,6 +1980,11 @@ function describeTrigger(trigger) {
   if (!trigger) {
     return 'Nothing yet';
   }
+  // A time names no property to read a label off, and reads as the sentence
+  // the editor writes: `Time is 22:00`, `Time is sunset -00:30`.
+  if (isTime(trigger)) {
+    return `Time is ${describeTimeOfDay(trigger.at, trigger.offset)}`;
+  }
   const property = findProperty(trigger);
   const label = property?.label ?? trigger.propertyKey ?? 'something';
   const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
@@ -2011,12 +2016,16 @@ function renderByTrigger(container, rules) {
 
     const triggers = ruleTriggers(rule);
     for (const [index, trigger] of (triggers.length ? triggers : [undefined]).entries()) {
-      const device = trigger && findDevice(trigger);
-      const key = device ? `${device.sourceId}|${device.deviceId}` : '';
+      // The clock is a heading of its own. It names no device, but it is not
+      // a device that has gone missing either, which is what the last group
+      // is for.
+      const clock = isTime(trigger);
+      const device = !clock && trigger ? findDevice(trigger) : undefined;
+      const key = clock ? TIME_PICK : device ? `${device.sourceId}|${device.deviceId}` : '';
       if (!groups.has(key)) {
         groups.set(key, {
-          name: device ? displayName(device) : 'No device',
-          known: Boolean(device),
+          name: clock ? 'Current time' : device ? displayName(device) : 'No device',
+          known: clock || Boolean(device),
           entries: [],
         });
       }
