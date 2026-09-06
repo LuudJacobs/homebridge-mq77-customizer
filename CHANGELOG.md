@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.6.1] - 2026-09-06
+
+### Changed
+
+- CI: publishing a version now also creates a GitHub release for the tag,
+  with that version's changelog section as its notes
+
 ## [1.6.0] - 2026-09-03
 
 ### Added
