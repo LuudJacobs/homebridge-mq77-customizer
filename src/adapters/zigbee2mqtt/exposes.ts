@@ -4,6 +4,7 @@ import type {
   PropertyType,
 } from '../../model/types.js';
 import {
+  ACCESS_GET,
   ACCESS_PUBLISHED,
   ACCESS_SET,
   SPECIFIC_TYPES,
@@ -20,6 +21,7 @@ const LEAF_TYPES: Record<string, PropertyType> = {
 interface FlattenContext {
   stateTopic: string;
   setTopic: string;
+  getTopic: string;
   /** Payload path accumulated from enclosing composites. */
   path: string[];
   endpoint?: string;
@@ -39,11 +41,12 @@ interface FlattenContext {
  */
 export function flattenExposes(
   exposes: Z2mExpose[],
-  options: { stateTopic: string; setTopic: string },
+  options: { stateTopic: string; setTopic: string; getTopic: string },
 ): { properties: NormalisedProperty[]; unsupported: string[] } {
   const context: FlattenContext = {
     stateTopic: options.stateTopic,
     setTopic: options.setTopic,
+    getTopic: options.getTopic,
     path: [],
     unsupported: [],
   };
@@ -123,6 +126,9 @@ function toProperty(
   const extract = [...context.path, expose.property];
   const access = expose.access ?? ACCESS_PUBLISHED;
   const writable = (access & ACCESS_SET) !== 0;
+  // Its own bit: plenty of values are published without the device answering
+  // a question about them, and asking one of those gets no reply at all.
+  const askable = (access & ACCESS_GET) !== 0;
 
   return {
     key: extract.join('.'),
@@ -146,6 +152,7 @@ function toProperty(
     group: context.group,
     stateTopic: context.stateTopic,
     setTopic: writable ? context.setTopic : undefined,
+    getTopic: askable ? context.getTopic : undefined,
     extract,
   };
 }

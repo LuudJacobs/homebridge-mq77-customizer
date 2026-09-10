@@ -120,6 +120,7 @@ Across all four:
 
 - anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
+- an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
 - a rule with several outcomes runs the first whose condition holds and skips the rest
 - picking what sets a rule off marks any value another rule already uses with a `*`, since two rules on one button press is a mistake nobody sees until both of them run
 - rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press

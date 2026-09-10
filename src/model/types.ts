@@ -56,6 +56,12 @@ export interface NormalisedProperty {
   /** Topic to publish changes to. Absent means read only regardless of `access`. */
   setTopic?: string;
   /**
+   * Topic to ask the device what the value is on, where the source has a way
+   * of asking at all. A flat JSON topic has none: it says what it says when it
+   * says it.
+   */
+  getTopic?: string;
+  /**
    * Path to the value inside the state payload. An empty array means the
    * payload itself is the value. Nested for properties inside a composite.
    */

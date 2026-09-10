@@ -116,16 +116,30 @@ export interface TimeCondition {
  * Where an action's value comes from.
  *
  * `trigger` copies whatever set the rule off, translated into the target's own
- * terms, which is how one device is made to follow another.
+ * terms, which is how one device is made to follow another. `add` and
+ * `subtract` count from what the target itself is at, which is how a rule says
+ * "half a degree warmer" without knowing what warm is at the time.
  */
-export type ValueSource = { kind: 'literal' } | { kind: 'trigger' };
+export type ValueSource =
+  | { kind: 'literal' }
+  | { kind: 'trigger' }
+  | { kind: 'add' }
+  | { kind: 'subtract' };
 
 export interface Action extends PropertyRef {
-  /** Used when the value is a literal, which is the default. */
+  /**
+   * Used when the value is a literal, which is the default, and as the
+   * amount to move by for `add` and `subtract`.
+   */
   value?: string | number | boolean;
   valueFrom?: ValueSource;
   /** Wait this long before sending. */
   delayMs?: number;
+}
+
+/** Whether an action counts from the value the target is already at. */
+export function isRelative(action: Action): boolean {
+  return action.valueFrom?.kind === 'add' || action.valueFrom?.kind === 'subtract';
 }
 
 /**
