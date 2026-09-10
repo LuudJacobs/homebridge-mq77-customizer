@@ -1533,6 +1533,9 @@ function clockIcon() {
 /** Whether something in a rule is a time rather than a device. */
 const isTime = (entry) => entry?.kind === 'time';
 
+/** The two ways an action counts from where a value already is. */
+const MOVES = new Set(['add', 'subtract']);
+
 /**
  * The times the sun decides, offered only where they can be worked out.
  *
@@ -3632,30 +3635,62 @@ function refRow(ref, options) {
     }
 
     if (options.withValue) {
+      const moving = MOVES.has(ref.valueFrom?.kind);
       const mode = document.createElement('select');
       for (const entry of [
         { kind: 'literal', label: 'set to' },
         { kind: 'trigger', label: 'match the trigger' },
+        // Only where there is a number to move. One already set stays listed
+        // whatever the device says now, so opening a rule cannot rewrite it.
+        ...(property?.type === 'numeric' || moving
+          ? [
+              { kind: 'add', label: 'increase by' },
+              { kind: 'subtract', label: 'decrease by' },
+            ]
+          : []),
       ]) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = entry.label;
         mode.append(choice);
       }
-      mode.value = ref.valueFrom?.kind === 'trigger' ? 'trigger' : 'literal';
+      mode.value = ref.valueFrom?.kind ?? 'literal';
       mode.addEventListener('change', () => {
-        if (mode.value === 'trigger') {
-          ref.valueFrom = { kind: 'trigger' };
-          delete ref.value;
-        } else {
+        // What was in the box belonged to the old way of reading it: half a
+        // degree is an amount, not a temperature to set.
+        delete ref.value;
+        if (mode.value === 'literal') {
           delete ref.valueFrom;
+        } else {
+          ref.valueFrom = { kind: mode.value };
+        }
+        if (MOVES.has(mode.value)) {
+          ref.value = property?.step ?? 1;
         }
         redrawTail();
+        changed();
       });
       tail.append(mode);
 
-      // Copying the trigger leaves nothing to type, so the value box goes.
-      if (mode.value === 'literal') {
+      if (moving) {
+        // An amount, so the device's own range says nothing about it: half a
+        // degree is a fine step for a setpoint that will not go below five.
+        const amount = document.createElement('input');
+        amount.type = 'number';
+        amount.className = 'delay amount';
+        amount.placeholder = 'amount';
+        if (property?.step) {
+          amount.step = property.step;
+        }
+        amount.value = ref.value ?? '';
+        amount.addEventListener('input', () => {
+          const moved = Number(amount.value);
+          ref.value = amount.value !== '' && Number.isFinite(moved) ? moved : undefined;
+          changed();
+        });
+        tail.append(amount);
+      } else if (mode.value === 'literal') {
+        // Copying the trigger leaves nothing to type, so the value box goes.
         tail.append(
           valueInput(
             property,

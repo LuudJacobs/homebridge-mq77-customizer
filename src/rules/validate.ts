@@ -139,21 +139,29 @@ function parseActions(raw: unknown): { actions: Action[] } | { error: string } {
       return { error: 'An action needs a device and a function' };
     }
 
-    const copies = isObject(entry.valueFrom) && entry.valueFrom.kind === 'trigger';
+    const from = isObject(entry.valueFrom) ? entry.valueFrom.kind : undefined;
+    const copies = from === 'trigger';
+    const moves = from === 'add' || from === 'subtract';
     const value = entry.value;
     const literal =
       typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 
-    if (!copies && !literal) {
+    // An amount, not a value: `add "ON"` means nothing, and neither does
+    // adding a number that is not one.
+    if (moves && !(typeof value === 'number' && Number.isFinite(value))) {
+      return { error: `An action that says ${from} needs a number to move by` };
+    }
+
+    if (!copies && !moves && !literal) {
       return { error: 'An action needs a value to send' };
     }
 
     const delay = typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
     actions.push({
       ...ref,
-      ...(copies
-        ? { valueFrom: { kind: 'trigger' } as const }
-        : { value: value as string | number | boolean }),
+      ...(copies ? { valueFrom: { kind: 'trigger' } as const } : {}),
+      ...(moves ? { valueFrom: { kind: from } as const, value: value as number } : {}),
+      ...(!copies && !moves ? { value: value as string | number | boolean } : {}),
       ...(delay ? { delayMs: delay } : {}),
     });
   }
