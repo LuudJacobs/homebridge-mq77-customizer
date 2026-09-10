@@ -6,7 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- An action on a number can increase or decrease it rather than set it, counting from what the device is at when the action is sent
+## [1.7.0] - 2026-09-11
+
+### Added
+
+- An action on a number can increase or decrease it rather than set it
+- The value is read when the action is sent, so a delayed one counts from what it finds then
+- A device that has never said what a value is gets asked, where the source has a way of asking
 
 ## [1.6.1] - 2026-09-06
 
