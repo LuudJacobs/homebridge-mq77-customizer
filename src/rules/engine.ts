@@ -13,6 +13,7 @@ import { isNow, minuteKey, onDay } from './clock.js';
 import { describeMatch, holds, matches } from './match.js';
 import {
   isMirror,
+  isRelative,
   isSlider,
   isSunTime,
   isTimeTrigger,
@@ -120,6 +121,15 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     { timer: ReturnType<typeof setTimeout>; trigger: Trigger; startedWith: unknown }
   >();
   private readonly timers = new Set<NodeJS.Timeout>();
+  /**
+   * Questions asked of a device and not yet answered, by property.
+   *
+   * A rule that moves a value from where it is needs to know where it is, and
+   * a device that has said nothing since the plugin started has not told us.
+   * Asking is a round trip, so the rest of the action waits here for the
+   * answer to come back through `handleState` like any other.
+   */
+  private readonly asked = new Map<string, ((value: unknown) => void)[]>();
 
   constructor(
     private readonly catalog: Catalog,
@@ -147,6 +157,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       clearTimeout(timer);
     }
     this.timers.clear();
+    this.asked.clear();
   }
 
   /**
@@ -203,6 +214,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       previously.set(propertyKey, this.previous.get(cacheKey));
       this.previous.set(cacheKey, value);
     }
+
+    // Before the retained check: a value replayed on connect is still what
+    // the device is at, and something asked for it.
+    this.answer(update);
 
     // A retained message is the broker replaying something that already
     // happened. Acting on it would fire every rule again on each reconnect.
@@ -810,7 +825,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const problems: string[] = [];
     for (const action of rule.actions ?? []) {
-      const problem = this.run(action, { property: trigger, value });
+      const problem = this.run(rule, action, { property: trigger, value });
       if (problem) {
         problems.push(problem);
       }
@@ -970,7 +985,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const problems: string[] = [];
     for (const action of chosen.branch.actions) {
-      const problem = this.run(action, trigger);
+      const problem = this.run(rule, action, trigger);
       if (problem) {
         problems.push(problem);
       }
@@ -987,11 +1002,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what });
   }
 
-  /** Returns a problem, or undefined when the action was sent. */
-  private run(
-    action: Action,
-    trigger: Fired,
-  ): string | undefined {
+  /** Returns a problem, or undefined when the action was sent or is on its way. */
+  private run(rule: AnyRule, action: Action, trigger: Fired): string | undefined {
     const property = this.property(action);
     if (!property) {
       return `${action.propertyKey} is not on that device any more`;
@@ -1000,24 +1012,149 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       return `${property.label} cannot be written to`;
     }
 
+    if (isRelative(action)) {
+      return this.move(rule, action, property);
+    }
+
     const value = this.resolve(action, property, trigger);
     if (value === undefined) {
       return `nothing to send to ${property.label}`;
     }
 
     const payload = JSON.stringify(writePath(property.encode ?? property.extract, value));
+    this.after(action.delayMs, () => this.mqtt.publish(property.setTopic as string, payload));
+    return undefined;
+  }
 
+  /**
+   * Moves a value from wherever it is, rather than setting it to one.
+   *
+   * Read at the moment of sending rather than when the rule fired: "in ten
+   * minutes, half a degree warmer" is about what it is in ten minutes.
+   *
+   * Nothing is clamped on the way out. A device that will not go past its own
+   * limit says so by staying where it is, and it knows its range better than
+   * a number in a rule does.
+   */
+  private move(rule: AnyRule, action: Action, property: NormalisedProperty): string | undefined {
+    if (property.type !== 'numeric') {
+      return `${property.label} is not a number to move`;
+    }
+    if (typeof action.value !== 'number' || !Number.isFinite(action.value)) {
+      return `nothing to move ${property.label} by`;
+    }
+    const by = action.valueFrom?.kind === 'subtract' ? -action.value : action.value;
+
+    // Sent and done with, when it can be: only an action that has to wait, or
+    // to ask, leaves the rule's own line behind. A refusal known now is the
+    // rule's own failure rather than a second line after it says it fired.
     if (!action.delayMs) {
-      this.mqtt.publish(property.setTopic, payload);
-      return undefined;
+      const at = this.numberNow(action);
+      if (at !== undefined) {
+        this.send(property, tidy(at + by, property.step));
+        return undefined;
+      }
+      if (!property.getTopic) {
+        return `${property.label} has not said what it is, and cannot be asked`;
+      }
     }
 
+    this.after(action.delayMs, () => {
+      const at = this.numberNow(action);
+      if (at !== undefined) {
+        this.send(property, tidy(at + by, property.step));
+        return;
+      }
+      if (!property.getTopic) {
+        this.record(rule, 'failed', `${property.label} has not said what it is, and cannot be asked`);
+        return;
+      }
+      this.askFor(property, action, (value) => {
+        if (typeof value === 'number') {
+          this.send(property, tidy(value + by, property.step));
+          return;
+        }
+        this.record(rule, 'failed', `${property.label} did not say what it is`);
+      });
+    });
+    return undefined;
+  }
+
+  /** What a device last said this value was, when it was a number. */
+  private numberNow(ref: PropertyRef): number | undefined {
+    const value = this.catalog.getState(ref.sourceId, ref.deviceId)?.[ref.propertyKey];
+    return typeof value === 'number' ? value : undefined;
+  }
+
+  /** Now, or after the wait an action asked for. */
+  private after(delayMs: number | undefined, act: () => void): void {
+    if (!delayMs) {
+      act();
+      return;
+    }
     const timer = setTimeout(() => {
       this.timers.delete(timer);
-      this.mqtt.publish(property.setTopic as string, payload);
-    }, action.delayMs);
+      act();
+    }, delayMs);
     this.timers.add(timer);
-    return undefined;
+  }
+
+  /**
+   * Asks a device what a value is, and calls back when it says.
+   *
+   * Called back with nothing when it never does. A device that is asleep, or
+   * gone, must not leave the rule waiting for it for ever.
+   */
+  private askFor(
+    property: NormalisedProperty,
+    ref: PropertyRef,
+    then: (value: unknown) => void,
+  ): void {
+    const key = `${ref.sourceId}:${ref.deviceId}:${ref.propertyKey}`;
+    let timer: NodeJS.Timeout | undefined;
+
+    const answer = (value: unknown) => {
+      clearTimeout(timer);
+      this.timers.delete(timer as NodeJS.Timeout);
+      this.forget(key, answer);
+      then(value);
+    };
+
+    timer = setTimeout(() => answer(undefined), ANSWER_WAIT_MS);
+    this.timers.add(timer);
+
+    this.asked.set(key, [...(this.asked.get(key) ?? []), answer]);
+    this.mqtt.publish(
+      property.getTopic as string,
+      JSON.stringify(writePath(property.extract, '')),
+    );
+  }
+
+  /** Hands a device's answer to whatever asked for it. */
+  private answer(update: StateUpdate): void {
+    if (this.asked.size === 0) {
+      return;
+    }
+    for (const [propertyKey, value] of Object.entries(update.changes)) {
+      const key = `${update.sourceId}:${update.deviceId}:${propertyKey}`;
+      const waiting = this.asked.get(key);
+      if (!waiting) {
+        continue;
+      }
+      this.asked.delete(key);
+      for (const wanted of waiting) {
+        wanted(value);
+      }
+    }
+  }
+
+  private forget(key: string, answer: (value: unknown) => void): void {
+    const waiting = this.asked.get(key)?.filter((candidate) => candidate !== answer);
+    if (!waiting?.length) {
+      this.asked.delete(key);
+      return;
+    }
+    this.asked.set(key, waiting);
   }
 
   /**
@@ -1135,6 +1272,9 @@ const SELF_ECHO_MS = 2000;
 /** How often the clock is looked at. Well inside a minute, so none is missed. */
 const CLOCK_TICK_MS = 15_000;
 
+/** How long a device gets to answer what one of its values is. */
+const ANSWER_WAIT_MS = 5000;
+
 /**
  * What set a rule off.
  *
@@ -1245,4 +1385,21 @@ function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): b
     ref.deviceId === update.deviceId &&
     ref.propertyKey === propertyKey
   );
+}
+
+/**
+ * A number as somebody would write it.
+ *
+ * Half a degree on top of 20.2 is 20.700000000000003 in binary floating point,
+ * which is not a temperature anybody set. Rounded to as many places as the
+ * step has, or three where a device names no step.
+ */
+function tidy(value: number, step?: number): number {
+  const places = step && step > 0 ? placesIn(step) : 3;
+  return Number(value.toFixed(Math.min(places, 6)));
+}
+
+function placesIn(step: number): number {
+  const [, tail = ''] = String(step).split('.');
+  return tail.length;
 }

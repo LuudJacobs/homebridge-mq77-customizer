@@ -42,6 +42,8 @@ export interface Z2mDevice {
 
 export const ACCESS_PUBLISHED = 1;
 export const ACCESS_SET = 2;
+/** The device answers a `/get` for this one. Not every published value does. */
+export const ACCESS_GET = 4;
 
 /**
  * Exposes that describe a whole function rather than a single value. They hold

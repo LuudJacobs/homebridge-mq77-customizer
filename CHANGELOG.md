@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- An action on a number can increase or decrease it rather than set it, counting from what the device is at when the action is sent
+
 ## [1.6.1] - 2026-09-06
 
 ### Changed
