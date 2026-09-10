@@ -332,6 +332,7 @@ export class Zigbee2mqttAdapter
     const { properties, unsupported } = flattenExposes(exposes, {
       stateTopic,
       setTopic: joinTopic(stateTopic, 'set'),
+      getTopic: joinTopic(stateTopic, 'get'),
     });
 
     if (unsupported.length > 0) {

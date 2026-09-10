@@ -109,6 +109,37 @@ describe('parseRule', () => {
     expect('rule' in hollow && hollow.rule.when).toBeUndefined();
   });
 
+  it('reads an action that moves a value, and refuses one with nothing to move by', () => {
+    const bump = (extra: Record<string, unknown>) =>
+      parseRule(
+        {
+          name: 'Warmer',
+          trigger,
+          actions: [{ ...action, ...extra }],
+        },
+        'r1',
+      );
+
+    const added = bump({ valueFrom: { kind: 'add' }, value: 0.5 });
+    expect('rule' in added && added.rule.branches?.[0]?.actions?.[0]).toMatchObject({
+      valueFrom: { kind: 'add' },
+      value: 0.5,
+    });
+
+    const taken = bump({ valueFrom: { kind: 'subtract' }, value: 1 });
+    expect('rule' in taken && taken.rule.branches?.[0]?.actions?.[0]).toMatchObject({
+      valueFrom: { kind: 'subtract' },
+    });
+
+    // An amount, not a value: there is no adding `ON` to anything.
+    expect(bump({ valueFrom: { kind: 'add' }, value: 'ON' })).toMatchObject({
+      error: 'An action that says add needs a number to move by',
+    });
+    expect(bump({ valueFrom: { kind: 'subtract' } })).toMatchObject({
+      error: 'An action that says subtract needs a number to move by',
+    });
+  });
+
   it('fires on any of several triggers', () => {
     const second = { ...trigger, deviceId: '0xother' };
     const parsed = parseRule(

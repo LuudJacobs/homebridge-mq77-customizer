@@ -15,6 +15,7 @@ function flatten(friendlyName: string): NormalisedProperty[] {
   return flattenExposes(device.definition.exposes, {
     stateTopic: `zigbee2mqtt/${friendlyName}`,
     setTopic: `zigbee2mqtt/${friendlyName}/set`,
+    getTopic: `zigbee2mqtt/${friendlyName}/get`,
   }).properties;
 }
 
@@ -146,6 +147,30 @@ describe('climate sensor', () => {
   });
 });
 
+describe('asking a device what a value is', () => {
+  it('gives a get topic only to the values a device answers about', () => {
+    const { properties } = flattenExposes(
+      [
+        // Published and settable, but not askable: 2 | 1.
+        { type: 'binary', name: 'state', property: 'state', access: 3 },
+        // The whole set, which is what a thermostat setpoint carries.
+        { type: 'numeric', name: 'occupied_heating_setpoint', property: 'occupied_heating_setpoint', access: 7 },
+        // Reported and nothing else, like a temperature reading.
+        { type: 'numeric', name: 'temperature', property: 'temperature', access: 1 },
+      ],
+      { stateTopic: 'a', setTopic: 'a/set', getTopic: 'a/get' },
+    );
+    const topics = Object.fromEntries(
+      properties.map((property) => [property.key, property.getTopic]),
+    );
+    expect(topics).toEqual({
+      state: undefined,
+      occupied_heating_setpoint: 'a/get',
+      temperature: undefined,
+    });
+  });
+});
+
 describe('unhandled expose types', () => {
   it('reports them instead of failing', () => {
     const result = flattenExposes(
@@ -153,7 +178,7 @@ describe('unhandled expose types', () => {
         { type: 'list', name: 'schedule', property: 'schedule', access: 1 },
         { type: 'binary', name: 'state', property: 'state', access: 7 },
       ],
-      { stateTopic: 'a', setTopic: 'a/set' },
+      { stateTopic: 'a', setTopic: 'a/set', getTopic: 'a/get' },
     );
     expect(result.properties.map((property) => property.key)).toEqual(['state']);
     expect(result.unsupported).toEqual(['list']);
