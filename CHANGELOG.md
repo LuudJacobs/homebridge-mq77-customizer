@@ -6,7 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- An `icon.png` in the repository root, rendered from the favicon at 256 square
+## [1.7.1] - 2026-09-13
+
+### Added
+
+- An `icon.png` in the repository root, rendered from the favicon at 256 square with the corners transparent
 
 ## [1.7.0] - 2026-09-11
 
