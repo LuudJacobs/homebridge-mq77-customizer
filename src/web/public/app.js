@@ -134,6 +134,7 @@ const displayName = (device, inRoom) => {
 const DEVICE_TYPES = [
   ['', 'Not set'],
   ['light', 'Light'],
+  ['thermometer', 'Thermometer'],
   ['sensor', 'Sensor'],
   ['controller', 'Controller'],
   ['fan', 'Fan'],
@@ -157,7 +158,17 @@ const TYPE_PATHS = {
     'M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.2V17h6v-1.3c0-.8.4-1.6 1-2.2A6 6 0 0 0 12 3Z',
     'M9 18h6M10 21h4',
   ],
-  sensor: ['M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z', 'M12 17.5v-4'],
+  thermometer: ['M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z', 'M12 17.5v-4'],
+  // Something that notices: a point, and what reaches it from either side.
+  // Arcs on both sides rather than fanning upwards, which is wifi wherever
+  // it is drawn.
+  sensor: [
+    'M12 13.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z',
+    'M8.4 8.4a5.1 5.1 0 0 0 0 7.2',
+    'M15.6 8.4a5.1 5.1 0 0 1 0 7.2',
+    'M5.6 5.6a9.1 9.1 0 0 0 0 12.8',
+    'M18.4 5.6a9.1 9.1 0 0 1 0 12.8',
+  ],
   // A wall switch: a plate with a rocker in it.
   controller: [
     'M7 2.5h10a1.5 1.5 0 0 1 1.5 1.5v16a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 20V4A1.5 1.5 0 0 1 7 2.5Z',

@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.7.2] - 2026-09-16
+
+### Added
+
+- A `Sensor` kind for devices that notice something, with a drawing of its own
+
+### Changed
+
+- The kind that was called `Sensor` is now `Thermometer`, which is what its icon always was. A device already marked keeps what it had, so it reads as the new `Sensor` until it is marked again
+
 ## [1.7.1] - 2026-09-13
 
 ### Added
