@@ -22,6 +22,10 @@ export const DEVICE_ENDPOINT = '';
 /** The kinds a device can be marked as, for grouping it in the interface. */
 export const DEVICE_TYPES = [
   'light',
+  // What `sensor` used to mean, said properly: the drawing was always a
+  // thermometer. Nothing already marked is rewritten, so a device tagged
+  // before this reads as the new `sensor` until it is tagged again.
+  'thermometer',
   'sensor',
   'controller',
   'fan',
