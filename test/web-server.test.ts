@@ -227,6 +227,33 @@ describe('WebServer', () => {
     expect(context.syncs).toBe(0);
   });
 
+  it('takes the kinds a device can be marked as, and refuses one it does not know', async () => {
+    const session = await signIn(context.base);
+    const mark = (type: string) =>
+      session.fetch('/api/exposure', {
+        method: 'PUT',
+        body: JSON.stringify({
+          sourceId: 'zigbee',
+          deviceId: '0x00158dfffe000002',
+          exposure: { properties: [], type },
+        }),
+      });
+
+    await mark('thermometer');
+    expect(context.store.getExposure('zigbee:0x00158dfffe000002')).toMatchObject({
+      type: 'thermometer',
+    });
+
+    await mark('sensor');
+    expect(context.store.getExposure('zigbee:0x00158dfffe000002')).toMatchObject({
+      type: 'sensor',
+    });
+
+    // Not an error: the kind is dropped and the rest of the exposure stands.
+    await mark('barometer');
+    expect(context.store.getExposure('zigbee:0x00158dfffe000002')?.type).toBeUndefined();
+  });
+
   it('creates, lists, updates and deletes a rule', async () => {
     const session = await signIn(context.base);
     const draft = {
