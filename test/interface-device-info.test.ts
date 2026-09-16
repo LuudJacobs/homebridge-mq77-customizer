@@ -156,6 +156,7 @@ describe('grouping the device list', () => {
     expect(kinds).toEqual([
       'Not set',
       'Light',
+      'Thermometer',
       'Sensor',
       'Controller',
       'Fan',
@@ -169,6 +170,7 @@ describe('grouping the device list', () => {
   it('draws something for each of them', async () => {
     for (const type of [
       'light',
+      'thermometer',
       'sensor',
       'controller',
       'fan',
@@ -182,6 +184,19 @@ describe('grouping the device list', () => {
       expect(icon, type).not.toBeNull();
       expect(icon!.querySelectorAll('path').length, type).toBeGreaterThan(0);
     }
+  });
+
+  it('draws a thermometer and a sensor differently', async () => {
+    const drawing = async (type: string) => {
+      const ui = await openDevices([device('0xa', 'thing', { type })]);
+      const icon = ui.document.querySelector('#devices .type-icon');
+      return [...icon!.querySelectorAll('path')].map((path) => path.getAttribute('d')).join(' ');
+    };
+
+    // The thermometer keeps the drawing it always had under its old name.
+    const thermometer = await drawing('thermometer');
+    expect(thermometer).toContain('M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z');
+    expect(await drawing('sensor')).not.toBe(thermometer);
   });
 
   it('groups by type, naming the kinds rather than their values', async () => {
