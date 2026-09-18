@@ -1378,7 +1378,7 @@ function logParts(entry) {
   if (entry.ruleKind === 'action') {
     const device = findDevice(entry.press ?? refOf(entry.ruleId));
     return [
-      phrase(...(device ? deviceParts(device) : [words(entry.ruleName)])),
+      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
       words(' '),
       phrase(words(pressWords(entry.press) ?? entry.detail)),
     ];
@@ -1397,7 +1397,7 @@ function logParts(entry) {
     const device = findDevice(entry.press);
     parts.push(
       phrase(
-        ...(device ? deviceParts(device, ` ${pressWords(entry.press)} →`) : [words('a press →')]),
+        ...(device ? deviceParts(device, `: ${pressWords(entry.press)} →`) : [words('a press →')]),
       ),
       words(' '),
     );
