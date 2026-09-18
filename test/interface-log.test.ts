@@ -49,6 +49,23 @@ const devices = [
     property({ key: 'brightness', label: 'Brightness', semantic: 'brightness', type: 'numeric' }),
   ]),
   device('0xw', 'lamp_w', { label: 'Licht', room: 'Woonkamer', type: 'light' }),
+  device('0xs', 'hall_sensor', { label: 'Beweging', room: 'Gang', type: 'sensor' }, [
+    property({
+      key: 'occupancy',
+      label: 'Occupancy',
+      semantic: 'occupancy',
+      type: 'binary',
+      writable: false,
+    }),
+    property({
+      key: 'temperature',
+      label: 'Temperature',
+      semantic: 'temperature',
+      type: 'numeric',
+      writable: false,
+      unit: '°C',
+    }),
+  ]),
 ];
 
 const ref = (deviceId: string, propertyKey = 'state') => ({
@@ -218,6 +235,54 @@ describe('what a log line says', () => {
     expect(
       await lines([entry({ outcome: 'failed', detail: 'dusk needs a location' })]),
     ).toEqual(['Woonkamer: All Off - failed: dusk needs a location']);
+  });
+
+  it('names the device that moved, the way it names a press', async () => {
+    const line = await lines([
+      entry({
+        outcome: 'fired',
+        detail: '1 action sent',
+        changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'occupancy', value: 'true' },
+      }),
+    ]);
+    // The device, which of its readings moved, what it became, and an arrow:
+    // the shape a press has.
+    expect(line[0]).toBe('Gang Beweging Occupancy true → Woonkamer: All Off - ran: 1 action sent');
+  });
+
+  it('says the unit the device list would say', async () => {
+    const line = await lines([
+      entry({
+        changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'temperature', value: '17.2' },
+      }),
+    ]);
+    expect(line[0]).toContain('Temperature 17.2 °C →');
+  });
+
+  it('draws the kind of device beside it, as a press does', async () => {
+    const ui = await openInterface({
+      state: { devices },
+      rules,
+      log: [
+        entry({
+          changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'occupancy', value: 'true' },
+        }),
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Activity'));
+    const icon = ui.document.querySelector('#activity-log .type-icon');
+    expect(icon?.getAttribute('class')).toContain('sensor');
+  });
+
+  it('says a press rather than a change when the entry carries both', async () => {
+    // A controller's own action is the fuller account of the two.
+    const line = await lines([
+      entry({
+        press,
+        changed: { ...press, value: '4_single_long' },
+      }),
+    ]);
+    expect(line[0]).toContain('4 Single Long');
   });
 
   it('calls a rule that held itself back ignored', async () => {

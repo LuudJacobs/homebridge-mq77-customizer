@@ -1391,13 +1391,23 @@ function logParts(entry) {
   const said = describeOutcome(entry);
   const parts = [];
 
-  // What set it off, when a button did. A rule that ran on a state change has
-  // nothing to name here.
+  // What set it off: a button, a value moving, or the clock. All three read
+  // the same way round, since all three are one thing having happened.
   if (entry.press) {
     const device = findDevice(entry.press);
     parts.push(
       phrase(
         ...(device ? deviceParts(device, ` ${pressWords(entry.press)} →`) : [words('a press →')]),
+      ),
+      words(' '),
+    );
+  } else if (entry.changed) {
+    const device = findDevice(entry.changed);
+    parts.push(
+      phrase(
+        ...(device
+          ? deviceParts(device, ` ${changeWords(entry.changed)} →`)
+          : [words('a device →')]),
       ),
       words(' '),
     );
@@ -1428,6 +1438,20 @@ function refOf(ruleId) {
 /** A press as somebody would say it: `4 Single Long`. */
 function pressWords(press) {
   return press ? describeAction(press.value) : undefined;
+}
+
+/**
+ * A value moving as somebody would say it: `Occupancy true`, `Temperature 17.2 °C`.
+ *
+ * The function is named because a device has several: `Beweging 17.2` says
+ * nothing about which of its readings that is. The unit comes from the
+ * property, the same as in the device list.
+ */
+function changeWords(changed) {
+  const property = findProperty(changed);
+  const label = property?.label ?? changed.propertyKey;
+  const value = property?.unit ? `${changed.value} ${property.unit}` : changed.value;
+  return `${label} ${value}`;
 }
 
 /**
