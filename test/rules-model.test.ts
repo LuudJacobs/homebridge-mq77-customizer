@@ -140,6 +140,23 @@ describe('parseRule', () => {
     });
   });
 
+  it('reads a wait on an automation, and only a real one', () => {
+    const rule = (waitMs?: unknown) =>
+      parseRule({ name: 'Slow', trigger, actions: [action], waitMs }, 'r1');
+
+    const waited = rule(90_000);
+    expect('rule' in waited && waited.rule.waitMs).toBe(90_000);
+
+    // Nothing at all rather than a wait of nothing.
+    expect('rule' in rule(0) && rule(0).rule.waitMs).toBeUndefined();
+    expect('rule' in rule(undefined) && rule(undefined).rule.waitMs).toBeUndefined();
+    expect('rule' in rule('soon') && rule('soon').rule.waitMs).toBeUndefined();
+
+    // And kept inside what the interface offers.
+    const huge = rule(99 * 60 * 60 * 1000);
+    expect('rule' in huge && huge.rule.waitMs).toBe(24 * 60 * 60 * 1000);
+  });
+
   it('fires on any of several triggers', () => {
     const second = { ...trigger, deviceId: '0xother' };
     const parsed = parseRule(

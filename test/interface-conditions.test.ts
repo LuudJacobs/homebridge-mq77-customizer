@@ -282,6 +282,57 @@ describe('branches', () => {
     ).toBe(rows()[before]);
   });
 
+  it('offers a wait between what sets it off and what it asks, empty to begin with', async () => {
+    const ui = await openRule(legacyRule);
+
+    const boxes = [...ui.document.querySelectorAll('#automation .wait-box')] as HTMLInputElement[];
+    expect(boxes).toHaveLength(2);
+    // Nothing typed, with the shape shown behind rather than filled in.
+    expect(boxes.map((box) => box.value)).toEqual(['', '']);
+    expect(boxes.map((box) => box.placeholder)).toEqual(['00', '00']);
+    expect(ui.byText('label', 'Optional wait time (mm:ss)', '#automation')).not.toBeNull();
+
+    // Between the triggers and the first outcome, which is the order a rule
+    // runs in: wait, then ask, then act.
+    const row = ui.document.querySelector('#automation .wait') as HTMLElement;
+    const branch = ui.document.querySelector('#automation .branch') as HTMLElement;
+    expect(row.compareDocumentPosition(branch) & 4).toBeTruthy();
+  });
+
+  it('sends a wait when one is typed, and nothing when it is emptied again', async () => {
+    const ui = await openRule(legacyRule);
+    const [minutes, seconds] = [
+      ...ui.document.querySelectorAll('#automation .wait-box'),
+    ] as HTMLInputElement[];
+
+    minutes!.value = '1';
+    minutes!.dispatchEvent(new ui.window.Event('input'));
+    seconds!.value = '30';
+    seconds!.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    const saved = () =>
+      ui.requests.findLast((request) => request.body !== undefined)?.body as { waitMs?: number };
+    expect(saved().waitMs).toBe(90_000);
+
+    minutes!.value = '';
+    minutes!.dispatchEvent(new ui.window.Event('input'));
+    seconds!.value = '';
+    seconds!.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save'));
+
+    // Emptied is no wait at all, rather than a wait of nothing.
+    expect(saved().waitMs).toBeUndefined();
+  });
+
+  it('reads a stored wait back as a clock', async () => {
+    const ui = await openRule({ ...legacyRule, waitMs: 125_000 });
+    const boxes = [...ui.document.querySelectorAll('#automation .wait-box')] as HTMLInputElement[];
+    expect(boxes.map((box) => box.value)).toEqual(['02', '05']);
+  });
+
   it('sends a list of branches when saved', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ outcome'));

@@ -233,6 +233,20 @@ describe('listing automations under their trigger', () => {
     expect(meta).not.toContain('something');
   });
 
+  it('shows a wait in the middle of the line, where a timer shows its own', async () => {
+    const slow = automation('r7', 'After a while', '0xa', '0xc', { waitMs: 90_000 });
+    const quick = automation('r8', 'At once', '0xa', '0xc');
+
+    const ui = await openTab('Automation', [slow, quick]);
+    const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
+      (node) => node.textContent,
+    );
+
+    expect(meta).toContain('hall_lamp → 01:30 → shed_lamp');
+    // A rule with no wait reads exactly as it did.
+    expect(meta).toContain('hall_lamp → shed_lamp');
+  });
+
   it('lists a rule once per trigger, under each device', async () => {
     const both = automation('r4', 'Either', '0xa', '0xc', {
       triggers: [

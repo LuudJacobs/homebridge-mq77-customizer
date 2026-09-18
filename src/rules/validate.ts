@@ -118,6 +118,13 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
   const rateLimitMs =
     typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
 
+  // Nothing at all rather than a wait of nothing: most rules act at once, and
+  // a zero here would be a wait the engine has to keep asking about.
+  const waitMs =
+    typeof raw.waitMs === 'number' && raw.waitMs > 0
+      ? clamp(raw.waitMs, MIN_WAIT_MS, MAX_WAIT_MS)
+      : undefined;
+
   return {
     rule: {
       id,
@@ -125,6 +132,7 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
       enabled: raw.enabled !== false,
       triggers,
       branches,
+      ...(waitMs === undefined ? {} : { waitMs }),
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
     },
   };

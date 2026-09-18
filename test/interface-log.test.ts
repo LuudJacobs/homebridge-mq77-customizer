@@ -317,6 +317,13 @@ describe('what a log line says', () => {
     expect(line[0]).toContain('4 Single Long');
   });
 
+  it('says a rule is waiting without a colon after the word', async () => {
+    // `waiting 00:30` is a sentence rather than a heading over one.
+    expect(await lines([entry({ outcome: 'waiting', detail: '00:30' })])).toEqual([
+      'Woonkamer: All Off - waiting 00:30',
+    ]);
+  });
+
   it('calls a rule that held itself back ignored', async () => {
     expect(
       await lines([entry({ outcome: 'rateLimited', detail: 'Fired 651ms ago, minimum 1000ms' })]),

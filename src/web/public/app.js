@@ -1352,6 +1352,7 @@ const OUTCOME_LABELS = {
   // that decided not to.
   rateLimited: 'ignored',
   conditionsFailed: 'ignored',
+  waiting: 'waiting',
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'ignored',
@@ -1424,7 +1425,10 @@ function logParts(entry) {
     parts.push(phrase(chunk), words(' '));
   }
 
-  parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? ':' : ''}`)));
+  // `waiting 00:30` is a sentence, not a heading over one, so it is the one
+  // outcome whose words follow without a colon.
+  const joined = entry.outcome === 'waiting' ? '' : ':';
+  parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? joined : ''}`)));
   if (said) {
     parts.push(words(' '), phrase(words(said)));
   }
@@ -2315,7 +2319,8 @@ function summarise(rule, inRoom) {
   return [
     phrase(...triggerParts(triggers, inRoom)),
     words(' '),
-    ...(rule.kind === 'timer' ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
+    // A wait reads in the middle, where a timer has always shown its own.
+    ...(rule.waitMs ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
     ...(rule.kind === 'timer' && rule.when ? [phrase(chunkOf('if →')), words(' ')] : []),
     phrase(
       ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
@@ -2564,6 +2569,11 @@ function drawWhenThen(body, draft) {
   };
   drawTriggers();
   body.append(triggers);
+
+  // Between what sets the rule off and what it asks: the wait runs first, and
+  // the conditions are asked when it runs out.
+  body.append(waitRow(draft, { label: 'Optional wait time (mm:ss)', required: false }));
+
   // One outcome or several. The first branch that holds runs, so else if is
   // exclusive by construction rather than by carefully written conditions.
   draft.branches = draft.branches?.length
@@ -2703,6 +2713,84 @@ function powerOf(ref) {
   return power ? { sourceId: ref.sourceId, deviceId: ref.deviceId, propertyKey: power.key } : undefined;
 }
 
+/**
+ * Two boxes and a colon: a wait, said the way a clock says it.
+ *
+ * `required` is what tells the two panels apart. A timer is a wait and must
+ * have one, so its boxes fill themselves in and never empty. An automation
+ * may have none, so empty is what it starts as and what it goes back to,
+ * with `00` shown behind rather than typed in.
+ */
+function waitRow(draft, { label, required }) {
+  const row = document.createElement('div');
+  row.className = 'option wait';
+
+  const title = document.createElement('label');
+  title.textContent = label;
+  row.append(title);
+
+  /** Two digits at least, since a clock reads 01:05 rather than 1:5. */
+  const pad = (value) => String(value).padStart(2, '0');
+
+  const total = draft.waitMs ? Math.round(draft.waitMs / 1000) : undefined;
+
+  const box = (value, limit) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'wait-box';
+    input.maxLength = limit;
+    input.placeholder = '00';
+    input.value = value === undefined ? '' : pad(value);
+    return input;
+  };
+
+  // Minutes run as long as you like, up to the day the server allows.
+  const minutes = box(total === undefined ? undefined : Math.floor(total / 60), 4);
+  const seconds = box(total === undefined ? undefined : total % 60, 2);
+
+  const readWait = () => {
+    const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
+    if (required) {
+      // A wait of nothing is not a timer.
+      draft.waitMs = Math.max(1, both) * 1000;
+      return;
+    }
+    // Nothing typed is no wait at all, which is how most rules run.
+    if (both > 0) {
+      draft.waitMs = both * 1000;
+    } else {
+      delete draft.waitMs;
+    }
+  };
+
+  for (const input of [minutes, seconds]) {
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '');
+      // Sixty seconds is a minute, and the box beside it is for those.
+      if (input === seconds && Number(input.value) > 59) {
+        input.value = '59';
+      }
+      readWait();
+    });
+    input.addEventListener('blur', () => {
+      // A timer says none as `00`; an automation leaves the box empty, since
+      // empty is what having no wait looks like.
+      const said = Number(input.value) || 0;
+      input.value = required || said > 0 || Number(minutes.value) || Number(seconds.value)
+        ? pad(said)
+        : '';
+      readWait();
+    });
+  }
+
+  const colon = document.createElement('span');
+  colon.className = 'wait-colon';
+  colon.textContent = ':';
+  row.append(minutes, colon, seconds);
+  return row;
+}
+
 function drawTimer(body, draft) {
   // One trigger. A wait is about one thing happening, and several would each
   // want their own clock.
@@ -2722,59 +2810,7 @@ function drawTimer(body, draft) {
     }),
   );
 
-  const waitRow = document.createElement('div');
-  waitRow.className = 'option wait';
-  const waitLabel = document.createElement('label');
-  // The shape of it said in the label, so nothing has to trail after.
-  waitLabel.textContent = 'Wait (mm:ss)';
-  waitRow.append(waitLabel);
-
-  const total = Math.round(draft.waitMs / 1000);
-
-  /** Two digits at least, since a clock reads 01:05 rather than 1:5. */
-  const pad = (value) => String(value).padStart(2, '0');
-
-  const box = (value, limit) => {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'wait-box';
-    input.maxLength = limit;
-    input.value = pad(value);
-    return input;
-  };
-
-  // Minutes run as long as you like, up to the day the server allows.
-  const minutes = box(Math.floor(total / 60), 4);
-  const seconds = box(total % 60, 2);
-
-  const readWait = () => {
-    const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
-    // A wait of nothing is an automation, and there is a tab for those.
-    draft.waitMs = Math.max(1, both) * 1000;
-  };
-
-  for (const input of [minutes, seconds]) {
-    input.addEventListener('input', () => {
-      input.value = input.value.replace(/\D/g, '');
-      // Sixty seconds is a minute, and the box beside it is for those.
-      if (input === seconds && Number(input.value) > 59) {
-        input.value = '59';
-      }
-      readWait();
-    });
-    // An empty box means none of that, said as a clock says it.
-    input.addEventListener('blur', () => {
-      input.value = pad(Number(input.value) || 0);
-      readWait();
-    });
-  }
-
-  const colon = document.createElement('span');
-  colon.className = 'wait-colon';
-  colon.textContent = ':';
-  waitRow.append(minutes, colon, seconds);
-  body.append(waitRow);
+  body.append(waitRow(draft, { label: 'Wait (mm:ss)', required: true }));
 
   // The same editor an automation uses, asked when the wait runs out. One
   // condition over the single set of actions, so the panel takes it once

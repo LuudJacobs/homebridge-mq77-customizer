@@ -187,6 +187,18 @@ export interface Rule {
   conditions?: Condition[];
   actions?: Action[];
   /**
+   * How long to wait between the trigger and everything else.
+   *
+   * Absent on most rules, which act at once. Where it is set, the conditions
+   * are asked when the wait runs out rather than when the trigger fired: a
+   * rule for "in ten minutes, unless somebody is home by then" is asking
+   * about ten minutes from now.
+   *
+   * A wait is called off when what started it stops being true, which is the
+   * difference between this and an action that carries its own delay.
+   */
+  waitMs?: number;
+  /**
    * Shortest gap between firings.
    *
    * Also the backstop against a loop: two rules that trigger each other
@@ -306,7 +318,9 @@ export type LogOutcome =
   | 'fired'
   /** A timer started counting. */
   | 'started'
-  /** A timer was called off before it got there. */
+  /** A rule with a wait is counting down before it asks anything. */
+  | 'waiting'
+  /** A wait was called off before it got there. */
   | 'cancelled'
   | 'rateLimited'
   | 'conditionsFailed'
