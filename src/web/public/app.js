@@ -1405,8 +1405,10 @@ function logParts(entry) {
     const device = findDevice(entry.changed);
     parts.push(
       phrase(
+        // A colon between the device and its reading: `Beweging: Occupied`
+        // rather than two words running into each other.
         ...(device
-          ? deviceParts(device, ` ${changeWords(entry.changed)} →`)
+          ? deviceParts(device, `: ${changeWords(entry.changed)} →`)
           : [words('a device →')]),
       ),
       words(' '),
@@ -1480,7 +1482,7 @@ function changeWords(changed) {
   }
 
   if (property?.unit) {
-    return `${changed.value} ${property.unit}`;
+    return `${changed.value}${property.unit}`;
   }
 
   const label = property?.label ?? changed.propertyKey;
