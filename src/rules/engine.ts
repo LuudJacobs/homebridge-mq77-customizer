@@ -780,13 +780,20 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    */
   private startCountdown(rule: Rule, fired: Fired, trigger?: Trigger): void {
     const running = this.countdowns.get(rule.id);
+
+    // The same thing happening again is the same wait starting over, and says
+    // nothing new: a switch that reports twice would otherwise write a second
+    // line saying exactly what the first one said.
+    const again = Boolean(
+      running && trigger && running.trigger && sameTrigger(running.trigger, trigger),
+    );
+
     if (running) {
       this.forgetCountdown(rule);
 
       // A different trigger is a different thing happening, so the one that
-      // was counting is called off and this one takes its place. The same
-      // trigger again is the same thing happening, and simply starts over.
-      if (trigger && running.trigger && !sameTrigger(running.trigger, trigger)) {
+      // was counting is called off and this one takes its place.
+      if (!again && trigger) {
         this.record(
           rule,
           'cancelled',
@@ -813,7 +820,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.timers.add(timer);
     this.countdowns.set(rule.id, { timer, trigger, startedWith: fired.value, fired });
 
-    this.record(rule, 'waiting', onTheClock(wait));
+    if (!again) {
+      this.record(rule, 'waiting', onTheClock(wait));
+    }
   }
 
   /**
