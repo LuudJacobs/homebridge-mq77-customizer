@@ -84,29 +84,13 @@ describe('parseRule', () => {
     expect('rule' in parsed && parsed.rule.branches?.[0]?.when).toBeUndefined();
   });
 
-  it('reads a timer with no condition, and one whose condition was taken off again', () => {
-    const timer = (when?: unknown) => ({
-      name: 'Light out',
-      kind: 'timer',
-      triggers: [trigger],
-      waitMs: 30_000,
-      actions: [action],
-      ...(when === undefined ? {} : { when }),
-    });
-
-    // Never had one.
-    const plain = parseRule(timer(), 't1');
-    expect('rule' in plain && plain.rule.when).toBeUndefined();
-
-    // Had one, and it has just been removed: the panel sends nothing where
-    // the condition was, which is not a condition it failed to understand.
-    const emptied = parseRule(timer(null), 't1');
-    expect('error' in emptied).toBe(false);
-    expect('rule' in emptied && emptied.rule.when).toBeUndefined();
-
-    // A group left with nothing in it is dropped the same way.
-    const hollow = parseRule(timer({ kind: 'all', nodes: [] }), 't1');
-    expect('rule' in hollow && hollow.rule.when).toBeUndefined();
+  it('refuses a rule stored as a timer, which is not a kind any more', () => {
+    const timer = parseRule(
+      { name: 'Light out', kind: 'timer', triggers: [trigger], waitMs: 30_000, actions: [action] },
+      't1',
+    );
+    // The store drops these on load, so nothing should be offering one.
+    expect(timer).toMatchObject({ error: 'Timers are automations with a wait now' });
   });
 
   it('reads an action that moves a value, and refuses one with nothing to move by', () => {
@@ -138,6 +122,23 @@ describe('parseRule', () => {
     expect(bump({ valueFrom: { kind: 'subtract' } })).toMatchObject({
       error: 'An action that says subtract needs a number to move by',
     });
+  });
+
+  it('reads a wait on an automation, and only a real one', () => {
+    const rule = (waitMs?: unknown) =>
+      parseRule({ name: 'Slow', trigger, actions: [action], waitMs }, 'r1');
+
+    const waited = rule(90_000);
+    expect('rule' in waited && waited.rule.waitMs).toBe(90_000);
+
+    // Nothing at all rather than a wait of nothing.
+    expect('rule' in rule(0) && rule(0).rule.waitMs).toBeUndefined();
+    expect('rule' in rule(undefined) && rule(undefined).rule.waitMs).toBeUndefined();
+    expect('rule' in rule('soon') && rule('soon').rule.waitMs).toBeUndefined();
+
+    // And kept inside what the interface offers.
+    const huge = rule(99 * 60 * 60 * 1000);
+    expect('rule' in huge && huge.rule.waitMs).toBe(24 * 60 * 60 * 1000);
   });
 
   it('fires on any of several triggers', () => {

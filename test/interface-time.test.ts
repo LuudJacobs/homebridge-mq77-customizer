@@ -166,23 +166,6 @@ describe('a time in the lists', () => {
   });
 });
 
-describe('the rules that cannot be set off by a time', () => {
-  const timer = {
-    id: 't1',
-    kind: 'timer',
-    name: 'Hall',
-    enabled: true,
-    triggers: [{ ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } }],
-    waitMs: 30_000,
-    actions: [{ ...ref('0xa'), value: 'OFF' }],
-  };
-
-  it('offers no Time in a timer', async () => {
-    const ui = await openRule(timer, 'Timers');
-    expect(pickerOptions(ui, '#timers')).not.toContain('Current time');
-  });
-});
-
 describe('the times the sun decides', () => {
   const timeRule = (at: string) => automation({ triggers: [{ kind: 'time', at }] });
 

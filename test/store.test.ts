@@ -65,6 +65,30 @@ describe('Store', () => {
     await store.load();
     expect(store.data).toEqual({ version: 1, exposures: {}, rules: [] });
   });
+
+  it('drops a rule stored as a timer, and keeps everything beside it', async () => {
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        exposures: { 'zigbee:0xa': { properties: ['state'] } },
+        rules: [
+          { id: 'r1', name: 'An automation', enabled: true },
+          { id: 't1', kind: 'timer', name: 'Light out', enabled: true, waitMs: 30_000 },
+          { id: 'm1', kind: 'mirror', name: 'Lichten', enabled: true },
+        ],
+      }),
+      'utf8',
+    );
+
+    const store = new Store(file, silentLogger);
+    await store.load();
+
+    // Automations can wait now, so a timer is a rule nothing would ever run.
+    expect(store.data.rules.map((rule) => rule.id)).toEqual(['r1', 'm1']);
+    expect(store.data.exposures).toEqual({ 'zigbee:0xa': { properties: ['state'] } });
+  });
 });
 
 describe('keeping a way back', () => {

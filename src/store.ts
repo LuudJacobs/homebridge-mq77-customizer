@@ -346,7 +346,12 @@ function migrate(parsed: unknown): PersistedState {
   return {
     version: STORE_VERSION,
     exposures: state.exposures ?? {},
-    rules: state.rules ?? [],
+    // Timers were folded into automations, which can wait. One stored by an
+    // older version is dropped rather than carried: nothing runs it, nothing
+    // draws it, and leaving it would only be a rule that never fires.
+    rules: (state.rules ?? []).filter(
+      (rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer',
+    ),
     sessionSecret: state.sessionSecret,
   };
 }

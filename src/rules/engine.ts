@@ -17,7 +17,6 @@ import {
   isSlider,
   isSunTime,
   isTimeTrigger,
-  isTimer,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
   DEFAULT_STEPS,
@@ -44,7 +43,6 @@ import {
   type LogTime,
   type SliderRule,
   type TimeTrigger,
-  type TimerRule,
   type Trigger,
 } from './types.js';
 
@@ -118,10 +116,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   /** When each cycle button last did something, for its own debounce. */
   private readonly cycled = new Map<string, number>();
   /**
-   * What each timer last sent, so its own doing does not start it again.
+   * What each waiting rule last sent, so its own doing does not start it
+   * again.
    *
-   * A timer watching for any change and switching a light off hears the
-   * light say it is off, reads that as a change, and starts over.
+   * A rule watching for any change and switching a light off hears the light
+   * say it is off, reads that as a change, and starts waiting over.
    */
   private readonly echoes = new Map<string, { at: number; keys: Set<string> }>();
   /** Timers counting, by rule, with what set each one off. */
@@ -130,6 +129,17 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     { timer: ReturnType<typeof setTimeout>; trigger: Trigger; startedWith: unknown }
   >();
   private readonly timers = new Set<NodeJS.Timeout>();
+  /**
+   * Automations counting down before they ask anything, by rule.
+   *
+   * What set each one off is kept with it: the wait ends by firing the rule
+   * as though the trigger had just happened, which is what makes an action
+   * copying the trigger still have something to copy ten minutes later.
+   */
+  private readonly countdowns = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; trigger?: Trigger; startedWith: unknown; fired: Fired }
+  >();
   /**
    * Questions asked of a device and not yet answered, by property.
    *
@@ -166,6 +176,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       clearTimeout(timer);
     }
     this.timers.clear();
+    this.countdowns.clear();
     this.asked.clear();
   }
 
@@ -182,7 +193,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    */
   readClock(at: Date): void {
     for (const rule of this.store.data.rules) {
-      if (!rule.enabled || isMirror(rule) || isSlider(rule) || isTimer(rule)) {
+      if (!rule.enabled || isMirror(rule) || isSlider(rule)) {
         continue;
       }
 
@@ -207,7 +218,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       this.pressed = undefined;
       this.struck = { at: due.at, ...(due.offset ? { offset: due.offset } : {}) };
-      this.fire(rule, { property: undefined, value: undefined, time: due });
+      const fired: Fired = { property: undefined, value: undefined, time: due };
+      if (rule.waitMs) {
+        this.startCountdown(rule, fired);
+      } else {
+        this.fire(rule, fired);
+      }
       this.struck = undefined;
     }
   }
@@ -276,10 +292,16 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         continue;
       }
 
-      if (isTimer(rule)) {
-        this.tick(rule, update, previously);
+      // What this rule itself just sent is not a new reason to start: a rule
+      // that switches off what it watches would otherwise hear its own doing
+      // and begin again.
+      if (rule.waitMs && this.isOwnDoing(rule, update)) {
         continue;
       }
+
+      // A rule already counting down is called off when what started it
+      // stops being true, whatever else this message says.
+      this.callOffIfGone(rule, update);
 
       // Any trigger will do, and one message satisfying two of them is still
       // one thing happening.
@@ -296,7 +318,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         }
         this.moved = said(trigger, value);
         try {
-          this.fire(rule, { property: trigger, value });
+          if (rule.waitMs) {
+            this.startCountdown(rule, { property: trigger, value }, trigger);
+          } else {
+            this.fire(rule, { property: trigger, value });
+          }
         } finally {
           this.moved = undefined;
         }
@@ -738,154 +764,117 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
       : undefined;
 
-    if (isTimer(rule)) {
-      if (!trigger) {
-        return false;
-      }
-      this.startWaiting(rule, trigger, value);
-      return true;
-    }
-
+    // Deliberately past the wait: the button is for trying a rule while
+    // building it, and sitting through ten minutes is not that.
     this.fire(rule, { property: trigger, value });
     return true;
   }
 
   /**
-   * Starts, restarts or calls off a timer.
+   * Starts an automation's wait, or starts it again.
    *
-   * Calling off comes first: a message that takes the value away from what
-   * started the wait has ended it, whatever else that message says.
+   * Again rather than on top: a sensor seeing somebody a second time means
+   * another full wait, not a shorter one. A different trigger is a different
+   * thing happening, so the one that was counting is called off and this one
+   * takes its place.
    */
-  private tick(rule: TimerRule, update: StateUpdate, previously: Map<string, unknown>): void {
-    const running = this.waiting.get(rule.id);
-    if (running && refersTo(running.trigger, update, running.trigger.propertyKey)) {
-      const value = update.changes[running.trigger.propertyKey];
-      if (value !== undefined && !holds(running.trigger.match, value, running.startedWith)) {
-        clearTimeout(running.timer);
-        this.timers.delete(running.timer);
-        this.waiting.delete(rule.id);
-        // What ended the wait rather than what started it: on this line the
-        // value that took it away is the news.
-        this.moved = said(running.trigger, value);
-        try {
-          this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
-        } finally {
-          this.moved = undefined;
-        }
-      }
-    }
-
-    for (const trigger of deviceTriggersOf(rule)) {
-      if (!(trigger.propertyKey in update.changes)) {
-        continue;
-      }
-      if (!refersTo(trigger, update, trigger.propertyKey)) {
-        continue;
-      }
-      const value = update.changes[trigger.propertyKey];
-      const before = previously.get(trigger.propertyKey);
-      if (!matches(trigger.match, value, before)) {
-        continue;
-      }
-      if (!justBecameTrue(trigger.match, before)) {
-        continue;
-      }
-      if (this.isOwnDoing(rule, trigger)) {
-        continue;
-      }
-      this.startWaiting(rule, trigger, value);
-      return;
-    }
-  }
-
-  /** True when this timer wrote to that property a moment ago. */
-  private isOwnDoing(rule: TimerRule, trigger: Trigger): boolean {
-    const echo = this.echoes.get(rule.id);
-    if (!echo || Date.now() - echo.at > SELF_ECHO_MS) {
-      return false;
-    }
-    return echo.keys.has(`${trigger.sourceId}:${trigger.deviceId}:${trigger.propertyKey}`);
-  }
-
-  private startWaiting(rule: TimerRule, trigger: Trigger, value: unknown): void {
-    // The clock starts again rather than running on: a sensor seeing
-    // somebody a second time means another full wait, not a shorter one.
-    const running = this.waiting.get(rule.id);
+  private startCountdown(rule: Rule, fired: Fired, trigger?: Trigger): void {
+    const running = this.countdowns.get(rule.id);
     if (running) {
-      clearTimeout(running.timer);
-      this.timers.delete(running.timer);
+      this.forgetCountdown(rule);
+
+      // A different trigger is a different thing happening, so the one that
+      // was counting is called off and this one takes its place. The same
+      // trigger again is the same thing happening, and simply starts over.
+      if (trigger && running.trigger && !sameTrigger(running.trigger, trigger)) {
+        this.record(
+          rule,
+          'cancelled',
+          `${trigger.propertyKey} ${describeMatch(trigger.match)} instead`,
+        );
+      }
     }
 
     const wait = clampWait(rule.waitMs);
     const timer = setTimeout(() => {
       this.timers.delete(timer);
-      this.waiting.delete(rule.id);
-      this.fireTimer(rule, trigger, value);
+      this.countdowns.delete(rule.id);
+      this.moved = trigger ? said(trigger, fired.value) : undefined;
+      this.struck = fired.time
+        ? { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) }
+        : undefined;
+      try {
+        this.fire(rule, fired);
+      } finally {
+        this.moved = undefined;
+        this.struck = undefined;
+      }
     }, wait);
     this.timers.add(timer);
-    this.waiting.set(rule.id, { timer, trigger, startedWith: value });
+    this.countdowns.set(rule.id, { timer, trigger, startedWith: fired.value, fired });
 
-    const total = Math.round(wait / 1000);
-    const clock = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    this.record(rule, 'waiting', onTheClock(wait));
+  }
+
+  /**
+   * Calls off a wait whose reason for waiting has gone away.
+   *
+   * Only a device can take one away. A rule set off by the clock waits out
+   * whatever it was given: ten past ten does not stop having happened.
+   */
+  private callOffIfGone(rule: Rule, update: StateUpdate): void {
+    const running = this.countdowns.get(rule.id);
+    const trigger = running?.trigger;
+    if (!running || !trigger || !refersTo(trigger, update, trigger.propertyKey)) {
+      return;
+    }
+
+    const value = update.changes[trigger.propertyKey];
+    if (value === undefined || holds(trigger.match, value, running.startedWith)) {
+      return;
+    }
+
+    this.forgetCountdown(rule);
+
+    // The value that took the wait away is what there is to say here, the
+    // same as on a timer's own line.
     this.moved = said(trigger, value);
     try {
-      this.record(rule, 'started', `waiting ${clock}`);
+      this.record(rule, 'cancelled', `${describeMatch(trigger.match)} no longer`);
     } finally {
       this.moved = undefined;
     }
   }
 
-  private fireTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
-    if (!this.allowed(rule)) {
-      return;
+  /** True when this rule wrote to one of these properties a moment ago. */
+  private isOwnDoing(rule: Rule, update: StateUpdate): boolean {
+    const echo = this.echoes.get(rule.id);
+    if (!echo || Date.now() - echo.at > SELF_ECHO_MS) {
+      return false;
     }
-
-    // What started the wait, said again on the line that ends it: by then it
-    // is ten minutes further down the log from the one that says it started.
-    this.moved = said(trigger, value);
-    try {
-      this.finishTimer(rule, trigger, value);
-    } finally {
-      this.moved = undefined;
-    }
+    return Object.keys(update.changes).some((propertyKey) =>
+      echo.keys.has(`${update.sourceId}:${update.deviceId}:${propertyKey}`),
+    );
   }
 
-  private finishTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
-
-    // Asked now rather than when the clock started: a timer is for "in ten
-    // minutes, unless", and the unless is about ten minutes from now. Being
-    // called off is a different thing, and belongs to the trigger going away.
-    const failed = evaluate(rule.when, catalogLookup(this.catalog, () => new Date(), this.place));
-    if (failed) {
-      this.record(rule, failed.unanswerable ? 'failed' : 'conditionsFailed', failed.detail);
-      return;
-    }
-
-    const problems: string[] = [];
-    for (const action of rule.actions ?? []) {
-      const problem = this.run(rule, action, { property: trigger, value });
-      if (problem) {
-        problems.push(problem);
-      }
-    }
-
-    if (problems.length > 0) {
-      this.record(rule, 'failed', problems.join('; '));
-      return;
-    }
-    // Noted before the devices answer, so their answer is not read as a new
-    // reason to start.
+  /** Remembers what a rule sent, so its own echo is not read as news. */
+  private noteEcho(rule: Rule, actions: Action[]): void {
     this.echoes.set(rule.id, {
       at: Date.now(),
       keys: new Set(
-        (rule.actions ?? []).map(
-          (action) => `${action.sourceId}:${action.deviceId}:${action.propertyKey}`,
-        ),
+        actions.map((action) => `${action.sourceId}:${action.deviceId}:${action.propertyKey}`),
       ),
     });
+  }
 
-    const count = rule.actions?.length ?? 0;
-    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`);
+  private forgetCountdown(rule: Rule): void {
+    const running = this.countdowns.get(rule.id);
+    if (!running) {
+      return;
+    }
+    clearTimeout(running.timer);
+    this.timers.delete(running.timer);
+    this.countdowns.delete(rule.id);
   }
 
   /**
@@ -942,7 +931,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.emit('log', entry);
   }
 
-  /** Shared rate limit and runaway guard, for whichever kind of rule. */
   private allowed(rule: AnyRule): boolean {
     const now = Date.now();
     const limit = rule.rateLimitMs ?? 0;
@@ -1034,6 +1022,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     if (problems.length > 0) {
       this.record(rule, 'failed', problems.join('; '), { branch: what });
       return;
+    }
+
+    // Noted before the devices answer, so their answer is not read as a new
+    // reason to start waiting. Only a rule that waits can be started again by
+    // its own doing; one that acts at once has the runaway cutoff instead.
+    if (rule.waitMs) {
+      this.noteEcho(rule, chosen.branch.actions);
     }
 
     const count = chosen.branch.actions.length;
@@ -1252,13 +1247,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       at: Date.now(),
       ruleId: rule.id,
       ruleName: rule.name,
-      ruleKind: isMirror(rule)
-        ? 'mirror'
-        : isSlider(rule)
-          ? 'slider'
-          : isTimer(rule)
-            ? 'timer'
-            : 'standard',
+      ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
       outcome,
       detail,
       // A press is the fuller account of the two, so it wins where a
@@ -1311,6 +1300,23 @@ const SELF_ECHO_MS = 2000;
 
 /** How often the clock is looked at. Well inside a minute, so none is missed. */
 const CLOCK_TICK_MS = 15_000;
+
+/** A wait as a clock says it, minutes and seconds. */
+function onTheClock(waitMs: number): string {
+  const total = Math.round(waitMs / 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
+/** Whether two triggers are the same one, for telling a restart from a swap. */
+function sameTrigger(one: Trigger, other: Trigger): boolean {
+  return (
+    one.sourceId === other.sourceId &&
+    one.deviceId === other.deviceId &&
+    one.propertyKey === other.propertyKey &&
+    describeMatch(one.match) === describeMatch(other.match)
+  );
+}
 
 /** A value as the log carries it: where it was, and what it became. */
 function said(trigger: PropertyRef, value: unknown): LogChange | undefined {
@@ -1411,7 +1417,7 @@ function nameOf(branch: Branch, index: number): string {
 }
 
 /** A rule's triggers, reading what earlier versions stored as a list of one. */
-function triggersOf(rule: Rule | TimerRule): AutomationTrigger[] {
+function triggersOf(rule: Rule): AutomationTrigger[] {
   if (rule.triggers?.length) {
     return rule.triggers;
   }
@@ -1428,7 +1434,7 @@ function triggersOf(rule: Rule | TimerRule): AutomationTrigger[] {
  * it is left out here rather than tested against every message and never
  * matching.
  */
-function deviceTriggersOf(rule: Rule | TimerRule): Trigger[] {
+function deviceTriggersOf(rule: Rule): Trigger[] {
   return triggersOf(rule).filter((trigger): trigger is Trigger => !isTimeTrigger(trigger));
 }
 

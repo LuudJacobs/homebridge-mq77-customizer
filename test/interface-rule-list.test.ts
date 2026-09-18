@@ -233,6 +233,20 @@ describe('listing automations under their trigger', () => {
     expect(meta).not.toContain('something');
   });
 
+  it('shows a wait in the middle of the line, where a timer shows its own', async () => {
+    const slow = automation('r7', 'After a while', '0xa', '0xc', { waitMs: 90_000 });
+    const quick = automation('r8', 'At once', '0xa', '0xc');
+
+    const ui = await openTab('Automation', [slow, quick]);
+    const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
+      (node) => node.textContent,
+    );
+
+    expect(meta).toContain('hall_lamp → 01:30 → shed_lamp');
+    // A rule with no wait reads exactly as it did.
+    expect(meta).toContain('hall_lamp → shed_lamp');
+  });
+
   it('lists a rule once per trigger, under each device', async () => {
     const both = automation('r4', 'Either', '0xa', '0xc', {
       triggers: [
@@ -421,20 +435,12 @@ describe('keeping a description on one line', () => {
     expect(sides).toEqual(['hall_lamp \u2192', 'porch_lamp']);
   });
 
-  it('keeps a timer wait whole', async () => {
-    const timer = {
-      id: 't1',
-      kind: 'timer',
-      name: 'Light out',
-      enabled: true,
-      triggers: [{ ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } }],
-      waitMs: 90_000,
-      actions: [{ ...ref('0xb'), value: 'OFF' }],
-    };
-    const ui = await openInterface({ state: { devices }, rules: [timer] });
-    await ui.click(ui.byText('button.tab', 'Timers'));
+  it('keeps a wait whole', async () => {
+    const slow = automation('r9', 'Light out', '0xa', '0xb', { waitMs: 90_000 });
+    const ui = await openInterface({ state: { devices }, rules: [slow] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
 
-    const chunks = [...ui.document.querySelectorAll('#timers .device-meta .chunk')].map(
+    const chunks = [...ui.document.querySelectorAll('#automation .device-meta .chunk')].map(
       (node) => node.textContent,
     );
     // The time is one piece, with the arrow after it. The line breaks there.

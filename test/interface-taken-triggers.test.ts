@@ -198,17 +198,18 @@ describe('a button already spoken for', () => {
     expect(onTrigger(ui)).toEqual(['1 Single', '2 Single', '3 Double *']);
   });
 
-  it('counts a timer as spoken for', async () => {
-    const timer = {
-      id: 't1',
-      kind: 'timer',
+  it('counts a rule that waits as spoken for', async () => {
+    const waits = {
+      id: 'w1',
       name: 'Light out',
       enabled: true,
       triggers: [press('2_single')],
       waitMs: 30_000,
-      actions: [{ sourceId: 'zigbee', deviceId: '0xl', propertyKey: 'state', value: 'OFF' }],
+      branches: [
+        { actions: [{ sourceId: 'zigbee', deviceId: '0xl', propertyKey: 'state', value: 'OFF' }] },
+      ],
     };
-    const ui = await openAutomation([automation('r1', 'First', '1_single'), timer]);
+    const ui = await openAutomation([automation('r1', 'First', '1_single'), waits]);
 
     expect(onTrigger(ui)).toEqual(['1 Single', '2 Single *', '3 Double']);
   });
