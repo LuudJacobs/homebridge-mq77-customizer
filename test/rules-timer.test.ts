@@ -392,6 +392,23 @@ describe('a timer that asks a question first', () => {
     }
   });
 
+  it('names what called it off, which is the value that took the wait away', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([timerRule()]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+
+      expect(engine.getLog()[0]).toMatchObject({
+        outcome: 'cancelled',
+        // Not the ON that started it: the OFF is what there is to say here.
+        changed: { deviceId: LAMP.id, propertyKey: 'state', value: 'OFF' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('can ask the clock, and is turned away by day', async () => {
     vi.useFakeTimers();
     try {
