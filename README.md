@@ -126,7 +126,9 @@ Across all four:
 - rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press
 - a rule will not run more often than its rate limit, one second by default, and one that runs more than twenty times in ten seconds is switched off and logged on the assumption it is setting itself off
 
-An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run.
+An automation can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off if what started it stops being true, and starts again from the top if the same thing happens again. An action's own delay is a different thing: it comes after the conditions and cannot be called off.
+
+An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
 
 ### Times
 
