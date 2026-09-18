@@ -249,7 +249,7 @@ describe('what a log line says', () => {
     ]);
     // A device has several readings, and `Ceiling 191` says nothing about
     // which of them moved.
-    expect(line[0]).toContain('Keuken Ceiling Brightness 191 →');
+    expect(line[0]).toContain('Keuken Ceiling: Brightness 191 →');
   });
 
   it('names the device that moved, the way it names a press', async () => {
@@ -262,7 +262,7 @@ describe('what a log line says', () => {
     ]);
     // The device, which of its readings moved, what it became, and an arrow:
     // the shape a press has.
-    expect(line[0]).toBe('Gang Beweging Occupied → Woonkamer: All Off - ran: 1 action sent');
+    expect(line[0]).toBe('Gang Beweging: Occupied → Woonkamer: All Off - ran: 1 action sent');
   });
 
   it('says a yes or no reading in its own words', async () => {
@@ -275,8 +275,8 @@ describe('what a log line says', () => {
         ])
       )[0];
 
-    expect(await said('true')).toContain('Gang Beweging Occupied →');
-    expect(await said('false')).toContain('Gang Beweging Empty →');
+    expect(await said('true')).toContain('Gang Beweging: Occupied →');
+    expect(await said('false')).toContain('Gang Beweging: Empty →');
   });
 
   it('leaves a reading that carries a unit to say what it is', async () => {
@@ -285,8 +285,9 @@ describe('what a log line says', () => {
         changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'temperature', value: '17.2' },
       }),
     ]);
-    // `Temperature 17.2 °C` is one word too many.
-    expect(line[0]).toContain('Gang Beweging 17.2 °C →');
+    // `Temperature 17.2 °C` is one word too many, and the degree sign sits
+    // against the number.
+    expect(line[0]).toContain('Gang Beweging: 17.2°C →');
     expect(line[0]).not.toContain('Temperature');
   });
 
