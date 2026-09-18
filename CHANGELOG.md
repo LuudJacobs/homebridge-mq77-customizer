@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A rule set off by a device rather than a button says so in the activity log, with the device, what moved on it and an arrow
+
 ## [1.7.2] - 2026-09-16
 
 ### Added
