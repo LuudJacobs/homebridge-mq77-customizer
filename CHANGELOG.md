@@ -6,7 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A rule set off by a device rather than a button says so in the activity log, with the device, what moved on it and an arrow. A yes or no reading is said in its own words, `Occupied` rather than `Occupancy true`
+## [1.7.3] - 2026-09-18
+
+### Added
+
+- A rule set off by a device says so in the activity log: the device, what moved on it, and an arrow, the way a press already read
+- A timer names what started the wait on both its lines, and what called it off on the third
+
+### Changed
+
+- A reading is said the way somebody would say it: `Occupied` rather than `Occupancy true`, and `17.2°C` rather than `Temperature 17.2 °C`
+- Every line says what set the rule off in one shape, a press included: `Woonkamer Remote: 4 Single Long →`
 
 ## [1.7.2] - 2026-09-16
 
