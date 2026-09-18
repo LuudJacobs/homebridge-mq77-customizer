@@ -60,11 +60,10 @@ export interface TimeTrigger {
 /**
  * What may set an automation off.
  *
- * Only an automation: a mirror and a slider are driven by their devices, and a
- * timer is a wait after something happened, where a clock is not something
- * happening to a device. Keeping the union here rather than widening `Trigger`
- * means a timer cannot hold one by type, and validation turns away anything
- * hand written into one.
+ * Only an automation: a mirror and a slider are driven by their devices, and
+ * a clock is not something happening to a device. Keeping the union here
+ * rather than widening `Trigger` means neither of those can hold one by type,
+ * and validation turns away anything hand written into one.
  */
 export type AutomationTrigger = Trigger | TimeTrigger;
 
@@ -271,40 +270,7 @@ export interface SliderRule {
   rateLimitMs?: number;
 }
 
-/**
- * A wait between something happening and something else.
- *
- * An automation with a delayed action does the first half of this already.
- * What it cannot do is call the wait off, which is the whole point: a light
- * told to go out in thirty seconds should not go out if somebody has
- * switched it off in the meantime and back on again for a reason.
- */
-export interface TimerRule {
-  id: string;
-  kind: 'timer';
-  name: string;
-  enabled: boolean;
-  /** Any of these starts the clock, and starts it again while it runs. */
-  triggers?: Trigger[];
-  /**
-   * Asked when the wait runs out, and only then.
-   *
-   * Being called off is what a trigger going away does; this is something
-   * else being true or not at the moment the timer would act. One condition
-   * over the single set of actions, where an automation has a branch each.
-   */
-  when?: ConditionNode;
-  /** How long to wait before doing anything. */
-  waitMs: number;
-  actions: Action[];
-  rateLimitMs?: number;
-}
-
-export type AnyRule = Rule | MirrorRule | SliderRule | TimerRule;
-
-export function isTimer(rule: AnyRule): rule is TimerRule {
-  return (rule as TimerRule).kind === 'timer';
-}
+export type AnyRule = Rule | MirrorRule | SliderRule;
 
 export function isSlider(rule: AnyRule): rule is SliderRule {
   return (rule as SliderRule).kind === 'slider';
@@ -316,8 +282,6 @@ export function isMirror(rule: AnyRule): rule is MirrorRule {
 
 export type LogOutcome =
   | 'fired'
-  /** A timer started counting. */
-  | 'started'
   /** A rule with a wait is counting down before it asks anything. */
   | 'waiting'
   /** A wait was called off before it got there. */
@@ -335,7 +299,7 @@ export interface LogEntry {
   ruleName: string;
   /** Which list the rule lives in, so the run log can be split the same way. */
   /** `action` is not a rule at all, but a button press worth seeing. */
-  ruleKind: 'standard' | 'mirror' | 'slider' | 'timer' | 'action';
+  ruleKind: 'standard' | 'mirror' | 'slider' | 'action';
   outcome: LogOutcome;
   /** Why, in a sentence. What the Homebridge log gets, and the last resort. */
   detail: string;
@@ -443,7 +407,7 @@ export const DEFAULT_STEPS = 5;
  */
 export const STEP_MEMORY_MS = 2500;
 
-/** Shortest and longest a timer can wait. */
+/** Shortest and longest a rule can wait. */
 export const MIN_WAIT_MS = 1000;
 export const MAX_WAIT_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_WAIT_MS = 30_000;

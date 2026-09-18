@@ -200,6 +200,34 @@ describe('an automation that waits', () => {
     }
   });
 
+  it('does nothing while it is switched off', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([waiting({ enabled: false })]);
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(sent(mqtt)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('forgets what it was counting when the engine stops', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([waiting()]);
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      engine.stop();
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(sent(mqtt)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('acts at once when the rule is run by hand', async () => {
     const { engine, mqtt } = await harness([waiting()]);
     mqtt.deliver(SOCKET.topic, { state: 'ON' });
@@ -234,6 +262,31 @@ describe('an automation that waits', () => {
     }
   });
 
+  it('keeps waiting while a reading stays over the line, and stops when it drops', async () => {
+    vi.useFakeTimers();
+    try {
+      const warm = waiting({
+        triggers: [{ ...ref(LAMP.id, 'brightness'), match: { kind: 'above', value: 200 } }],
+        branches: [{ actions: [{ ...ref(SOCKET.id, 'state'), value: 'OFF' }] }],
+      });
+      const { mqtt } = await harness([warm]);
+
+      mqtt.deliver(LAMP.topic, { brightness: 220 });
+      // Still over, so this is not a reason to stop.
+      mqtt.deliver(LAMP.topic, { brightness: 230 });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(sent(mqtt)).toHaveLength(1);
+
+      mqtt.published.length = 0;
+      mqtt.deliver(LAMP.topic, { brightness: 220 });
+      mqtt.deliver(LAMP.topic, { brightness: 150 });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(sent(mqtt)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('waits out a time trigger too, which nothing can call off', async () => {
     vi.useFakeTimers();
     try {
@@ -250,6 +303,75 @@ describe('an automation that waits', () => {
       expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
       // And the line still says which time set it off.
       expect(engine.getLog()[0]).toMatchObject({ outcome: 'fired', firedAt: { at: '22:00' } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a rule that waits and acts on what it watches', () => {
+  /** On any change of the lamp, thirty seconds later, switch it off. */
+  const anyChange = waiting({
+    triggers: [{ ...ref(LAMP.id, 'state'), match: { kind: 'changed' } }],
+    branches: [{ actions: [{ ...ref(LAMP.id, 'state'), value: 'OFF' }] }],
+  });
+
+  it('does not start itself again on hearing its own doing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([anyChange]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // The light answers that it is off, which is a change, and would
+      // otherwise be read as a reason to start waiting all over again.
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mqtt.published).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still starts on a change somebody made afterwards', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([anyChange]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+
+      // Long enough afterwards to be somebody rather than the device.
+      await vi.advanceTimersByTimeAsync(5000);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(mqtt.published).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves another rule watching the same device alone', async () => {
+    vi.useFakeTimers();
+    try {
+      const second = waiting({
+        id: 'r2',
+        name: 'Second',
+        triggers: [{ ...ref(LAMP.id, 'state'), match: { kind: 'changed' } }],
+        branches: [{ actions: [{ ...ref(SOCKET.id, 'state'), value: 'OFF' }] }],
+      });
+      const { mqtt } = await harness([anyChange, second]);
+
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      // Both acted. Only the one that wrote the state disregards the answer.
+      expect(mqtt.published).toHaveLength(2);
+
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(mqtt.published).toHaveLength(3);
     } finally {
       vi.useRealTimers();
     }

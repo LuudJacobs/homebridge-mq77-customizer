@@ -43,8 +43,8 @@ export function matches(match: Match, value: unknown, previous?: unknown): boole
  *
  * `matches` answers whether something just happened, which is a question
  * about a moment. This one asks whether it is still the case, which is what
- * a timer needs to know before it goes off: told to run when a light came
- * on, it should stop caring the moment the light is off.
+ * a rule with a wait needs to know before it acts: told to run when a light
+ * came on, it should stop caring the moment the light is off.
  *
  * `changed` describes no state at all, so it falls back to whether the value
  * is the one that started the wait.

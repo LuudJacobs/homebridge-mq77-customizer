@@ -23,7 +23,6 @@ import type {
   PropertyRef,
   Rule,
   SliderRule,
-  TimerRule,
   TimeCondition,
   TimeTrigger,
   Trigger,
@@ -58,8 +57,11 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
     return parseSlider(raw, id, name);
   }
 
+  // `timer` was a kind of its own until automations learned to wait. One
+  // stored by an older version is refused rather than read as an automation:
+  // the store drops them on load, so nothing should be offering one.
   if (raw.kind === 'timer') {
-    return parseTimer(raw, id, name);
+    return { error: 'Timers are automations with a wait now' };
   }
 
   // Several triggers, any of which fires the rule. Earlier versions stored one.
@@ -175,74 +177,6 @@ function parseActions(raw: unknown): { actions: Action[] } | { error: string } {
   }
 
   return { actions };
-}
-
-function parseTimer(
-  raw: Record<string, unknown>,
-  id: string,
-  name: string,
-): { rule: TimerRule } | { error: string } {
-  const triggers: Trigger[] = [];
-  for (const entry of Array.isArray(raw.triggers) ? raw.triggers : []) {
-    if (saysTime(entry)) {
-      return { error: 'Only an automation can be set off by a time' };
-    }
-
-    const ref = parseRef(entry);
-    if (!ref) {
-      return { error: 'The trigger needs a device and a function' };
-    }
-    const match = parseMatch(isObject(entry) ? entry.match : undefined);
-    if ('error' in match) {
-      return { error: `Trigger: ${match.error}` };
-    }
-    triggers.push({ ...ref, match: match.match });
-  }
-
-  const parsed = parseActions(raw.actions);
-  if ('error' in parsed) {
-    return parsed;
-  }
-
-  // A timer being drafted has nothing in it yet, and refusing to store that
-  // would leave nowhere to build it.
-  if (raw.enabled !== false && (triggers.length === 0 || parsed.actions.length === 0)) {
-    return { error: 'A timer needs something to start it and something to do' };
-  }
-
-  const waitMs = clamp(
-    typeof raw.waitMs === 'number' ? Math.round(raw.waitMs) : DEFAULT_WAIT_MS,
-    MIN_WAIT_MS,
-    MAX_WAIT_MS,
-  );
-  const rateLimitMs =
-    typeof raw.rateLimitMs === 'number' ? clamp(raw.rateLimitMs, 0, 3_600_000) : undefined;
-
-  // The same parser an automation uses. Only when there is one to read: a
-  // timer that never had a condition, and one whose last condition has just
-  // been taken off again, both arrive with nothing here.
-  let when: ConditionNode | undefined;
-  if (raw.when !== undefined && raw.when !== null) {
-    const condition = parseCondition(raw.when);
-    if ('error' in condition) {
-      return { error: `Condition: ${condition.error}` };
-    }
-    when = condition.node;
-  }
-
-  return {
-    rule: {
-      id,
-      kind: 'timer',
-      name,
-      enabled: raw.enabled !== false,
-      triggers,
-      ...(when ? { when } : {}),
-      waitMs,
-      actions: parsed.actions,
-      ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
-    },
-  };
 }
 
 function parseSlider(
@@ -582,10 +516,10 @@ function parseOffset(raw: unknown): number | undefined {
 /**
  * A trigger that is a time rather than a device.
  *
- * Only an automation may hold one. A timer, a mirror and a slider share the
- * `Trigger` shape, so nothing but this stops one being written into them by
- * hand, and a rule saved with a trigger quietly dropped would never fire and
- * never say why.
+ * Only an automation may hold one. A mirror and a slider share the `Trigger`
+ * shape, so nothing but this stops one being written into them by hand, and a
+ * rule saved with a trigger quietly dropped would never fire and never say
+ * why.
  */
 function parseTimeTrigger(raw: unknown): { trigger: TimeTrigger } | { error: string } {
   const at = parseTimeOfDay(isObject(raw) ? raw.at : undefined, 'A time trigger');

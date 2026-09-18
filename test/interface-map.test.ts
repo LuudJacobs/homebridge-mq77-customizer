@@ -246,14 +246,14 @@ describe('the map tab', () => {
       (option) => option.textContent,
     );
 
-    // A window too narrow for eight tabs is still wide enough for a network.
+    // A window too narrow for the whole row of tabs is still wide enough for
+    // a network.
     // Only a phone drops it, which the tab itself is hidden on as well.
     expect(options).toEqual([
       'Devices',
       'Automation',
       'Mirror devices',
       'Sliders',
-      'Timers',
       'Controllers',
       'Activity',
       'Map',

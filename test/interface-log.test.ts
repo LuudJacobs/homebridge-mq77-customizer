@@ -98,13 +98,13 @@ const rules = [
     steps: 6,
   },
   {
-    id: 't1',
-    kind: 'timer',
+    id: 'w1',
+    kind: 'standard',
     name: 'Aanrecht',
     enabled: true,
     triggers: [{ ...ref('0xc', 'brightness'), match: { kind: 'equals', value: 1 } }],
     waitMs: 2000,
-    actions: [{ ...ref('0xc', 'brightness'), value: 0 }],
+    branches: [{ actions: [{ ...ref('0xc', 'brightness'), value: 0 }] }],
   },
 ];
 
@@ -208,18 +208,18 @@ describe('what a log line says', () => {
     ]);
   });
 
-  it('says a timer was called off without saying why again', async () => {
-    const timer = (outcome: string, detail: string) =>
-      entry({ ruleId: 't1', ruleName: 'Aanrecht', ruleKind: 'timer', outcome, detail });
+  it('says a wait was called off without saying why again', async () => {
+    const line = (outcome: string, detail: string) =>
+      entry({ ruleId: 'w1', ruleName: 'Aanrecht', ruleKind: 'standard', outcome, detail });
 
     expect(
       await lines([
-        timer('started', 'waiting 00:02'),
-        timer('cancelled', 'is "OFF" no longer'),
-        timer('fired', '1 action sent'),
+        line('waiting', '00:02'),
+        line('cancelled', 'is "OFF" no longer'),
+        line('fired', '1 action sent'),
       ]),
     ).toEqual([
-      'Keuken: Aanrecht - started: waiting 00:02',
+      'Keuken: Aanrecht - waiting 00:02',
       'Keuken: Aanrecht - called off',
       'Keuken: Aanrecht - ran: 1 action sent',
     ]);
