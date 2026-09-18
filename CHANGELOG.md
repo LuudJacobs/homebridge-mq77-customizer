@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - An automation can wait between its trigger and everything else. The conditions are asked when the wait runs out, and the wait is called off if what started it stops being true
+- **Breaking:** timers are gone. An automation with a wait does what a timer did, and timers already configured are dropped on upgrade rather than converted
 
 ## [1.7.3] - 2026-09-18
 

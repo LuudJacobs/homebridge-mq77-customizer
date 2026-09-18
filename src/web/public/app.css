@@ -1050,7 +1050,7 @@ table.buttons td.in-homekit {
 
 /*
  * A time and the days it runs on, on the row where a property would be, and
- * built like the wait a timer takes: the same box, the same width.
+ * built like the wait a rule takes: the same box, the same width.
  */
 .rule-row input.time-at,
 .rule-row input.time-offset {

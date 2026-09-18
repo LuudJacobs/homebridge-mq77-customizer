@@ -114,7 +114,7 @@ The Activity tab lists what the rules have been doing, newest first, including t
 
 ## Rules
 
-Rules live in four tabs: Automation, Mirror devices, Sliders and Timers. Automation is the general one: when something happens on one device, send something to another. All four work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+Rules live in three tabs: Automation, Mirror devices and Sliders. Automation is the general one: when something happens on one device, send something to another, straight away or after a wait. All three work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
 Across all four:
 
@@ -126,15 +126,19 @@ Across all four:
 - rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press
 - a rule will not run more often than its rate limit, one second by default, and one that runs more than twenty times in ten seconds is switched off and logged on the assumption it is setting itself off
 
-An automation can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off if what started it stops being true, and starts again from the top if the same thing happens again. An action's own delay is a different thing: it comes after the conditions and cannot be called off.
+An automation can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. A light coming on, thirty seconds, the light going out again.
 
-An automation or a timer can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
+The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. The same thing happening again starts the wait from the top, a different trigger of the same rule takes it over, and a rule's own doing is not read as either. A wait running when Homebridge restarts is forgotten.
+
+An action's own delay is a different thing: it comes after the conditions and cannot be called off. Timers were a tab of their own until the wait arrived; anything one of those did is an automation with a wait now.
+
+An automation can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
 
 ### Times
 
 An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
 
-Only automations. A mirror and a slider are driven by their devices, and a timer is a wait after something happened.
+Only automations. A mirror and a slider are driven by their devices.
 
 The clock is whatever the machine running Homebridge thinks it is, and a rule fires during the minute it names. Four things worth knowing:
 
@@ -156,16 +160,6 @@ Far enough north there are days when the sun never reaches one of these points, 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
 
 After a write the group is left to settle, one and a half seconds by default and set per rule between 0.25 and 60 seconds. A device reporting its old state once more is indistinguishable from somebody flipping a switch, so without the pause a group that disagrees would send itself back and forth for ever. The cost is that flipping a mirrored device again inside the window is ignored.
-
-### Timers
-
-A wait between one thing and another: a light coming on, thirty seconds, the light going out again.
-
-The clock starts again if the same thing happens again. It is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. A timer counting when Homebridge restarts is forgotten.
-
-A timer can also ask a question, the way an automation does. It is asked once, when the wait runs out: "turn the light off in ten minutes, unless somebody is home by then". Being called off is a different thing and belongs to the trigger going away, so a condition turning false during the wait does not abandon it; the question is simply asked at the end. One condition over the timer's actions, where an automation has one per outcome.
-
-An automation with a delayed action does the first half of this and cannot be called off, which is the difference between the two.
 
 ### Sliders
 
