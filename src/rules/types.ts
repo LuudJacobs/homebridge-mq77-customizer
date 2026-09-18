@@ -341,6 +341,14 @@ export interface LogEntry {
    * nothing at all here, since wording is the interface's business.
    */
   firedAt?: LogTime;
+  /**
+   * What set it off, when a device's own value did.
+   *
+   * The same parts a press carries, for the same reason: a sensor seeing
+   * somebody is as much a thing that happened as a button being pressed, and
+   * the interface is the one that knows what to call it.
+   */
+  changed?: LogChange;
   /** Which branch ran, for a rule that has more than one. */
   branch?: string;
   /** What a slider did. */
@@ -359,6 +367,11 @@ export interface LogTime {
 
 /** A button press: which device, which function, and what it said. */
 export interface LogPress extends PropertyRef {
+  value: string;
+}
+
+/** A value changing: which device, which function, and what it became. */
+export interface LogChange extends PropertyRef {
   value: string;
 }
 

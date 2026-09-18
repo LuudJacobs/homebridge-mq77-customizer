@@ -313,6 +313,45 @@ describe('watching a controller', () => {
     });
   });
 
+  it('puts what moved on the entry, for a rule no button set off', async () => {
+    const rule = buttonRule({
+      trigger: {
+        sourceId: 'zigbee',
+        deviceId: SOCKET.id,
+        propertyKey: 'state',
+        match: { kind: 'changedTo', value: 'ON' },
+      },
+    });
+    const { engine, mqtt } = await harness([rule]);
+
+    mqtt.deliver(SOCKET.topic, { state: 'ON' });
+
+    expect(engine.getLog()[0]).toMatchObject({
+      ruleId: rule.id,
+      changed: { deviceId: SOCKET.id, propertyKey: 'state', value: 'ON' },
+    });
+    // A press is the fuller account, so an entry carries one or the other.
+    expect(engine.getLog()[0]?.press).toBeUndefined();
+  });
+
+  it('says nothing moved when a rule was run by hand', async () => {
+    // Running one borrows its trigger's value to have something to copy, and
+    // a log saying the device did it would be a lie.
+    const rule = buttonRule({
+      trigger: {
+        sourceId: 'zigbee',
+        deviceId: SOCKET.id,
+        propertyKey: 'state',
+        match: { kind: 'changedTo', value: 'ON' },
+      },
+    });
+    const { engine } = await harness([rule]);
+
+    engine.runNow(rule.id);
+
+    expect(engine.getLog()[0]?.changed).toBeUndefined();
+  });
+
   it('keeps a press of its own when nothing answered it', async () => {
     const rule = buttonRule({
       trigger: {
