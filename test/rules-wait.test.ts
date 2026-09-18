@@ -171,6 +171,33 @@ describe('an automation that waits', () => {
     }
   });
 
+  it('says it is waiting once, however often the same thing is reported', async () => {
+    vi.useFakeTimers();
+    try {
+      // `equals` holds every time the value is read, not only when it moves,
+      // and a device that reports twice would otherwise write two lines
+      // saying the same thing.
+      const twice = waiting({
+        triggers: [{ ...ref(SOCKET.id, 'state'), match: { kind: 'equals', value: 'ON' } }],
+      });
+      const { engine, mqtt } = await harness([twice]);
+
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+
+      const lines = engine.getLog().filter((entry) => entry.outcome === 'waiting');
+      expect(lines).toHaveLength(1);
+      // And nothing about being called off either: it is the same wait.
+      expect(engine.getLog().some((entry) => entry.outcome === 'cancelled')).toBe(false);
+
+      // The clock still started again, so it acts from the second report.
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('hands the wait to whichever trigger fired last, and calls the first off', async () => {
     vi.useFakeTimers();
     try {
