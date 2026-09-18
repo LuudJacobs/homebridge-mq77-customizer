@@ -764,7 +764,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         clearTimeout(running.timer);
         this.timers.delete(running.timer);
         this.waiting.delete(rule.id);
-        this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+        // What ended the wait rather than what started it: on this line the
+        // value that took it away is the news.
+        this.moved = said(running.trigger, value);
+        try {
+          this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+        } finally {
+          this.moved = undefined;
+        }
       }
     }
 
