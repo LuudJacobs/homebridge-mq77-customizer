@@ -56,6 +56,10 @@ const devices = [
       semantic: 'occupancy',
       type: 'binary',
       writable: false,
+      // What Zigbee2MQTT publishes for one, rather than the ON and OFF a
+      // switch uses.
+      onValue: true,
+      offValue: false,
     }),
     property({
       key: 'temperature',
@@ -237,6 +241,17 @@ describe('what a log line says', () => {
     ).toEqual(['Woonkamer: All Off - failed: dusk needs a location']);
   });
 
+  it('names a reading that says nothing on its own', async () => {
+    const line = await lines([
+      entry({
+        changed: { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'brightness', value: '191' },
+      }),
+    ]);
+    // A device has several readings, and `Ceiling 191` says nothing about
+    // which of them moved.
+    expect(line[0]).toContain('Keuken Ceiling Brightness 191 →');
+  });
+
   it('names the device that moved, the way it names a press', async () => {
     const line = await lines([
       entry({
@@ -247,16 +262,32 @@ describe('what a log line says', () => {
     ]);
     // The device, which of its readings moved, what it became, and an arrow:
     // the shape a press has.
-    expect(line[0]).toBe('Gang Beweging Occupancy true → Woonkamer: All Off - ran: 1 action sent');
+    expect(line[0]).toBe('Gang Beweging Occupied → Woonkamer: All Off - ran: 1 action sent');
   });
 
-  it('says the unit the device list would say', async () => {
+  it('says a yes or no reading in its own words', async () => {
+    const said = async (value: string) =>
+      (
+        await lines([
+          entry({
+            changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'occupancy', value },
+          }),
+        ])
+      )[0];
+
+    expect(await said('true')).toContain('Gang Beweging Occupied →');
+    expect(await said('false')).toContain('Gang Beweging Empty →');
+  });
+
+  it('leaves a reading that carries a unit to say what it is', async () => {
     const line = await lines([
       entry({
         changed: { sourceId: 'zigbee', deviceId: '0xs', propertyKey: 'temperature', value: '17.2' },
       }),
     ]);
-    expect(line[0]).toContain('Temperature 17.2 °C →');
+    // `Temperature 17.2 °C` is one word too many.
+    expect(line[0]).toContain('Gang Beweging 17.2 °C →');
+    expect(line[0]).not.toContain('Temperature');
   });
 
   it('draws the kind of device beside it, as a press does', async () => {
