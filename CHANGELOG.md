@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.0.0] - 2026-09-18
+
+### Removed
+
+- **Breaking:** timers. An automation with a wait does everything a timer did, so there is one kind of rule where there were two. Timers already configured are dropped on upgrade rather than converted, and the Timers tab is gone
+
+### Added
+
+- An automation can wait between its trigger and everything else: `Optional wait time (mm:ss)`, empty on rules that act at once
+- The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now
+- The wait is called off when what started it stops being true, starts over when the same thing happens again, and is taken over by another of the rule's triggers
+- A rule with a wait shows it in the rule list, and says `waiting 00:30` in the activity log
+
 ## [1.7.3] - 2026-09-18
 
 ### Added
