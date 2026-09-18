@@ -1441,17 +1441,50 @@ function pressWords(press) {
 }
 
 /**
- * A value moving as somebody would say it: `Occupancy true`, `Temperature 17.2 °C`.
+ * What a sensor's two states are called, where true and false are not words
+ * anybody uses about them.
  *
- * The function is named because a device has several: `Beweging 17.2` says
- * nothing about which of its readings that is. The unit comes from the
- * property, the same as in the device list.
+ * Only the readings a device publishes as a plain yes or no. Anything else
+ * keeps the value it published.
+ */
+const BINARY_WORDS = {
+  occupancy: ['Occupied', 'Empty'],
+  presence: ['Present', 'Away'],
+  contact: ['Closed', 'Open'],
+  water_leak: ['Leak', 'Dry'],
+  smoke: ['Smoke', 'Clear'],
+  gas: ['Gas', 'Clear'],
+  vibration: ['Vibration', 'Still'],
+  tamper: ['Tampered', 'Clear'],
+};
+
+/**
+ * A value moving as somebody would say it: `Occupied`, `17.2 °C`.
+ *
+ * Three ways of saying one, in the order they are tried. A yes or no reading
+ * is said in its own words. A reading carrying a unit says what it is by
+ * carrying one, so `Temperature 17.2 °C` is one word too many. Everything
+ * else is named, since a device has several readings and `Dimmer 191` says
+ * nothing about which of them moved.
  */
 function changeWords(changed) {
   const property = findProperty(changed);
+
+  const words = property?.type === 'binary' ? BINARY_WORDS[property.semantic] : undefined;
+  if (words) {
+    const on = String(property.onValue ?? true) === changed.value;
+    const off = String(property.offValue ?? false) === changed.value;
+    if (on || off) {
+      return on ? words[0] : words[1];
+    }
+  }
+
+  if (property?.unit) {
+    return `${changed.value} ${property.unit}`;
+  }
+
   const label = property?.label ?? changed.propertyKey;
-  const value = property?.unit ? `${changed.value} ${property.unit}` : changed.value;
-  return `${label} ${value}`;
+  return `${label} ${changed.value}`;
 }
 
 /**
