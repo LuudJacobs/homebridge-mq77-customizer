@@ -1,4 +1,4 @@
-# MQ77 Customizer 1.7.2
+# MQ77 Customizer 1.7.3
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -110,7 +110,7 @@ A scan questions every device in turn, so it takes minutes on a mesh of any size
 
 ### Activity
 
-The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default.
+The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default.
 
 ## Rules
 

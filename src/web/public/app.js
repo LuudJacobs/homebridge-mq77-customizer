@@ -1378,7 +1378,7 @@ function logParts(entry) {
   if (entry.ruleKind === 'action') {
     const device = findDevice(entry.press ?? refOf(entry.ruleId));
     return [
-      phrase(...(device ? deviceParts(device) : [words(entry.ruleName)])),
+      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
       words(' '),
       phrase(words(pressWords(entry.press) ?? entry.detail)),
     ];
@@ -1391,13 +1391,25 @@ function logParts(entry) {
   const said = describeOutcome(entry);
   const parts = [];
 
-  // What set it off, when a button did. A rule that ran on a state change has
-  // nothing to name here.
+  // What set it off: a button, a value moving, or the clock. All three read
+  // the same way round, since all three are one thing having happened.
   if (entry.press) {
     const device = findDevice(entry.press);
     parts.push(
       phrase(
-        ...(device ? deviceParts(device, ` ${pressWords(entry.press)} →`) : [words('a press →')]),
+        ...(device ? deviceParts(device, `: ${pressWords(entry.press)} →`) : [words('a press →')]),
+      ),
+      words(' '),
+    );
+  } else if (entry.changed) {
+    const device = findDevice(entry.changed);
+    parts.push(
+      phrase(
+        // A colon between the device and its reading: `Beweging: Occupied`
+        // rather than two words running into each other.
+        ...(device
+          ? deviceParts(device, `: ${changeWords(entry.changed)} →`)
+          : [words('a device →')]),
       ),
       words(' '),
     );
@@ -1428,6 +1440,53 @@ function refOf(ruleId) {
 /** A press as somebody would say it: `4 Single Long`. */
 function pressWords(press) {
   return press ? describeAction(press.value) : undefined;
+}
+
+/**
+ * What a sensor's two states are called, where true and false are not words
+ * anybody uses about them.
+ *
+ * Only the readings a device publishes as a plain yes or no. Anything else
+ * keeps the value it published.
+ */
+const BINARY_WORDS = {
+  occupancy: ['Occupied', 'Empty'],
+  presence: ['Present', 'Away'],
+  contact: ['Closed', 'Open'],
+  water_leak: ['Leak', 'Dry'],
+  smoke: ['Smoke', 'Clear'],
+  gas: ['Gas', 'Clear'],
+  vibration: ['Vibration', 'Still'],
+  tamper: ['Tampered', 'Clear'],
+};
+
+/**
+ * A value moving as somebody would say it: `Occupied`, `17.2 °C`.
+ *
+ * Three ways of saying one, in the order they are tried. A yes or no reading
+ * is said in its own words. A reading carrying a unit says what it is by
+ * carrying one, so `Temperature 17.2 °C` is one word too many. Everything
+ * else is named, since a device has several readings and `Dimmer 191` says
+ * nothing about which of them moved.
+ */
+function changeWords(changed) {
+  const property = findProperty(changed);
+
+  const words = property?.type === 'binary' ? BINARY_WORDS[property.semantic] : undefined;
+  if (words) {
+    const on = String(property.onValue ?? true) === changed.value;
+    const off = String(property.offValue ?? false) === changed.value;
+    if (on || off) {
+      return on ? words[0] : words[1];
+    }
+  }
+
+  if (property?.unit) {
+    return `${changed.value}${property.unit}`;
+  }
+
+  const label = property?.label ?? changed.propertyKey;
+  return `${label} ${changed.value}`;
 }
 
 /**

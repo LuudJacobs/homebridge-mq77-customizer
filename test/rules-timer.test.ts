@@ -368,6 +368,47 @@ describe('a timer that asks a question first', () => {
     when: { kind: 'all', nodes: [{ kind: 'time', side: 'after', at: '22:00' }] },
   });
 
+  it('names what started the wait on both lines it writes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([timerRule()]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+
+      // The line that says the wait started.
+      expect(engine.getLog()[0]).toMatchObject({
+        outcome: 'started',
+        changed: { deviceId: LAMP.id, propertyKey: 'state', value: 'ON' },
+      });
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // And the one that says it acted, ten minutes further down the log.
+      expect(engine.getLog()[0]).toMatchObject({
+        outcome: 'fired',
+        changed: { deviceId: LAMP.id, propertyKey: 'state', value: 'ON' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names what called it off, which is the value that took the wait away', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([timerRule()]);
+      mqtt.deliver(LAMP.topic, { state: 'ON' });
+      mqtt.deliver(LAMP.topic, { state: 'OFF' });
+
+      expect(engine.getLog()[0]).toMatchObject({
+        outcome: 'cancelled',
+        // Not the ON that started it: the OFF is what there is to say here.
+        changed: { deviceId: LAMP.id, propertyKey: 'state', value: 'OFF' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('can ask the clock, and is turned away by day', async () => {
     vi.useFakeTimers();
     try {

@@ -31,6 +31,7 @@ import {
   STEP_MEMORY_MS,
   type Action,
   type LogEntry,
+  type LogChange,
   type LogPress,
   type LogOutcome,
   type AnyRule,
@@ -72,6 +73,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
   /** The press the rules are being run for, if a press is what arrived. */
   private pressed?: LogPress;
+  /**
+   * What moved, while a rule it set off is being run.
+   *
+   * Only where something really moved: a rule run by hand borrows its own
+   * trigger's value to have something to copy, and saying a device did that
+   * would be a lie in the log.
+   */
+  private moved?: LogChange;
   /** The time the rules are being run for, if the clock is what reached one. */
   private struck?: LogTime;
 
@@ -285,7 +294,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         if (!matches(trigger.match, value, previously.get(trigger.propertyKey))) {
           continue;
         }
-        this.fire(rule, { property: trigger, value });
+        this.moved = said(trigger, value);
+        try {
+          this.fire(rule, { property: trigger, value });
+        } finally {
+          this.moved = undefined;
+        }
         break;
       }
     }
@@ -750,7 +764,14 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         clearTimeout(running.timer);
         this.timers.delete(running.timer);
         this.waiting.delete(rule.id);
-        this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+        // What ended the wait rather than what started it: on this line the
+        // value that took it away is the news.
+        this.moved = said(running.trigger, value);
+        try {
+          this.record(rule, 'cancelled', `${describeMatch(running.trigger.match)} no longer`);
+        } finally {
+          this.moved = undefined;
+        }
       }
     }
 
@@ -806,13 +827,30 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     const total = Math.round(wait / 1000);
     const clock = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-    this.record(rule, 'started', `waiting ${clock}`);
+    this.moved = said(trigger, value);
+    try {
+      this.record(rule, 'started', `waiting ${clock}`);
+    } finally {
+      this.moved = undefined;
+    }
   }
 
   private fireTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
     if (!this.allowed(rule)) {
       return;
     }
+
+    // What started the wait, said again on the line that ends it: by then it
+    // is ten minutes further down the log from the one that says it started.
+    this.moved = said(trigger, value);
+    try {
+      this.finishTimer(rule, trigger, value);
+    } finally {
+      this.moved = undefined;
+    }
+  }
+
+  private finishTimer(rule: TimerRule, trigger: Trigger, value: unknown): void {
 
     // Asked now rather than when the clock started: a timer is for "in ten
     // minutes, unless", and the unless is about ten minutes from now. Being
@@ -1223,7 +1261,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
             : 'standard',
       outcome,
       detail,
-      ...(this.pressed ? { press: this.pressed } : {}),
+      // A press is the fuller account of the two, so it wins where a
+      // controller's own action is what moved.
+      ...(this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {}),
       ...(this.struck ? { firedAt: this.struck } : {}),
       ...parts,
     };
@@ -1271,6 +1311,19 @@ const SELF_ECHO_MS = 2000;
 
 /** How often the clock is looked at. Well inside a minute, so none is missed. */
 const CLOCK_TICK_MS = 15_000;
+
+/** A value as the log carries it: where it was, and what it became. */
+function said(trigger: PropertyRef, value: unknown): LogChange | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return {
+    sourceId: trigger.sourceId,
+    deviceId: trigger.deviceId,
+    propertyKey: trigger.propertyKey,
+    value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+  };
+}
 
 /** How long a device gets to answer what one of its values is. */
 const ANSWER_WAIT_MS = 5000;
