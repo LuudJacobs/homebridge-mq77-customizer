@@ -144,13 +144,13 @@ async function lines(log: unknown[]) {
 describe('what a log line says', () => {
   it('puts the press that set a rule off on the rule line', async () => {
     expect(await lines([entry({ press })])).toEqual([
-      'Woonkamer Remote 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
+      'Woonkamer Remote: 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
     ]);
   });
 
   it('names the branch that ran, in quotes', async () => {
     expect(await lines([entry({ press, branch: 'None' })])).toEqual([
-      "Woonkamer Remote 4 Single Long → Woonkamer: All Off - 'None' ran: 2 actions sent",
+      "Woonkamer Remote: 4 Single Long → Woonkamer: All Off - 'None' ran: 2 actions sent",
     ]);
   });
 
@@ -162,7 +162,7 @@ describe('what a log line says', () => {
       detail: 'Action 2_triple',
       press: { ...press, value: '2_triple' },
     });
-    expect(await lines([noted])).toEqual(['Woonkamer Remote 2 Triple']);
+    expect(await lines([noted])).toEqual(['Woonkamer Remote: 2 Triple']);
   });
 
   it('says which function a mirror read and which it wrote', async () => {
