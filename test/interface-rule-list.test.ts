@@ -435,6 +435,23 @@ describe('keeping a description on one line', () => {
     expect(sides).toEqual(['hall_lamp \u2192', 'porch_lamp']);
   });
 
+  it('keeps the switch out of the words, so it can sit in the corner', async () => {
+    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const summary = ui.document.querySelector('#automation .rule > summary') as HTMLElement;
+
+    // The name and the description in one piece, the switch beside it: what
+    // lets a description too long for the line take one of its own without
+    // carrying the switch down the card with it.
+    const heading = summary.querySelector(':scope > .rule-heading') as HTMLElement;
+    expect(heading).not.toBeNull();
+    expect(heading.querySelector(':scope > .device-name')).not.toBeNull();
+    expect(heading.querySelector(':scope > .device-meta')).not.toBeNull();
+
+    const toggle = summary.querySelector(':scope > .rule-enabled');
+    expect(toggle).not.toBeNull();
+    expect(heading.contains(toggle)).toBe(false);
+  });
+
   it('keeps a wait whole', async () => {
     const slow = automation('r9', 'Light out', '0xa', '0xb', { waitMs: 90_000 });
     const ui = await openInterface({ state: { devices }, rules: [slow] });
