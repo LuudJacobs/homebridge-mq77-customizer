@@ -2159,7 +2159,13 @@ function renderRule(rule, occurrence, inRoom) {
   } else {
     detail.replaceChildren(...summarise(rule, inRoom));
   }
-  summary.append(name, detail);
+  // Name and description in one piece, so the switch sits beside the pair
+  // rather than among them: a description too long to share the line takes
+  // one of its own and leaves the switch where it was.
+  const heading = document.createElement('span');
+  heading.className = 'rule-heading';
+  heading.append(name, detail);
+  summary.append(heading);
 
   // Nothing to switch on until there is something saved to switch on, and a
   // half built rule that says "disabled" invites turning it on.

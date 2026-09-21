@@ -664,9 +664,35 @@ button.link:hover {
   color: var(--text);
 }
 
-/* At the far end of the header, away from the name it belongs to. */
+/*
+ * A rule's header: everything it says on the left, the switch in the corner.
+ *
+ * Two columns rather than a run of things that wrap, so a name and a
+ * description too wide for one line take two of them and the switch stays
+ * where it was. Wrapping carried it down the card instead, which on a rule
+ * with five rooms in its name put it under the description.
+ */
+.rule > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+
+/*
+ * The name and what the rule does, on one line while they fit. `min-width: 0`
+ * is what lets the line break at all: a flex item will not go narrower than
+ * its content without it.
+ */
+.rule-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.6rem;
+  min-width: 0;
+}
+
+/* In the corner it belongs in, level with the name. */
 .rule-enabled {
-  margin-left: auto;
   font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
@@ -1328,15 +1354,15 @@ table.buttons td.in-homekit {
   }
 
   /* Rules are read only here: name, the switch, and what it does. */
+  /* The switch stays in its corner; the heading below it reads as a column. */
   .rule > summary {
-    display: flex;
+    gap: 0.25rem 0.5rem;
+  }
+
+  .rule-heading {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.25rem;
-  }
-
-  .rule > summary > .rule-enabled {
-    margin-left: 0;
   }
 
   .rules-actions {
