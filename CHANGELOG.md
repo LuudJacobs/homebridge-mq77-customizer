@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.0.1] - 2026-09-21
+
+### Fixed
+
 - A rule's switch stays in the top right of its card. A name and a description too wide for one line now take two, rather than carrying the switch down the card with them
 
 ## [2.0.0] - 2026-09-18
