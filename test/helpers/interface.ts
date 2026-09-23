@@ -86,11 +86,16 @@ export async function openInterface(options: {
     removeEventListener: () => {},
   });
 
-  // Nothing here depends on live updates, and jsdom has no EventSource.
+  // jsdom has no EventSource. The one the page opens is kept, so a test can
+  // push a live update through it the way the server would.
+  let stream: { onmessage?: (message: { data: string }) => void } | undefined;
   (window as unknown as { EventSource: unknown }).EventSource = class {
     onopen: unknown;
     onerror: unknown;
     onmessage: unknown;
+    constructor() {
+      stream = this as never;
+    }
   };
 
   window.eval(read('app.js'));
@@ -119,6 +124,11 @@ export async function openInterface(options: {
     requests,
     errors,
     settle: () => settle(window),
+    /** Delivers what the server would push, as though it had just happened. */
+    live: async (payload: unknown) => {
+      stream?.onmessage?.({ data: JSON.stringify(payload) });
+      await settle(window);
+    },
     click: async (node: Element | null) => {
       (node as HTMLElement).click();
       await settle(window);

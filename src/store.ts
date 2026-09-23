@@ -68,6 +68,11 @@ export interface DeviceExposure {
    * before this existed keeps working.
    */
   buttons?: Record<string, Record<string, number[]>>;
+  /**
+   * Whether a low battery is sent to a phone. Absent means yes: only turning
+   * it off is written down.
+   */
+  batteryWarning?: boolean;
 }
 
 

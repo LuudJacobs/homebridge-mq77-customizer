@@ -542,6 +542,8 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     ...(type ? { type } : {}),
     names,
     buttons,
+    // On unless turned off, so only the off is kept.
+    ...(input.batteryWarning === false ? { batteryWarning: false } : {}),
   };
 }
 
