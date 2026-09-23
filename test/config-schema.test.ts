@@ -183,4 +183,16 @@ describe('config.schema.json', () => {
     // adapter without offering it in the config UI fails here.
     expect(offered.sort()).toEqual([...adapterNames()].sort());
   });
+
+  it('puts the ntfy topic in a fieldset of its own, last on the form', () => {
+    const last = schema.layout.at(-1) as { type: string; title: string; items: string[] };
+    expect(last).toEqual({ type: 'fieldset', title: 'ntfy notifications', items: ['ntfy.topic'] });
+
+    const topic = schema.schema.properties.ntfy.properties.topic;
+    expect(topic).toMatchObject({
+      title: 'Topic',
+      type: 'string',
+      description: 'If set, allows for sending of a notification as action',
+    });
+  });
 });

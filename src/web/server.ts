@@ -47,6 +47,8 @@ export interface WebServerDeps {
    * being served to a browser.
    */
   hasLocation?: boolean;
+  /** Whether a topic is set, which is what offers Send notification. */
+  canNotify?: boolean;
   catalog: Catalog;
   store: Store;
   rules: RulesEngine;
@@ -357,6 +359,7 @@ export class WebServer {
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       hasLocation: this.deps.hasLocation === true,
+      canNotify: this.deps.canNotify === true,
       build: buildLabel(),
       backupAt: this.deps.store.lastBackup(),
       refusedToWrite: this.deps.store.refusedToWrite,

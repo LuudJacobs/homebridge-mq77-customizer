@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- An action can send a notification through ntfy, with the device that set the rule off, what moved on it and the value written into its title and message
+
 ## [2.0.1] - 2026-09-21
 
 ### Fixed

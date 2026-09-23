@@ -12,6 +12,7 @@ import {
 } from './types.js';
 import { fromConditions } from './conditions.js';
 import type {
+  AnyAction,
   Action,
   AnyRule,
   AutomationTrigger,
@@ -140,10 +141,28 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
   };
 }
 
-function parseActions(raw: unknown): { actions: Action[] } | { error: string } {
-  const actions: Action[] = [];
+function parseActions(raw: unknown): { actions: AnyAction[] } | { error: string } {
+  const actions: AnyAction[] = [];
 
   for (const entry of asArray(raw)) {
+    // A notification names no device, so it is read before anything asks for one.
+    if (isObject(entry) && entry.kind === 'notify') {
+      const message = typeof entry.message === 'string' ? entry.message.trim() : '';
+      if (!message) {
+        return { error: 'A notification needs a message' };
+      }
+      const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+      const delay =
+        typeof entry.delayMs === 'number' ? clamp(entry.delayMs, 0, 3_600_000) : undefined;
+      actions.push({
+        kind: 'notify',
+        ...(title ? { title: title.slice(0, 200) } : {}),
+        message: message.slice(0, 4000),
+        ...(delay ? { delayMs: delay } : {}),
+      });
+      continue;
+    }
+
     const ref = parseRef(entry);
     if (!ref || !isObject(entry)) {
       return { error: 'An action needs a device and a function' };

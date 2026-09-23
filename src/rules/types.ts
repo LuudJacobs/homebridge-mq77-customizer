@@ -142,6 +142,34 @@ export function isRelative(action: Action): boolean {
 }
 
 /**
+ * A message sent to a phone rather than a value sent to a device.
+ *
+ * Published to ntfy on the topic set in the Homebridge settings. The title and
+ * the message may name what set the rule off: `<trigger>` the device, or the
+ * time when the clock did it, `<property>` the function on it that moved,
+ * `<value>` what it said, and `<rule>` this rule's name.
+ */
+export interface NotifyAction {
+  kind: 'notify';
+  title?: string;
+  message: string;
+  /** Wait this long before sending, the same as any other action. */
+  delayMs?: number;
+}
+
+/** What an outcome may do: set something on a device, or send a message. */
+export type AnyAction = Action | NotifyAction;
+
+export function isNotify(action: AnyAction): action is NotifyAction {
+  return (action as NotifyAction).kind === 'notify';
+}
+
+/** The actions that name a device, leaving out the ones that send a message. */
+export function deviceActions(actions: AnyAction[]): Action[] {
+  return actions.filter((action): action is Action => !isNotify(action));
+}
+
+/**
  * One outcome of a rule, and the condition that chooses it.
  *
  * The first branch whose condition holds runs, and the rest are skipped. A
@@ -153,7 +181,7 @@ export interface Branch {
   /** A note from whoever wrote the rule. Nothing evaluates it. */
   label?: string;
   when?: ConditionNode;
-  actions: Action[];
+  actions: AnyAction[];
 }
 
 export interface Rule {
@@ -184,7 +212,7 @@ export interface Rule {
   branches?: Branch[];
   when?: ConditionNode;
   conditions?: Condition[];
-  actions?: Action[];
+  actions?: AnyAction[];
   /**
    * How long to wait between the trigger and everything else.
    *
