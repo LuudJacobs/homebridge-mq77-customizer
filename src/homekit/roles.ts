@@ -16,6 +16,12 @@ export type Role =
   | 'temperature'
   | 'humidity'
   | 'battery'
+  | 'lowBattery'
+  | 'contact'
+  | 'smoke'
+  | 'motion'
+  | 'occupancy'
+  | 'tamper'
   | 'thermostatMode'
   | 'targetTemperature'
   | 'localTemperature'
@@ -27,6 +33,11 @@ export type ServiceGroup =
   | 'thermostat'
   | 'temperature'
   | 'humidity'
+  | 'contact'
+  | 'smoke'
+  | 'motion'
+  | 'occupancy'
+  | 'tamper'
   | 'battery'
   | 'buttons';
 
@@ -39,6 +50,12 @@ export const ROLE_GROUPS: Record<Role, ServiceGroup> = {
   temperature: 'temperature',
   humidity: 'humidity',
   battery: 'battery',
+  lowBattery: 'battery',
+  contact: 'contact',
+  smoke: 'smoke',
+  motion: 'motion',
+  occupancy: 'occupancy',
+  tamper: 'tamper',
   thermostatMode: 'thermostat',
   targetTemperature: 'thermostat',
   localTemperature: 'thermostat',
@@ -60,6 +77,18 @@ const NUMERIC_ROLES: Record<string, Role> = {
 const BINARY_ROLES: Record<string, Role> = {
   child_lock: 'childLock',
   swing: 'swingMode',
+  contact: 'contact',
+  // A heat alarm reports `smoke` the same as a smoke alarm, so one line covers both.
+  smoke: 'smoke',
+  // What a PIR sensor reports: something moved. Motion is what a Home app
+  // automation listens for.
+  occupancy: 'motion',
+  // What an mmWave sensor reports: somebody is there, still or not. That is
+  // occupancy, which stays true while they sit still.
+  presence: 'occupancy',
+  battery_low: 'lowBattery',
+  low_battery: 'lowBattery',
+  tamper: 'tamper',
 };
 
 const ENUM_ROLES: Record<string, Role> = {

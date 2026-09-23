@@ -1,0 +1,214 @@
+[
+  {
+    "date_code": "",
+    "disabled": false,
+    "friendly_name": "hallway_smoke-develco",
+    "ieee_address": "0x00158dfffe0000a1",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "Develco",
+    "model_id": "SMSZB-120",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice",
+    "definition": {
+      "description": "Smoke detector",
+      "exposes": [
+        {
+          "type": "binary",
+          "name": "smoke",
+          "property": "smoke",
+          "label": "Smoke",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "binary",
+          "name": "battery_low",
+          "property": "battery_low",
+          "label": "Battery low",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "binary",
+          "name": "test",
+          "property": "test",
+          "label": "Test",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "numeric",
+          "name": "temperature",
+          "property": "temperature",
+          "label": "Temperature",
+          "access": 1,
+          "unit": "°C"
+        },
+        {
+          "type": "numeric",
+          "name": "battery",
+          "property": "battery",
+          "label": "Battery",
+          "access": 1,
+          "unit": "%",
+          "value_min": 0,
+          "value_max": 100
+        },
+        {
+          "type": "numeric",
+          "name": "linkquality",
+          "property": "linkquality",
+          "label": "Linkquality",
+          "access": 1,
+          "unit": "lqi",
+          "value_min": 0,
+          "value_max": 255
+        }
+      ],
+      "model": "SMSZB-120",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Develco"
+    }
+  },
+  {
+    "date_code": "",
+    "disabled": false,
+    "friendly_name": "front_door-contact",
+    "ieee_address": "0x00158dfffe0000a2",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "SONOFF",
+    "model_id": "SNZB-04",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice",
+    "definition": {
+      "description": "Contact sensor",
+      "exposes": [
+        {
+          "type": "binary",
+          "name": "contact",
+          "property": "contact",
+          "label": "Contact",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "binary",
+          "name": "battery_low",
+          "property": "battery_low",
+          "label": "Battery low",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "binary",
+          "name": "tamper",
+          "property": "tamper",
+          "label": "Tamper",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "numeric",
+          "name": "linkquality",
+          "property": "linkquality",
+          "label": "Linkquality",
+          "access": 1,
+          "unit": "lqi",
+          "value_min": 0,
+          "value_max": 255
+        }
+      ],
+      "model": "SNZB-04",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "SONOFF"
+    }
+  },
+  {
+    "date_code": "",
+    "disabled": false,
+    "friendly_name": "hallway_motion-aqara",
+    "ieee_address": "0x00158dfffe0000a3",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "Aqara",
+    "model_id": "RTCGQ11LM",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice",
+    "definition": {
+      "description": "Motion sensor",
+      "exposes": [
+        {
+          "type": "binary",
+          "name": "occupancy",
+          "property": "occupancy",
+          "label": "Occupancy",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        },
+        {
+          "type": "numeric",
+          "name": "battery",
+          "property": "battery",
+          "label": "Battery",
+          "access": 1,
+          "unit": "%",
+          "value_min": 0,
+          "value_max": 100
+        }
+      ],
+      "model": "RTCGQ11LM",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Aqara"
+    }
+  },
+  {
+    "date_code": "",
+    "disabled": false,
+    "friendly_name": "study_presence-aqara",
+    "ieee_address": "0x00158dfffe0000a4",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "manufacturer": "Aqara",
+    "model_id": "FP1E",
+    "power_source": "Battery",
+    "supported": true,
+    "type": "EndDevice",
+    "definition": {
+      "description": "Presence sensor",
+      "exposes": [
+        {
+          "type": "binary",
+          "name": "presence",
+          "property": "presence",
+          "label": "Presence",
+          "access": 1,
+          "value_on": true,
+          "value_off": false
+        }
+      ],
+      "model": "FP1E",
+      "options": [],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Aqara"
+    }
+  }
+]
