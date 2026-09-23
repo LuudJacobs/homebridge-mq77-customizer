@@ -14,6 +14,11 @@ export type CharacteristicKind =
   | 'CurrentRelativeHumidity'
   | 'BatteryLevel'
   | 'StatusLowBattery'
+  | 'ContactSensorState'
+  | 'SmokeDetected'
+  | 'MotionDetected'
+  | 'OccupancyDetected'
+  | 'StatusTampered'
   | 'ProgrammableSwitchEvent'
   | 'ServiceLabelIndex';
 
@@ -63,9 +68,27 @@ export function toHomeKit(
       return clamp(asNumber(value), 0, 100);
 
     case 'StatusLowBattery': {
+      // A device that only raises a flag says so itself; one that counts is
+      // low under the line.
+      if (property.type === 'binary') {
+        return value === undefined ? undefined : toBoolean(property, value) ? 1 : 0;
+      }
       const level = asNumber(value);
       return level === undefined ? undefined : level < LOW_BATTERY_PERCENT ? 1 : 0;
     }
+
+    // Zigbee2MQTT's `contact` is true while the two halves touch, which is a
+    // shut door and what HomeKit calls contact detected: 0.
+    case 'ContactSensorState':
+      return value === undefined ? undefined : toBoolean(property, value) ? 0 : 1;
+
+    case 'SmokeDetected':
+    case 'OccupancyDetected':
+    case 'StatusTampered':
+      return value === undefined ? undefined : toBoolean(property, value) ? 1 : 0;
+
+    case 'MotionDetected':
+      return value === undefined ? undefined : toBoolean(property, value);
 
     case 'CurrentRelativeHumidity':
       return clamp(asNumber(value), 0, 100);

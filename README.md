@@ -76,7 +76,13 @@ Accessory names are corrected to what HomeKit accepts, which must start and end 
 | on/off | Switch, Outlet, Lightbulb or Fan, your choice |
 | brightness | Brightness on a Lightbulb |
 | temperature, humidity | their sensor services |
+| contact | a Contact sensor, closed while the two halves touch |
+| smoke | a Smoke sensor. Heat alarms report `smoke` too, so they become one as well |
+| occupancy | a Motion sensor, which is what a PIR reports |
+| presence | an Occupancy sensor, which is what an mmWave sensor reports and stays on while somebody sits still |
 | battery | a battery reading on the accessory, with a low warning |
+| battery low | the low warning alone, for a device that raises the flag with no percentage |
+| tamper | shown as tampered on the device's sensors |
 | child lock | the physical controls lock on the tile |
 | climate | a Thermostat, using the temperature range the device declares |
 | speed, swing | a Fan with rotation speed and swing |
