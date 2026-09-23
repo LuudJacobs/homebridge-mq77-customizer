@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Two more kinds a device can be marked as: Alarm, for smoke and heat alarms and sirens, and Contact sensor, each with a drawing of its own. The kind picker is in alphabetical order
+
 - A device with a low battery shows a red, empty battery in the Devices list, and with an ntfy topic set it sends a warning below 10%, at 5% and at 1%
 - An action can send a notification through ntfy, with the device that set the rule off, what moved on it and the value written into its title and message
 
