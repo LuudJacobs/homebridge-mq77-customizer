@@ -27,6 +27,8 @@ Everything is set in the plugin's settings form in the Homebridge UI, and each f
 - **Sources**, one per publisher on that broker. A Zigbee2MQTT source needs its base topic, `zigbee2mqtt` unless you changed it. With no sources at all, that is what is assumed
 - **Web Interface**, a port and a password. The interface can switch your devices, so it refuses to start without one
 
+Two more are optional: **Location**, for rules that follow the sun, and **ntfy notifications**, a topic on [ntfy.sh](https://ntfy.sh) for rules that send a message to your phone.
+
 Everything else, which devices reach HomeKit and what they do between them, is set in the web interface itself.
 
 ### Sources
@@ -154,6 +156,17 @@ A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an o
 These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the activity log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
 
 Far enough north there are days when the sun never reaches one of these points, dawn and dusk long before sunrise and sunset. Those days are skipped and said in the log.
+
+### Notifications
+
+With a topic set under ntfy notifications, an action can send a message instead of setting a device: **Send notification**, at the bottom of the action picker. It takes a title and a message, and both may name what set the rule off:
+
+- `<trigger>` the device, room first, or the time when the clock did it
+- `<property>` the function on it that moved
+- `<value>` what it said, with its unit
+- `<rule>` the rule's own name
+
+So `<rule>: <trigger> <property> is <value>` arrives as `Brand: Gang Rookmelder Smoke is true`. Subscribe to the same topic in the ntfy app to receive them. Anyone who knows the topic can read it, so pick one nobody would guess.
 
 ### Mirror devices
 
