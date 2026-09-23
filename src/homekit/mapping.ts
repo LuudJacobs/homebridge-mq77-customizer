@@ -150,7 +150,12 @@ function buildPlan(
     if (!role) {
       continue;
     }
-    const group = ROLE_GROUPS[role];
+    // `occupancy` is a Motion sensor unless it was switched: a PIR and an
+    // mmWave sensor both say `occupancy`, and nothing else tells them apart.
+    const group =
+      role === 'motion' && exposure.sensorTypes?.[property.key] === 'Occupancy'
+        ? 'occupancy'
+        : ROLE_GROUPS[role];
     const bucket = grouped.get(group);
     if (bucket) {
       bucket.push(property);

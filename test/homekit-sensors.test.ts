@@ -12,6 +12,7 @@ import { toHomeKit } from '../src/homekit/values.js';
 import { silentLogger } from '../src/logger.js';
 import type { NormalisedProperty } from '../src/model/types.js';
 import { Store } from '../src/store.js';
+import { sanitiseExposure } from '../src/web/server.js';
 import fixture from './fixtures/bridge-devices.json' with { type: 'json' };
 import safety from './fixtures/safety-devices.json' with { type: 'json' };
 import { fakeApi } from './helpers/fake-homebridge.js';
@@ -188,6 +189,37 @@ describe('motion and presence', () => {
     expect(accessory.getService(Service.MotionSensor)?.getCharacteristic(
       Characteristic.MotionDetected,
     ).value).toBe(true);
+  });
+
+  it('makes `occupancy` an occupancy sensor when that was chosen for the device', async () => {
+    // An mmWave sensor like the Sonoff SNZB-06P says `occupancy` too, and only
+    // somebody who knows the device can say which it is.
+    const { mqtt, catalog } = await harness();
+    const device = catalog.getDevice('zigbee', MOTION.id)!;
+
+    expect(
+      planAccessories(device, { properties: ['occupancy'] })[0]?.services.map((s) => s.kind),
+    ).toEqual(['MotionSensor']);
+    expect(
+      planAccessories(device, {
+        properties: ['occupancy'],
+        sensorTypes: { occupancy: 'Occupancy' },
+      })[0]?.services.map((s) => s.kind),
+    ).toEqual(['OccupancySensor']);
+    mqtt.deliver(MOTION.topic, { occupancy: true });
+  });
+
+  it('keeps only a choice away from the default, for a reading the device has', () => {
+    const saved = sanitiseExposure(
+      {
+        properties: [],
+        sensorTypes: { occupancy: 'Occupancy', other: 'Occupancy', motionish: 'Motion', odd: 'Siren' },
+      },
+      ['occupancy', 'motionish', 'odd'],
+    );
+    expect(saved.sensorTypes).toEqual({ occupancy: 'Occupancy' });
+    expect(sanitiseExposure({ properties: [], sensorTypes: { occupancy: 'Motion' } }, ['occupancy']))
+      .not.toHaveProperty('sensorTypes');
   });
 
   it('makes an mmWave sensor an occupancy sensor', async () => {

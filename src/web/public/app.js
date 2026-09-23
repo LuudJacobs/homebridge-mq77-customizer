@@ -332,6 +332,17 @@ const ROLE_LABELS = {
   action: 'buttons',
 };
 
+/**
+ * What a reading becomes in HomeKit, in words. An `occupancy` reading is a
+ * motion sensor unless it was switched to an occupancy sensor.
+ */
+function roleLabel(device, property) {
+  if (property.role === 'motion' && device.exposure.sensorTypes?.[property.key] === 'Occupancy') {
+    return 'occupancy sensor';
+  }
+  return ROLE_LABELS[property.role] ?? 'HomeKit';
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -1062,6 +1073,51 @@ function renderOptions(device) {
     wrap.append(option);
   }
 
+  // A PIR and an mmWave sensor both say `occupancy`, and nothing else tells
+  // them apart, so which HomeKit sensor it becomes is asked rather than
+  // guessed. Motion unless switched, which is what a PIR is.
+  const occupancies = device.rulesOnly
+    ? []
+    : device.properties.filter((property) => property.role === 'motion' && property.publishable);
+  for (const property of occupancies) {
+    const option = document.createElement('div');
+    option.className = 'option';
+    const label = document.createElement('label');
+    label.textContent =
+      occupancies.length > 1 ? `HomeKit sensor for ${property.label}` : 'HomeKit sensor';
+    const select = document.createElement('select');
+    select.className = 'sensor-type';
+    for (const [value, text] of [
+      ['Motion', 'Motion sensor'],
+      ['Occupancy', 'Occupancy sensor'],
+    ]) {
+      const choice = document.createElement('option');
+      choice.value = value;
+      choice.textContent = text;
+      select.append(choice);
+    }
+    select.value = device.exposure.sensorTypes?.[property.key] ?? 'Motion';
+    select.addEventListener('change', () => {
+      const types = { ...device.exposure.sensorTypes };
+      if (select.value === 'Occupancy') {
+        types[property.key] = 'Occupancy';
+      } else {
+        delete types[property.key];
+      }
+      device.exposure.sensorTypes = types;
+      save(device);
+      // The tag beside the reading says which it became.
+      const tag = document.querySelector(
+        `[data-role-tag="${CSS.escape(key(device))}|${CSS.escape(property.key)}"]`,
+      );
+      if (tag) {
+        tag.textContent = roleLabel(device, property);
+      }
+    });
+    option.append(label, select);
+    wrap.append(option);
+  }
+
   // Splitting depends on any publishable function being spread across
   // endpoints, not only on/off, so it is counted separately from the tiles.
   const splittable = device.rulesOnly
@@ -1240,7 +1296,8 @@ function renderProperty(device, property) {
   if (property.publishable) {
     // Say what it becomes, since these are no longer all plain switches.
     tag.classList.add('publishable');
-    tag.textContent = ROLE_LABELS[property.role] ?? 'HomeKit';
+    tag.textContent = roleLabel(device, property);
+    tag.dataset.roleTag = `${key(device)}|${property.key}`;
     tag.title = 'Tick to publish this to HomeKit.';
   } else {
     // Be explicit that this is not a dead end, it is still usable in rules.
