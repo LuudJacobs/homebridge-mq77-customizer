@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Contact, smoke, motion and presence sensors reach HomeKit, as do a device's own low battery flag and its tamper switch. Heat alarms report `smoke`, so they arrive as smoke sensors
+
 - Two more kinds a device can be marked as: Alarm, for smoke and heat alarms and sirens, and Contact sensor, each with a drawing of its own. The kind picker is in alphabetical order
 
 - A device with a low battery shows a red, empty battery in the Devices list, and with an ntfy topic set it sends a warning below 10%, at 5% and at 1%
