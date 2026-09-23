@@ -127,18 +127,26 @@ const displayName = (device, inRoom) => {
   return `${room} ${name}`;
 };
 
-const DEVICE_TYPES = [
-  ['', 'Not set'],
-  ['light', 'Light'],
-  ['thermometer', 'Thermometer'],
-  ['sensor', 'Sensor'],
-  ['controller', 'Controller'],
-  ['fan', 'Fan'],
-  ['tv', 'TV'],
-  ['audio', 'Audio device'],
-  ['media', 'Media device'],
-  ['other', 'Other'],
-];
+/**
+ * The kinds a device can be marked as, in the order the picker offers them:
+ * Not set first, Other last, and everything between by name. Sorted rather
+ * than written in order, so a kind added later lands where it belongs.
+ */
+const DEVICE_TYPES = (() => {
+  const named = [
+    ['alarm', 'Alarm'],
+    ['audio', 'Audio device'],
+    ['contact', 'Contact sensor'],
+    ['controller', 'Controller'],
+    ['fan', 'Fan'],
+    ['light', 'Light'],
+    ['media', 'Media device'],
+    ['sensor', 'Sensor'],
+    ['thermometer', 'Thermometer'],
+    ['tv', 'TV'],
+  ].sort(([, a], [, b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  return [['', 'Not set'], ...named, ['other', 'Other']];
+})();
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -155,6 +163,22 @@ const TYPE_PATHS = {
     'M9 18h6M10 21h4',
   ],
   thermometer: ['M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z', 'M12 17.5v-4'],
+  // A warning light going off: a dome on a base, with light coming from it.
+  // Covers a siren as well as a smoke or heat alarm, where a bell would read
+  // as a notification.
+  alarm: [
+    'M7.5 17v-4.5a4.5 4.5 0 0 1 9 0V17',
+    'M5.5 17h13a1 1 0 0 1 1 1v1.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1V18a1 1 0 0 1 1-1Z',
+    'M12 3v2',
+    'M5.3 5.8l1.4 1.4',
+    'M18.7 5.8l-1.4 1.4',
+  ],
+  // The two halves on a door and its frame: the sensor, and the magnet it
+  // notices coming and going.
+  contact: [
+    'M5 4h4.5A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 4Z',
+    'M16 7.5h2.5A1.5 1.5 0 0 1 20 9v6a1.5 1.5 0 0 1-1.5 1.5H16a1.5 1.5 0 0 1-1.5-1.5V9A1.5 1.5 0 0 1 16 7.5Z',
+  ],
   // Something that notices: a point, and what reaches it from either side.
   // Arcs on both sides rather than fanning upwards, which is wifi wherever
   // it is drawn.

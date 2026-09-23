@@ -153,16 +153,19 @@ describe('grouping the device list', () => {
     const kinds = [...card.querySelectorAll('.device-field select option')].map(
       (node) => node.textContent,
     );
+    // Not set first and Other last, with everything between by name.
     expect(kinds).toEqual([
       'Not set',
-      'Light',
-      'Thermometer',
-      'Sensor',
+      'Alarm',
+      'Audio device',
+      'Contact sensor',
       'Controller',
       'Fan',
-      'TV',
-      'Audio device',
+      'Light',
       'Media device',
+      'Sensor',
+      'Thermometer',
+      'TV',
       'Other',
     ]);
   });
@@ -172,6 +175,8 @@ describe('grouping the device list', () => {
       'light',
       'thermometer',
       'sensor',
+      'alarm',
+      'contact',
       'controller',
       'fan',
       'tv',
