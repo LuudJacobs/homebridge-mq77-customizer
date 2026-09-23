@@ -6,6 +6,7 @@ import type {
   PlatformConfig,
 } from 'homebridge';
 
+import { BatteryWatch } from './battery.js';
 import { Catalog } from './catalog.js';
 import { resolveConfig, type PluginConfig } from './config.js';
 import { AccessoryManager } from './homekit/manager.js';
@@ -83,9 +84,16 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
     // Reconcile whenever the catalog changes, so a device joining or leaving
     // adds or removes its accessories without a restart.
     this.catalog.on('devices', () => this.accessories.sync());
+    // Only with somewhere to send it: the red battery in the interface does
+    // not need this, and works without a topic.
+    const batteries = this.settings.ntfy
+      ? new BatteryWatch(this.catalog, this.store, ntfy(this.settings.ntfy.topic), this.log)
+      : undefined;
+
     this.catalog.on('state', (update) => {
       this.accessories.handleState(update);
       this.rules.handleState(update);
+      batteries?.handleState(update);
     });
 
     try {
