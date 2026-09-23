@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Contact, smoke, motion and presence sensors reach HomeKit, as do a device's own low battery flag and its tamper switch. Heat alarms report `smoke`, so they arrive as smoke sensors
+- Contact, smoke, motion and presence sensors reach HomeKit, as do a device's own low battery flag and its tamper switch. Heat alarms report `smoke`, so they arrive as smoke sensors. An `occupancy` reading is a Motion sensor unless the device is set to Occupancy sensor, for the mmWave sensors that report it too
 
 - Two more kinds a device can be marked as: Alarm, for smoke and heat alarms and sirens, and Contact sensor, each with a drawing of its own. The kind picker is in alphabetical order
 
