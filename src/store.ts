@@ -27,6 +27,10 @@ export const DEVICE_TYPES = [
   // before this reads as the new `sensor` until it is tagged again.
   'thermometer',
   'sensor',
+  // For smoke and heat alarms, sirens and the like.
+  'alarm',
+  // For a door or window sensor: the two halves and the gap between them.
+  'contact',
   'controller',
   'fan',
   'tv',

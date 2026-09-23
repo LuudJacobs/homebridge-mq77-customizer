@@ -249,6 +249,11 @@ describe('WebServer', () => {
       type: 'sensor',
     });
 
+    for (const type of ['alarm', 'contact']) {
+      await mark(type);
+      expect(context.store.getExposure('zigbee:0x00158dfffe000002')).toMatchObject({ type });
+    }
+
     // Not an error: the kind is dropped and the rest of the exposure stands.
     await mark('barometer');
     expect(context.store.getExposure('zigbee:0x00158dfffe000002')?.type).toBeUndefined();
