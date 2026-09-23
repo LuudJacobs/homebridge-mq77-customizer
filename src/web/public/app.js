@@ -197,6 +197,66 @@ const TYPE_PATHS = {
   ],
 };
 
+/** The words devices use for a battery that is low, and for what is left. */
+const LOW_FLAGS = ['battery_low', 'low_battery'];
+const BATTERY_LEFT = 'battery';
+
+/** Whether a device says anything about its battery. */
+const hasBattery = (device) =>
+  device.properties.some((property) => property.key === BATTERY_LEFT || LOW_FLAGS.includes(property.key));
+
+/**
+ * What a device's state says about its battery: low when it says so, or when
+ * what is left drops below ten percent. The plugin's own warnings use the
+ * same rule, so the red battery and the notification agree.
+ */
+function batteryOf(device) {
+  const raw = device.state?.[BATTERY_LEFT];
+  const percent = typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+  const flagged = LOW_FLAGS.some((flag) => device.state?.[flag] === true);
+  return { low: flagged || (percent !== undefined && percent < 10), percent };
+}
+
+/** An empty battery on its side: the case and the nub, nothing inside. */
+const EMPTY_BATTERY = [
+  'M4.5 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z',
+  'M22 10.5v3',
+];
+
+/**
+ * Puts the red battery first among a device's icons when it is low, and takes
+ * it away when it is not. Repainted as readings arrive, so a card never has
+ * to be built again to show it.
+ */
+function paintBattery(icons, device) {
+  icons.querySelector('.battery-low')?.remove();
+  const reading = batteryOf(device);
+  if (!reading.low) {
+    return;
+  }
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'type-icon battery-low');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of EMPTY_BATTERY) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+  }
+  const title = document.createElementNS(SVG, 'title');
+  title.textContent =
+    reading.percent !== undefined && reading.percent < 10
+      ? `Battery low (${reading.percent}%)`
+      : 'Battery low';
+  svg.append(title);
+  icons.prepend(svg);
+}
+
 function typeIcon(device) {
   const type = device.exposure.type;
   if (!type || !TYPE_PATHS[type]) {
@@ -353,6 +413,12 @@ function listen() {
       Object.assign(device.state, payload.changes);
       for (const propertyKey of Object.keys(payload.changes)) {
         updateValue(device, propertyKey);
+      }
+      if (Object.keys(payload.changes).some((k) => k === BATTERY_LEFT || LOW_FLAGS.includes(k))) {
+        const slot = el.devices.querySelector(`[data-battery="${CSS.escape(key(device))}"]`);
+        if (slot) {
+          paintBattery(slot, device);
+        }
       }
       if (payload.reportedLastSeen !== undefined) {
         device.reportedLastSeen = payload.reportedLastSeen;
@@ -739,10 +805,17 @@ function renderDevice(device, inRoom) {
   paintLastSeen(seen, device);
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
+  // The kind, and before it a red battery when that is low: one piece, so a
+  // narrow window keeps both in the column the kind has always had.
+  const icons = document.createElement('span');
+  icons.className = 'device-icons';
+  icons.dataset.battery = key(device);
   const icon = typeIcon(device);
   if (icon) {
-    summary.append(icon);
+    icons.append(icon);
   }
+  paintBattery(icons, device);
+  summary.append(icons);
   // What the device is called here, when it was last heard, and what it
   // became in HomeKit. What it is and where it lives are inside the panel,
   // where there is room to read them.
@@ -781,9 +854,43 @@ function renderDevice(device, inRoom) {
     }
   }
 
+  // After the diagnostics, and only where there is a battery to watch and
+  // somewhere to send the warning.
+  if (state.canNotify && hasBattery(device)) {
+    body.append(batteryWarning(device));
+  }
+
   card.append(body);
   paintBadge(badge, device);
   return card;
+}
+
+/** Whether a low battery on this device is sent to a phone. On unless turned off. */
+function batteryWarning(device) {
+  const wrap = document.createElement('div');
+  wrap.className = 'battery-warning';
+
+  const heading = document.createElement('p');
+  heading.className = 'group-title';
+  heading.textContent = 'Low battery warning';
+
+  const label = document.createElement('label');
+  label.className = 'toggle';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = device.exposure.batteryWarning !== false;
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      delete device.exposure.batteryWarning;
+    } else {
+      device.exposure.batteryWarning = false;
+    }
+    save(device);
+  });
+  label.append(box, document.createTextNode('Send notification when battery runs low'));
+
+  wrap.append(heading, label);
+  return wrap;
 }
 
 /**

@@ -1088,6 +1088,25 @@ table.buttons td.in-homekit {
   color: var(--muted);
 }
 
+/*
+ * A device's icons: its kind, and a red battery before it when that is low.
+ * Gone entirely when there is neither, so a device with no kind set starts
+ * its name where it always did.
+ */
+.device-icons {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-self: center;
+}
+
+.device-icons:empty {
+  display: none;
+}
+
+.type-icon.battery-low {
+  color: var(--error);
+}
+
 /* The clock a time trigger carries, drawn like a device's kind. */
 .type-icon.clock {
   fill: none;
@@ -1319,7 +1338,7 @@ table.buttons td.in-homekit {
     align-items: baseline;
   }
 
-  .device > summary > .type-icon {
+  .device > summary > .device-icons {
     grid-column: 1;
     grid-row: 1;
   }

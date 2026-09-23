@@ -168,6 +168,10 @@ With a topic set under ntfy notifications, an action can send a message instead 
 
 So `<rule>: <trigger> <property> is <value>` arrives as `Brand: Gang Rookmelder Smoke is true`. Subscribe to the same topic in the ntfy app to receive them. Anyone who knows the topic can read it, so pick one nobody would guess.
 
+With a topic set, a device with a battery also gets **Low battery warning** in its panel, on unless unticked. A battery is low when the device says so (`battery_low` or `low_battery`) or when it drops below 10%, and the warning comes again at 5% and at 1%. It says `<device> is low on battery`, with the percentage where the device counts it. A restart with a battery still low sends the warning once more.
+
+Whether or not a topic is set, a low battery shows as a red, empty battery at the start of the device's line in the Devices list.
+
 ### Mirror devices
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
