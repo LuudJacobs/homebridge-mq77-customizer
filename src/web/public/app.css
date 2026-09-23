@@ -577,6 +577,29 @@ button.primary {
   width: 15rem;
 }
 
+/*
+ * A notification: the picker, a title and the delay on the line, and the
+ * message under them, from the left of the picker to the right of the delay.
+ * The widths are the ones those three boxes already have, added up.
+ */
+.rule-row input.notify-title {
+  width: 12rem;
+}
+
+.rule-row textarea.notify-message {
+  flex: 0 0 auto;
+  width: min(100%, calc(15rem + 0.4rem + 12rem + 0.4rem + 6rem));
+  min-height: 4.5rem;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  line-height: 1.35;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+
 /* Only ever a few seconds. */
 .rule-row input.delay {
   width: 6rem;
@@ -1065,6 +1088,25 @@ table.buttons td.in-homekit {
   color: var(--muted);
 }
 
+/*
+ * A device's icons: its kind, and a red battery before it when that is low.
+ * Gone entirely when there is neither, so a device with no kind set starts
+ * its name where it always did.
+ */
+.device-icons {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-self: center;
+}
+
+.device-icons:empty {
+  display: none;
+}
+
+.type-icon.battery-low {
+  color: var(--error);
+}
+
 /* The clock a time trigger carries, drawn like a device's kind. */
 .type-icon.clock {
   fill: none;
@@ -1296,7 +1338,7 @@ table.buttons td.in-homekit {
     align-items: baseline;
   }
 
-  .device > summary > .type-icon {
+  .device > summary > .device-icons {
     grid-column: 1;
     grid-row: 1;
   }

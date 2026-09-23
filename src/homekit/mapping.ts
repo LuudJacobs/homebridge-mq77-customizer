@@ -13,6 +13,10 @@ export type ServiceKind =
   | 'Thermostat'
   | 'TemperatureSensor'
   | 'HumiditySensor'
+  | 'ContactSensor'
+  | 'SmokeSensor'
+  | 'MotionSensor'
+  | 'OccupancySensor'
   | 'Battery'
   | 'StatelessProgrammableSwitch';
 
@@ -146,7 +150,12 @@ function buildPlan(
     if (!role) {
       continue;
     }
-    const group = ROLE_GROUPS[role];
+    // `occupancy` is a Motion sensor unless it was switched: a PIR and an
+    // mmWave sensor both say `occupancy`, and nothing else tells them apart.
+    const group =
+      role === 'motion' && exposure.sensorTypes?.[property.key] === 'Occupancy'
+        ? 'occupancy'
+        : ROLE_GROUPS[role];
     const bucket = grouped.get(group);
     if (bucket) {
       bucket.push(property);
@@ -155,14 +164,24 @@ function buildPlan(
     }
   }
 
-  const services: ServicePlan[] = [
-    ...tileServices(grouped.get('tile') ?? [], exposure, name, properties.length > 1),
-    ...thermostatServices(grouped.get('thermostat') ?? [], name),
-    ...sensorServices(grouped.get('temperature') ?? [], 'TemperatureSensor', 'CurrentTemperature', name, 'Temperature'),
-    ...sensorServices(grouped.get('humidity') ?? [], 'HumiditySensor', 'CurrentRelativeHumidity', name, 'Humidity'),
-    ...batteryServices(grouped.get('battery') ?? []),
-    ...buttonServices(grouped.get('buttons') ?? [], name, exposure),
-  ];
+  // The alarms and the door come before the readings, so a smoke alarm that
+  // also measures the room is a smoke alarm first: the first service that is
+  // not linked is the one the Home app treats as what the accessory is.
+  const services: ServicePlan[] = withTamper(
+    [
+      ...tileServices(grouped.get('tile') ?? [], exposure, name, properties.length > 1),
+      ...thermostatServices(grouped.get('thermostat') ?? [], name),
+      ...sensorServices(grouped.get('contact') ?? [], 'ContactSensor', 'ContactSensorState', name, 'Contact'),
+      ...sensorServices(grouped.get('smoke') ?? [], 'SmokeSensor', 'SmokeDetected', name, 'Smoke'),
+      ...sensorServices(grouped.get('motion') ?? [], 'MotionSensor', 'MotionDetected', name, 'Motion'),
+      ...sensorServices(grouped.get('occupancy') ?? [], 'OccupancySensor', 'OccupancyDetected', name, 'Occupancy'),
+      ...sensorServices(grouped.get('temperature') ?? [], 'TemperatureSensor', 'CurrentTemperature', name, 'Temperature'),
+      ...sensorServices(grouped.get('humidity') ?? [], 'HumiditySensor', 'CurrentRelativeHumidity', name, 'Humidity'),
+      ...batteryServices(grouped.get('battery') ?? []),
+      ...buttonServices(grouped.get('buttons') ?? [], name, exposure),
+    ],
+    grouped.get('tamper') ?? [],
+  );
 
   return {
     seed,
@@ -385,18 +404,71 @@ function sensorServices(
   }));
 }
 
-/** Battery is linked rather than standalone, so it shows on the accessory itself. */
+/**
+ * Battery is linked rather than standalone, so it shows on the accessory itself.
+ *
+ * A percentage says everything a flag does and more, so where a device
+ * reports both, the percentage is what HomeKit gets. A device that only
+ * raises a flag gets the low battery warning and nothing to show a level
+ * with, which HomeKit's battery service allows.
+ */
 function batteryServices(properties: NormalisedProperty[]): ServicePlan[] {
-  return properties.map((property) => ({
+  const counted = properties.filter((property) => roleFor(property) === 'battery');
+  if (counted.length > 0) {
+    return counted.map((property) => ({
+      kind: 'Battery' as const,
+      subtype: property.key,
+      name: 'Battery',
+      link: true,
+      bindings: [
+        { characteristic: 'BatteryLevel' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
+        { characteristic: 'StatusLowBattery' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
+      ],
+    }));
+  }
+  return properties.slice(0, 1).map((property) => ({
     kind: 'Battery' as const,
     subtype: property.key,
     name: 'Battery',
     link: true,
     bindings: [
-      { characteristic: 'BatteryLevel' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
-      { characteristic: 'StatusLowBattery' as const, propertyKey: property.key, role: 'battery' as const, writable: false },
+      { characteristic: 'StatusLowBattery' as const, propertyKey: property.key, role: 'lowBattery' as const, writable: false },
     ],
   }));
+}
+
+/** The services HomeKit lets say they have been tampered with. */
+const TAMPERABLE = new Set<ServiceKind>([
+  'ContactSensor',
+  'SmokeSensor',
+  'MotionSensor',
+  'OccupancySensor',
+  'TemperatureSensor',
+  'HumiditySensor',
+]);
+
+/**
+ * Puts a device's tamper switch on each of its sensors.
+ *
+ * HomeKit has no tamper service of its own: it is something a sensor says
+ * about itself. A device with nothing ticked to say it on shows nothing.
+ */
+function withTamper(services: ServicePlan[], tamper: NormalisedProperty[]): ServicePlan[] {
+  const property = tamper[0];
+  if (!property) {
+    return services;
+  }
+  return services.map((service) =>
+    TAMPERABLE.has(service.kind)
+      ? {
+          ...service,
+          bindings: [
+            ...service.bindings,
+            { characteristic: 'StatusTampered', propertyKey: property.key, role: 'tamper', writable: false },
+          ],
+        }
+      : service,
+  );
 }
 
 /**

@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.1.0] - 2026-09-23
+
+### Added
+
+- An action can send a notification through ntfy, with the device that set the rule off, what moved on it and its value written into the title and message
+- A low battery shows as a red, empty battery in the Devices list, and with an ntfy topic set a warning is sent below 10%, at 5% and at 1%
+- Contact, smoke, motion and occupancy sensors reach HomeKit, as do a device's low battery flag and tamper switch. Heat alarms report `smoke`, so they arrive as smoke sensors
+- An `occupancy` reading can be set per device to a Motion or an Occupancy sensor, since PIR and mmWave sensors both report it
+- Two more device kinds, Alarm and Contact sensor, each with its own icon
+
+### Changed
+
+- The kind picker is in alphabetical order
+
 ## [2.0.1] - 2026-09-21
 
 ### Fixed

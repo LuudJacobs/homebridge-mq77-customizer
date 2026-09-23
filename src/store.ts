@@ -15,6 +15,11 @@ export type TileType = 'Switch' | 'Outlet' | 'Lightbulb' | 'Fan';
 
 export const TILE_TYPES: TileType[] = ['Switch', 'Outlet', 'Lightbulb', 'Fan'];
 
+/** HomeKit sensor an `occupancy` reading can be published as. */
+export type SensorType = 'Motion' | 'Occupancy';
+
+export const SENSOR_TYPES: SensorType[] = ['Motion', 'Occupancy'];
+
 /** Endpoint key used for properties that belong to the device as a whole. */
 export const DEVICE_ENDPOINT = '';
 
@@ -27,6 +32,10 @@ export const DEVICE_TYPES = [
   // before this reads as the new `sensor` until it is tagged again.
   'thermometer',
   'sensor',
+  // For smoke and heat alarms, sirens and the like.
+  'alarm',
+  // For a door or window sensor: the two halves and the gap between them.
+  'contact',
   'controller',
   'fan',
   'tv',
@@ -68,6 +77,17 @@ export interface DeviceExposure {
    * before this existed keeps working.
    */
   buttons?: Record<string, Record<string, number[]>>;
+  /**
+   * What an `occupancy` reading becomes in HomeKit, keyed by property. Absent
+   * means a Motion sensor, which is what a PIR is; an mmWave sensor that also
+   * says `occupancy` is switched to an Occupancy sensor by hand.
+   */
+  sensorTypes?: Record<string, SensorType>;
+  /**
+   * Whether a low battery is sent to a phone. Absent means yes: only turning
+   * it off is written down.
+   */
+  batteryWarning?: boolean;
 }
 
 

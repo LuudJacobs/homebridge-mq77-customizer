@@ -15,6 +15,7 @@ import {
   TILE_TYPES,
   type DeviceExposure,
   type DeviceType,
+  type SensorType,
   type Store,
   type TileType,
 } from '../store.js';
@@ -47,6 +48,8 @@ export interface WebServerDeps {
    * being served to a browser.
    */
   hasLocation?: boolean;
+  /** Whether a topic is set, which is what offers Send notification. */
+  canNotify?: boolean;
   catalog: Catalog;
   store: Store;
   rules: RulesEngine;
@@ -357,6 +360,7 @@ export class WebServer {
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       hasLocation: this.deps.hasLocation === true,
+      canNotify: this.deps.canNotify === true,
       build: buildLabel(),
       backupAt: this.deps.store.lastBackup(),
       refusedToWrite: this.deps.store.refusedToWrite,
@@ -502,6 +506,15 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     }
   }
 
+  // Only a choice away from the default is kept, and only for a reading the
+  // device has: Motion is what absent means.
+  const sensorTypes: Record<string, SensorType> = {};
+  for (const [propertyKey, sensor] of Object.entries(input.sensorTypes ?? {})) {
+    if (known.has(propertyKey) && sensor === 'Occupancy') {
+      sensorTypes[propertyKey] = sensor;
+    }
+  }
+
   const label = typeof input.label === 'string' ? input.label.trim().slice(0, 64) : '';
   const room = typeof input.room === 'string' ? input.room.trim().slice(0, 64) : '';
   const type = DEVICE_TYPES.includes(input.type as DeviceType) ? (input.type as DeviceType) : undefined;
@@ -539,6 +552,9 @@ export function sanitiseExposure(raw: unknown, knownKeys: string[]): DeviceExpos
     ...(type ? { type } : {}),
     names,
     buttons,
+    ...(Object.keys(sensorTypes).length > 0 ? { sensorTypes } : {}),
+    // On unless turned off, so only the off is kept.
+    ...(input.batteryWarning === false ? { batteryWarning: false } : {}),
   };
 }
 

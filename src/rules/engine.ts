@@ -9,10 +9,13 @@ import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
 import type { Place } from './clock.js';
-import { isNow, minuteKey, onDay } from './clock.js';
+import { describeTime, isNow, minuteKey, onDay } from './clock.js';
 import { describeMatch, holds, matches } from './match.js';
+import type { Notifier } from './ntfy.js';
 import {
+  deviceActions,
   isMirror,
+  isNotify,
   isRelative,
   isSlider,
   isSunTime,
@@ -29,6 +32,8 @@ import {
   RUNAWAY_WINDOW_MS,
   STEP_MEMORY_MS,
   type Action,
+  type AnyAction,
+  type NotifyAction,
   type LogEntry,
   type LogChange,
   type LogPress,
@@ -157,6 +162,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     private readonly log: Logger,
     /** Where the house is, for the rules that follow the sun. */
     private readonly place?: Place,
+    /** Where a notification goes, when a topic is set. */
+    private readonly notifier?: Notifier,
   ) {
     super();
 
@@ -1037,7 +1044,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // reason to start waiting. Only a rule that waits can be started again by
     // its own doing; one that acts at once has the runaway cutoff instead.
     if (rule.waitMs) {
-      this.noteEcho(rule, chosen.branch.actions);
+      this.noteEcho(rule, deviceActions(chosen.branch.actions));
     }
 
     const count = chosen.branch.actions.length;
@@ -1045,7 +1052,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   }
 
   /** Returns a problem, or undefined when the action was sent or is on its way. */
-  private run(rule: AnyRule, action: Action, trigger: Fired): string | undefined {
+  private run(rule: AnyRule, action: AnyAction, trigger: Fired): string | undefined {
+    if (isNotify(action)) {
+      return this.notify(rule, action, trigger);
+    }
+
     const property = this.property(action);
     if (!property) {
       return `${action.propertyKey} is not on that device any more`;
@@ -1066,6 +1077,65 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const payload = JSON.stringify(writePath(property.encode ?? property.extract, value));
     this.after(action.delayMs, () => this.mqtt.publish(property.setTopic as string, payload));
     return undefined;
+  }
+
+  /**
+   * Sends a notification, with what set the rule off written into it.
+   *
+   * Sent in the background: a phone is not a device on the broker, and a slow
+   * answer from ntfy must not hold up the actions beside it. A refusal is
+   * written into the log as the rule's own failure when it comes back.
+   */
+  private notify(rule: AnyRule, action: NotifyAction, trigger: Fired): string | undefined {
+    const notifier = this.notifier;
+    if (!notifier) {
+      return 'no ntfy topic is set in the Homebridge settings';
+    }
+
+    const title = action.title ? this.fillIn(action.title, rule, trigger) : undefined;
+    const message = this.fillIn(action.message, rule, trigger);
+
+    this.after(action.delayMs, () => {
+      notifier.send(title, message).catch((error: unknown) => {
+        this.record(rule, 'failed', `notification not sent: ${describeError(error)}`);
+      });
+    });
+    return undefined;
+  }
+
+  /**
+   * Writes what set the rule off into a title or a message.
+   *
+   * `<trigger>` is the device as it is named here, room first, or the time
+   * when the clock did it. `<property>` is the function on it that moved,
+   * `<value>` what it said, with its unit, and `<rule>` this rule's name.
+   * Anything the trigger cannot answer becomes nothing rather than staying
+   * as the word in angle brackets.
+   */
+  private fillIn(text: string, rule: AnyRule, fired: Fired): string {
+    const property = fired.property ? this.property(fired.property) : undefined;
+    const said: Record<string, string> = {
+      trigger: fired.time
+        ? capitalised(describeTime(fired.time.at, fired.time.offset))
+        : fired.property
+          ? this.nameOf(fired.property)
+          : '',
+      property: property?.label ?? '',
+      value:
+        fired.value === undefined || fired.value === null
+          ? ''
+          : `${String(fired.value)}${typeof fired.value === 'number' && property?.unit ? property.unit : ''}`,
+      rule: rule.name,
+    };
+    return text.replace(/<(trigger|property|value|rule)>/g, (_, key: string) => said[key] ?? '');
+  }
+
+  /** A device as it is named here: its room and label, or what the source calls it. */
+  private nameOf(ref: PropertyRef): string {
+    const exposure = this.store.getExposure(`${ref.sourceId}:${ref.deviceId}`);
+    const device = this.catalog.getDevice(ref.sourceId, ref.deviceId);
+    const name = exposure?.label || device?.name || ref.deviceId;
+    return exposure?.room ? `${exposure.room} ${name}` : name;
   }
 
   /**
@@ -1470,4 +1540,13 @@ function tidy(value: number, step?: number): number {
 function placesIn(step: number): number {
   const [, tail = ''] = String(step).split('.');
   return tail.length;
+}
+
+/** A sun time said as a sentence starts it: `Sunset -00:30`. */
+function capitalised(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

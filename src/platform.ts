@@ -6,11 +6,13 @@ import type {
   PlatformConfig,
 } from 'homebridge';
 
+import { BatteryWatch } from './battery.js';
 import { Catalog } from './catalog.js';
 import { resolveConfig, type PluginConfig } from './config.js';
 import { AccessoryManager } from './homekit/manager.js';
 import { MqttConnection } from './mqtt/client.js';
 import { RulesEngine } from './rules/engine.js';
+import { ntfy } from './rules/ntfy.js';
 import { LEGACY_STORAGE_DIR, STORAGE_DIR } from './settings.js';
 import { Store, storeFile } from './store.js';
 import { WebServer } from './web/server.js';
@@ -38,7 +40,14 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
     );
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
-    this.rules = new RulesEngine(this.catalog, this.store, this.mqtt, log, this.settings.location);
+    this.rules = new RulesEngine(
+      this.catalog,
+      this.store,
+      this.mqtt,
+      log,
+      this.settings.location,
+      this.settings.ntfy ? ntfy(this.settings.ntfy.topic) : undefined,
+    );
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -75,9 +84,16 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
     // Reconcile whenever the catalog changes, so a device joining or leaving
     // adds or removes its accessories without a restart.
     this.catalog.on('devices', () => this.accessories.sync());
+    // Only with somewhere to send it: the red battery in the interface does
+    // not need this, and works without a topic.
+    const batteries = this.settings.ntfy
+      ? new BatteryWatch(this.catalog, this.store, ntfy(this.settings.ntfy.topic), this.log)
+      : undefined;
+
     this.catalog.on('state', (update) => {
       this.accessories.handleState(update);
       this.rules.handleState(update);
+      batteries?.handleState(update);
     });
 
     try {
@@ -94,6 +110,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
     this.web = new WebServer({
       config: this.settings.web,
       hasLocation: this.settings.location !== undefined,
+      canNotify: this.settings.ntfy !== undefined,
       catalog: this.catalog,
       store: this.store,
       rules: this.rules,

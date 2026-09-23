@@ -15,6 +15,7 @@ const state = {
   homekitButtons: true,
   /** Whether a location is set, which is what lets a rule follow the sun. */
   hasLocation: false,
+  canNotify: false,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -126,18 +127,26 @@ const displayName = (device, inRoom) => {
   return `${room} ${name}`;
 };
 
-const DEVICE_TYPES = [
-  ['', 'Not set'],
-  ['light', 'Light'],
-  ['thermometer', 'Thermometer'],
-  ['sensor', 'Sensor'],
-  ['controller', 'Controller'],
-  ['fan', 'Fan'],
-  ['tv', 'TV'],
-  ['audio', 'Audio device'],
-  ['media', 'Media device'],
-  ['other', 'Other'],
-];
+/**
+ * The kinds a device can be marked as, in the order the picker offers them:
+ * Not set first, Other last, and everything between by name. Sorted rather
+ * than written in order, so a kind added later lands where it belongs.
+ */
+const DEVICE_TYPES = (() => {
+  const named = [
+    ['alarm', 'Alarm'],
+    ['audio', 'Audio device'],
+    ['contact', 'Contact sensor'],
+    ['controller', 'Controller'],
+    ['fan', 'Fan'],
+    ['light', 'Light'],
+    ['media', 'Media device'],
+    ['sensor', 'Sensor'],
+    ['thermometer', 'Thermometer'],
+    ['tv', 'TV'],
+  ].sort(([, a], [, b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  return [['', 'Not set'], ...named, ['other', 'Other']];
+})();
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -154,6 +163,22 @@ const TYPE_PATHS = {
     'M9 18h6M10 21h4',
   ],
   thermometer: ['M10 14.8V5a2 2 0 1 1 4 0v9.8a4 4 0 1 1-4 0Z', 'M12 17.5v-4'],
+  // A warning light going off: a dome on a base, with light coming from it.
+  // Covers a siren as well as a smoke or heat alarm, where a bell would read
+  // as a notification.
+  alarm: [
+    'M7.5 17v-4.5a4.5 4.5 0 0 1 9 0V17',
+    'M5.5 17h13a1 1 0 0 1 1 1v1.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1V18a1 1 0 0 1 1-1Z',
+    'M12 3v2',
+    'M5.3 5.8l1.4 1.4',
+    'M18.7 5.8l-1.4 1.4',
+  ],
+  // The two halves on a door and its frame: the sensor, and the magnet it
+  // notices coming and going.
+  contact: [
+    'M5 4h4.5A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 4Z',
+    'M16 7.5h2.5A1.5 1.5 0 0 1 20 9v6a1.5 1.5 0 0 1-1.5 1.5H16a1.5 1.5 0 0 1-1.5-1.5V9A1.5 1.5 0 0 1 16 7.5Z',
+  ],
   // Something that notices: a point, and what reaches it from either side.
   // Arcs on both sides rather than fanning upwards, which is wifi wherever
   // it is drawn.
@@ -196,6 +221,66 @@ const TYPE_PATHS = {
   ],
 };
 
+/** The words devices use for a battery that is low, and for what is left. */
+const LOW_FLAGS = ['battery_low', 'low_battery'];
+const BATTERY_LEFT = 'battery';
+
+/** Whether a device says anything about its battery. */
+const hasBattery = (device) =>
+  device.properties.some((property) => property.key === BATTERY_LEFT || LOW_FLAGS.includes(property.key));
+
+/**
+ * What a device's state says about its battery: low when it says so, or when
+ * what is left drops below ten percent. The plugin's own warnings use the
+ * same rule, so the red battery and the notification agree.
+ */
+function batteryOf(device) {
+  const raw = device.state?.[BATTERY_LEFT];
+  const percent = typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+  const flagged = LOW_FLAGS.some((flag) => device.state?.[flag] === true);
+  return { low: flagged || (percent !== undefined && percent < 10), percent };
+}
+
+/** An empty battery on its side: the case and the nub, nothing inside. */
+const EMPTY_BATTERY = [
+  'M4.5 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z',
+  'M22 10.5v3',
+];
+
+/**
+ * Puts the red battery first among a device's icons when it is low, and takes
+ * it away when it is not. Repainted as readings arrive, so a card never has
+ * to be built again to show it.
+ */
+function paintBattery(icons, device) {
+  icons.querySelector('.battery-low')?.remove();
+  const reading = batteryOf(device);
+  if (!reading.low) {
+    return;
+  }
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'type-icon battery-low');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of EMPTY_BATTERY) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+  }
+  const title = document.createElementNS(SVG, 'title');
+  title.textContent =
+    reading.percent !== undefined && reading.percent < 10
+      ? `Battery low (${reading.percent}%)`
+      : 'Battery low';
+  svg.append(title);
+  icons.prepend(svg);
+}
+
 function typeIcon(device) {
   const type = device.exposure.type;
   if (!type || !TYPE_PATHS[type]) {
@@ -235,11 +320,28 @@ const ROLE_LABELS = {
   temperature: 'temperature sensor',
   humidity: 'humidity sensor',
   battery: 'battery',
+  lowBattery: 'low battery',
+  contact: 'contact sensor',
+  smoke: 'smoke sensor',
+  motion: 'motion sensor',
+  occupancy: 'occupancy sensor',
+  tamper: 'tampered',
   thermostatMode: 'thermostat mode',
   targetTemperature: 'thermostat setpoint',
   localTemperature: 'thermostat reading',
   action: 'buttons',
 };
+
+/**
+ * What a reading becomes in HomeKit, in words. An `occupancy` reading is a
+ * motion sensor unless it was switched to an occupancy sensor.
+ */
+function roleLabel(device, property) {
+  if (property.role === 'motion' && device.exposure.sensorTypes?.[property.key] === 'Occupancy') {
+    return 'occupancy sensor';
+  }
+  return ROLE_LABELS[property.role] ?? 'HomeKit';
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -277,6 +379,7 @@ async function load() {
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
   state.hasLocation = snapshot.hasLocation === true;
+  state.canNotify = snapshot.canNotify === true;
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
@@ -351,6 +454,12 @@ function listen() {
       Object.assign(device.state, payload.changes);
       for (const propertyKey of Object.keys(payload.changes)) {
         updateValue(device, propertyKey);
+      }
+      if (Object.keys(payload.changes).some((k) => k === BATTERY_LEFT || LOW_FLAGS.includes(k))) {
+        const slot = el.devices.querySelector(`[data-battery="${CSS.escape(key(device))}"]`);
+        if (slot) {
+          paintBattery(slot, device);
+        }
       }
       if (payload.reportedLastSeen !== undefined) {
         device.reportedLastSeen = payload.reportedLastSeen;
@@ -737,10 +846,17 @@ function renderDevice(device, inRoom) {
   paintLastSeen(seen, device);
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
+  // The kind, and before it a red battery when that is low: one piece, so a
+  // narrow window keeps both in the column the kind has always had.
+  const icons = document.createElement('span');
+  icons.className = 'device-icons';
+  icons.dataset.battery = key(device);
   const icon = typeIcon(device);
   if (icon) {
-    summary.append(icon);
+    icons.append(icon);
   }
+  paintBattery(icons, device);
+  summary.append(icons);
   // What the device is called here, when it was last heard, and what it
   // became in HomeKit. What it is and where it lives are inside the panel,
   // where there is room to read them.
@@ -779,9 +895,43 @@ function renderDevice(device, inRoom) {
     }
   }
 
+  // After the diagnostics, and only where there is a battery to watch and
+  // somewhere to send the warning.
+  if (state.canNotify && hasBattery(device)) {
+    body.append(batteryWarning(device));
+  }
+
   card.append(body);
   paintBadge(badge, device);
   return card;
+}
+
+/** Whether a low battery on this device is sent to a phone. On unless turned off. */
+function batteryWarning(device) {
+  const wrap = document.createElement('div');
+  wrap.className = 'battery-warning';
+
+  const heading = document.createElement('p');
+  heading.className = 'group-title';
+  heading.textContent = 'Low battery warning';
+
+  const label = document.createElement('label');
+  label.className = 'toggle';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = device.exposure.batteryWarning !== false;
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      delete device.exposure.batteryWarning;
+    } else {
+      device.exposure.batteryWarning = false;
+    }
+    save(device);
+  });
+  label.append(box, document.createTextNode('Send notification when battery runs low'));
+
+  wrap.append(heading, label);
+  return wrap;
 }
 
 /**
@@ -918,6 +1068,51 @@ function renderOptions(device) {
     select.addEventListener('change', () => {
       device.exposure.tileTypes = { ...device.exposure.tileTypes, [endpoint]: select.value };
       save(device);
+    });
+    option.append(label, select);
+    wrap.append(option);
+  }
+
+  // A PIR and an mmWave sensor both say `occupancy`, and nothing else tells
+  // them apart, so which HomeKit sensor it becomes is asked rather than
+  // guessed. Motion unless switched, which is what a PIR is.
+  const occupancies = device.rulesOnly
+    ? []
+    : device.properties.filter((property) => property.role === 'motion' && property.publishable);
+  for (const property of occupancies) {
+    const option = document.createElement('div');
+    option.className = 'option';
+    const label = document.createElement('label');
+    label.textContent =
+      occupancies.length > 1 ? `HomeKit sensor for ${property.label}` : 'HomeKit sensor';
+    const select = document.createElement('select');
+    select.className = 'sensor-type';
+    for (const [value, text] of [
+      ['Motion', 'Motion sensor'],
+      ['Occupancy', 'Occupancy sensor'],
+    ]) {
+      const choice = document.createElement('option');
+      choice.value = value;
+      choice.textContent = text;
+      select.append(choice);
+    }
+    select.value = device.exposure.sensorTypes?.[property.key] ?? 'Motion';
+    select.addEventListener('change', () => {
+      const types = { ...device.exposure.sensorTypes };
+      if (select.value === 'Occupancy') {
+        types[property.key] = 'Occupancy';
+      } else {
+        delete types[property.key];
+      }
+      device.exposure.sensorTypes = types;
+      save(device);
+      // The tag beside the reading says which it became.
+      const tag = document.querySelector(
+        `[data-role-tag="${CSS.escape(key(device))}|${CSS.escape(property.key)}"]`,
+      );
+      if (tag) {
+        tag.textContent = roleLabel(device, property);
+      }
     });
     option.append(label, select);
     wrap.append(option);
@@ -1101,7 +1296,8 @@ function renderProperty(device, property) {
   if (property.publishable) {
     // Say what it becomes, since these are no longer all plain switches.
     tag.classList.add('publishable');
-    tag.textContent = ROLE_LABELS[property.role] ?? 'HomeKit';
+    tag.textContent = roleLabel(device, property);
+    tag.dataset.roleTag = `${key(device)}|${property.key}`;
     tag.title = 'Tick to publish this to HomeKit.';
   } else {
     // Be explicit that this is not a dead end, it is still usable in rules.
@@ -1830,6 +2026,11 @@ function ruleTriggers(rule) {
 
 /** Every action of a rule, across all of its outcomes. */
 function ruleActions(rule) {
+  return everyAction(rule).filter((action) => !isNotifyRef(action));
+}
+
+/** Every action a rule has, notifications included. */
+function everyAction(rule) {
   if (rule.branches?.length) {
     return rule.branches.flatMap((branch) => branch.actions ?? []);
   }
@@ -2302,6 +2503,7 @@ function summarise(rule, inRoom) {
   const triggers = ruleTriggers(rule);
   const actions = ruleActions(rule);
   const outcomes = rule.branches?.length ?? 1;
+  const notifies = everyAction(rule).some(isNotifyRef);
 
   return [
     phrase(...triggerParts(triggers, inRoom)),
@@ -2310,7 +2512,12 @@ function summarise(rule, inRoom) {
     // it does when the wait runs out.
     ...(rule.waitMs ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
     phrase(
-      ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
+      // A rule that only sends a message has no device to name, and one that
+      // does both says so after the devices it reaches.
+      ...(actions.length
+        ? deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom)
+        : [words('notification')]),
+      words(actions.length && notifies ? ' + notification' : ''),
       words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
     ),
   ];
@@ -2655,6 +2862,8 @@ function actionEditor(branch) {
           pick: writable,
           withValue: true,
           withDelay: true,
+          allowNotify: true,
+          redraw: draw,
           onRemove:
             branch.actions.length > 1
               ? () => {
@@ -3403,6 +3612,78 @@ function blankRef(pick) {
 /** What the device picker calls the entry that is not a device. */
 const TIME_PICK = '__time';
 
+/** The picker's value for a notification, which names no device. */
+const NOTIFY_PICK = '__notify';
+
+const isNotifyRef = (ref) => ref?.kind === 'notify';
+
+/** What a notification offers while it is empty: a sentence, not a list. */
+const MESSAGE_EXAMPLE = '<rule>: <trigger> <property> is <value>';
+
+/** Turns an action into a notification, keeping only its delay. */
+function becomeNotify(ref) {
+  for (const key of Object.keys(ref)) {
+    if (key !== 'delayMs') {
+      delete ref[key];
+    }
+  }
+  Object.assign(ref, { kind: 'notify', title: '', message: '' });
+}
+
+/**
+ * A notification's row: the picker, a title and the delay on the line, and
+ * the message under them, as wide as those three and no wider.
+ */
+function notifyParts(ref, options, devices) {
+  const title = document.createElement('input');
+  title.type = 'text';
+  title.className = 'notify-title';
+  title.placeholder = 'Title';
+  title.maxLength = 200;
+  title.value = ref.title ?? '';
+  title.addEventListener('input', () => {
+    ref.title = title.value;
+    options.onChange?.();
+  });
+
+  const tail = document.createElement('span');
+  tail.className = 'rule-tail';
+  tail.append(title);
+
+  if (options.withDelay) {
+    const delay = document.createElement('input');
+    delay.type = 'number';
+    delay.className = 'delay';
+    delay.min = 0;
+    delay.placeholder = 'delay (s)';
+    delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
+    delay.addEventListener('input', () => {
+      const seconds = Number(delay.value);
+      ref.delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+    });
+    tail.append(delay);
+  }
+  if (options.onRemove) {
+    tail.append(addButton('\u2715', options.onRemove));
+  }
+  if (options.trailing) {
+    tail.append(options.trailing);
+  }
+
+  const message = document.createElement('textarea');
+  message.className = 'notify-message';
+  message.placeholder = MESSAGE_EXAMPLE;
+  message.maxLength = 4000;
+  message.rows = 3;
+  message.value = ref.message ?? '';
+  message.addEventListener('input', () => {
+    ref.message = message.value;
+    options.onChange?.();
+  });
+
+  return [devices, tail, message];
+}
+
 /**
  * Turns a row into a time, keeping nothing of the device it was.
  *
@@ -3567,8 +3848,36 @@ function refRow(ref, options) {
     choice.textContent = 'Current time';
     devices.append(choice);
   }
+  // Under the devices, the way the clock sits under them in a trigger row.
+  // Only once a topic is set, but one already written stays listed, so
+  // opening a rule cannot quietly turn it into something else.
+  if (options.allowNotify && (state.canNotify || isNotifyRef(ref))) {
+    const choice = document.createElement('option');
+    choice.value = NOTIFY_PICK;
+    choice.textContent = 'Send notification';
+    devices.append(choice);
+  }
 
-  devices.value = isTime(ref) ? TIME_PICK : `${ref.sourceId}|${ref.deviceId}`;
+  devices.value = isTime(ref)
+    ? TIME_PICK
+    : isNotifyRef(ref)
+      ? NOTIFY_PICK
+      : `${ref.sourceId}|${ref.deviceId}`;
+
+  // A notification names no device either: a title, a message, and when.
+  if (isNotifyRef(ref)) {
+    devices.addEventListener('change', () => {
+      delete ref.kind;
+      delete ref.title;
+      delete ref.message;
+      Object.assign(ref, blankRef(options.pick), { value: '' });
+      options.onChange?.();
+      options.redraw?.();
+    });
+    row.classList.add('notify-row');
+    row.append(...notifyParts(ref, options, devices));
+    return row;
+  }
 
   // A time names no device and no function, so the rest of the row is a time
   // rather than a property and a match.
@@ -3614,6 +3923,12 @@ function refRow(ref, options) {
   devices.addEventListener('change', () => {
     if (devices.value === TIME_PICK) {
       becomeTime(ref, options.asCondition === true);
+      options.onChange?.();
+      options.redraw?.();
+      return;
+    }
+    if (devices.value === NOTIFY_PICK) {
+      becomeNotify(ref);
       options.onChange?.();
       options.redraw?.();
       return;

@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.0.1
+# MQ77 Customizer 2.1.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -26,6 +26,8 @@ Everything is set in the plugin's settings form in the Homebridge UI, and each f
 - **MQTT Broker**, where your broker is and what it wants to be called
 - **Sources**, one per publisher on that broker. A Zigbee2MQTT source needs its base topic, `zigbee2mqtt` unless you changed it. With no sources at all, that is what is assumed
 - **Web Interface**, a port and a password. The interface can switch your devices, so it refuses to start without one
+
+Two more are optional: **Location**, for rules that follow the sun, and **ntfy notifications**, a topic on [ntfy.sh](https://ntfy.sh) for rules that send a message to your phone.
 
 Everything else, which devices reach HomeKit and what they do between them, is set in the web interface itself.
 
@@ -74,7 +76,13 @@ Accessory names are corrected to what HomeKit accepts, which must start and end 
 | on/off | Switch, Outlet, Lightbulb or Fan, your choice |
 | brightness | Brightness on a Lightbulb |
 | temperature, humidity | their sensor services |
+| contact | a Contact sensor, closed while the two halves touch |
+| smoke | a Smoke sensor. Heat alarms report `smoke` too, so they become one as well |
+| occupancy | a Motion sensor by default, or an Occupancy sensor if you pick that under HomeKit sensor. A PIR and an mmWave sensor both report `occupancy`, so which one a device is has to be picked by hand |
+| presence | an Occupancy sensor, which stays on while somebody sits still |
 | battery | a battery reading on the accessory, with a low warning |
+| battery low | the low warning alone, for a device that raises the flag with no percentage |
+| tamper | shown as tampered on the device's sensors |
 | child lock | the physical controls lock on the tile |
 | climate | a Thermostat, using the temperature range the device declares |
 | speed, swing | a Fan with rotation speed and swing |
@@ -154,6 +162,21 @@ A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an o
 These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the activity log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
 
 Far enough north there are days when the sun never reaches one of these points, dawn and dusk long before sunrise and sunset. Those days are skipped and said in the log.
+
+### Notifications
+
+With a topic set under ntfy notifications, an action can send a message instead of setting a device: **Send notification**, at the bottom of the action picker. It takes a title and a message, and both may name what set the rule off:
+
+- `<trigger>` the device, room first, or the time when the clock did it
+- `<property>` the function on it that moved
+- `<value>` what it said, with its unit
+- `<rule>` the rule's own name
+
+So `<rule>: <trigger> <property> is <value>` arrives as `Brand: Gang Rookmelder Smoke is true`. Subscribe to the same topic in the ntfy app to receive them. Anyone who knows the topic can read it, so pick one nobody would guess.
+
+With a topic set, a device with a battery also gets **Low battery warning** in its panel, on unless unticked. A battery is low when the device says so (`battery_low` or `low_battery`) or when it drops below 10%, and the warning comes again at 5% and at 1%. It says `<device> is low on battery`, with the percentage where the device counts it. A restart with a battery still low sends the warning once more.
+
+Whether or not a topic is set, a low battery shows as a red, empty battery at the start of the device's line in the Devices list.
 
 ### Mirror devices
 
