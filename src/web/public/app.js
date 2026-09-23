@@ -15,6 +15,7 @@ const state = {
   homekitButtons: true,
   /** Whether a location is set, which is what lets a rule follow the sun. */
   hasLocation: false,
+  canNotify: false,
   // Kept per tab, so switching away and back does not lose what was typed and
   // a device filter never silently applies to a rule list.
   filters: { devices: '', automation: '', mirror: '', activity: '' },
@@ -277,6 +278,7 @@ async function load() {
   state.devices = snapshot.devices;
   state.tileTypes = snapshot.tileTypes;
   state.hasLocation = snapshot.hasLocation === true;
+  state.canNotify = snapshot.canNotify === true;
 
   // A released build shows its version, anything else the branch it came from.
   el.build.textContent = snapshot.build ?? '';
@@ -1830,6 +1832,11 @@ function ruleTriggers(rule) {
 
 /** Every action of a rule, across all of its outcomes. */
 function ruleActions(rule) {
+  return everyAction(rule).filter((action) => !isNotifyRef(action));
+}
+
+/** Every action a rule has, notifications included. */
+function everyAction(rule) {
   if (rule.branches?.length) {
     return rule.branches.flatMap((branch) => branch.actions ?? []);
   }
@@ -2302,6 +2309,7 @@ function summarise(rule, inRoom) {
   const triggers = ruleTriggers(rule);
   const actions = ruleActions(rule);
   const outcomes = rule.branches?.length ?? 1;
+  const notifies = everyAction(rule).some(isNotifyRef);
 
   return [
     phrase(...triggerParts(triggers, inRoom)),
@@ -2310,7 +2318,12 @@ function summarise(rule, inRoom) {
     // it does when the wait runs out.
     ...(rule.waitMs ? [phrase(chunkOf(`${describeWait(rule.waitMs)} →`)), words(' ')] : []),
     phrase(
-      ...deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom),
+      // A rule that only sends a message has no device to name, and one that
+      // does both says so after the devices it reaches.
+      ...(actions.length
+        ? deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom)
+        : [words('notification')]),
+      words(actions.length && notifies ? ' + notification' : ''),
       words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
     ),
   ];
@@ -2655,6 +2668,8 @@ function actionEditor(branch) {
           pick: writable,
           withValue: true,
           withDelay: true,
+          allowNotify: true,
+          redraw: draw,
           onRemove:
             branch.actions.length > 1
               ? () => {
@@ -3403,6 +3418,78 @@ function blankRef(pick) {
 /** What the device picker calls the entry that is not a device. */
 const TIME_PICK = '__time';
 
+/** The picker's value for a notification, which names no device. */
+const NOTIFY_PICK = '__notify';
+
+const isNotifyRef = (ref) => ref?.kind === 'notify';
+
+/** What a notification offers while it is empty: a sentence, not a list. */
+const MESSAGE_EXAMPLE = '<rule>: <trigger> <property> is <value>';
+
+/** Turns an action into a notification, keeping only its delay. */
+function becomeNotify(ref) {
+  for (const key of Object.keys(ref)) {
+    if (key !== 'delayMs') {
+      delete ref[key];
+    }
+  }
+  Object.assign(ref, { kind: 'notify', title: '', message: '' });
+}
+
+/**
+ * A notification's row: the picker, a title and the delay on the line, and
+ * the message under them, as wide as those three and no wider.
+ */
+function notifyParts(ref, options, devices) {
+  const title = document.createElement('input');
+  title.type = 'text';
+  title.className = 'notify-title';
+  title.placeholder = 'Title';
+  title.maxLength = 200;
+  title.value = ref.title ?? '';
+  title.addEventListener('input', () => {
+    ref.title = title.value;
+    options.onChange?.();
+  });
+
+  const tail = document.createElement('span');
+  tail.className = 'rule-tail';
+  tail.append(title);
+
+  if (options.withDelay) {
+    const delay = document.createElement('input');
+    delay.type = 'number';
+    delay.className = 'delay';
+    delay.min = 0;
+    delay.placeholder = 'delay (s)';
+    delay.value = ref.delayMs ? ref.delayMs / 1000 : '';
+    delay.addEventListener('input', () => {
+      const seconds = Number(delay.value);
+      ref.delayMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : undefined;
+    });
+    tail.append(delay);
+  }
+  if (options.onRemove) {
+    tail.append(addButton('\u2715', options.onRemove));
+  }
+  if (options.trailing) {
+    tail.append(options.trailing);
+  }
+
+  const message = document.createElement('textarea');
+  message.className = 'notify-message';
+  message.placeholder = MESSAGE_EXAMPLE;
+  message.maxLength = 4000;
+  message.rows = 3;
+  message.value = ref.message ?? '';
+  message.addEventListener('input', () => {
+    ref.message = message.value;
+    options.onChange?.();
+  });
+
+  return [devices, tail, message];
+}
+
 /**
  * Turns a row into a time, keeping nothing of the device it was.
  *
@@ -3567,8 +3654,36 @@ function refRow(ref, options) {
     choice.textContent = 'Current time';
     devices.append(choice);
   }
+  // Under the devices, the way the clock sits under them in a trigger row.
+  // Only once a topic is set, but one already written stays listed, so
+  // opening a rule cannot quietly turn it into something else.
+  if (options.allowNotify && (state.canNotify || isNotifyRef(ref))) {
+    const choice = document.createElement('option');
+    choice.value = NOTIFY_PICK;
+    choice.textContent = 'Send notification';
+    devices.append(choice);
+  }
 
-  devices.value = isTime(ref) ? TIME_PICK : `${ref.sourceId}|${ref.deviceId}`;
+  devices.value = isTime(ref)
+    ? TIME_PICK
+    : isNotifyRef(ref)
+      ? NOTIFY_PICK
+      : `${ref.sourceId}|${ref.deviceId}`;
+
+  // A notification names no device either: a title, a message, and when.
+  if (isNotifyRef(ref)) {
+    devices.addEventListener('change', () => {
+      delete ref.kind;
+      delete ref.title;
+      delete ref.message;
+      Object.assign(ref, blankRef(options.pick), { value: '' });
+      options.onChange?.();
+      options.redraw?.();
+    });
+    row.classList.add('notify-row');
+    row.append(...notifyParts(ref, options, devices));
+    return row;
+  }
 
   // A time names no device and no function, so the rest of the row is a time
   // rather than a property and a match.
@@ -3614,6 +3729,12 @@ function refRow(ref, options) {
   devices.addEventListener('change', () => {
     if (devices.value === TIME_PICK) {
       becomeTime(ref, options.asCondition === true);
+      options.onChange?.();
+      options.redraw?.();
+      return;
+    }
+    if (devices.value === NOTIFY_PICK) {
+      becomeNotify(ref);
       options.onChange?.();
       options.redraw?.();
       return;

@@ -196,3 +196,15 @@ describe('resolveConfig', () => {
     expect(config.sources[0]?.rulesOnly).toBe(true);
   });
 });
+
+describe('the ntfy topic', () => {
+  it('reads a topic, trimmed', () => {
+    const config = resolveConfig({ ntfy: { topic: '  huis-mq77 ' } }, collectingLogger());
+    expect(config.ntfy).toEqual({ topic: 'huis-mq77' });
+  });
+
+  it('leaves notifications off when there is no topic, or only space', () => {
+    expect(resolveConfig({}, collectingLogger()).ntfy).toBeUndefined();
+    expect(resolveConfig({ ntfy: { topic: '   ' } }, collectingLogger()).ntfy).toBeUndefined();
+  });
+});

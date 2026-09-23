@@ -21,6 +21,11 @@ export interface LocationConfig {
   longitude: number;
 }
 
+/** Where a rule sends a notification, when one is set. */
+export interface NtfyConfig {
+  topic: string;
+}
+
 export interface PluginConfig {
   name: string;
   broker: BrokerConfig;
@@ -28,6 +33,8 @@ export interface PluginConfig {
   web: WebConfig;
   /** Absent until somebody fills it in, which is what hides the sun times. */
   location?: LocationConfig;
+  /** Absent until a topic is set, which is what hides Send notification. */
+  ntfy?: NtfyConfig;
 }
 
 const DEFAULT_BROKER: BrokerConfig = { host: 'localhost', port: 1883 };
@@ -106,12 +113,16 @@ export function resolveConfig(raw: Record<string, unknown>, log: Logger): Plugin
 
   const sources = resolveSources(raw.sources, log);
   const location = resolveLocation(raw.location, log);
+  // A topic with space around it is the same topic. One that is only space is
+  // no topic at all, and leaves notifications off rather than failing later.
+  const topic = asString(asObject(raw.ntfy)?.topic)?.trim();
 
   return {
     name: asString(raw.name) ?? 'MQ77 Customizer',
     broker,
     sources,
     ...(location ? { location } : {}),
+    ...(topic ? { ntfy: { topic } } : {}),
     web,
   };
 }

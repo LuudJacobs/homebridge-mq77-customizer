@@ -11,6 +11,7 @@ import { resolveConfig, type PluginConfig } from './config.js';
 import { AccessoryManager } from './homekit/manager.js';
 import { MqttConnection } from './mqtt/client.js';
 import { RulesEngine } from './rules/engine.js';
+import { ntfy } from './rules/ntfy.js';
 import { LEGACY_STORAGE_DIR, STORAGE_DIR } from './settings.js';
 import { Store, storeFile } from './store.js';
 import { WebServer } from './web/server.js';
@@ -38,7 +39,14 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
     );
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
-    this.rules = new RulesEngine(this.catalog, this.store, this.mqtt, log, this.settings.location);
+    this.rules = new RulesEngine(
+      this.catalog,
+      this.store,
+      this.mqtt,
+      log,
+      this.settings.location,
+      this.settings.ntfy ? ntfy(this.settings.ntfy.topic) : undefined,
+    );
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -94,6 +102,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
     this.web = new WebServer({
       config: this.settings.web,
       hasLocation: this.settings.location !== undefined,
+      canNotify: this.settings.ntfy !== undefined,
       catalog: this.catalog,
       store: this.store,
       rules: this.rules,
