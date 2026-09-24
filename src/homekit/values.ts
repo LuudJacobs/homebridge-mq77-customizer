@@ -79,8 +79,13 @@ export function toHomeKit(
 
     // Zigbee2MQTT's `contact` is true while the two halves touch, which is a
     // shut door and what HomeKit calls contact detected: 0.
+    //
+    // It is also the one reading Zigbee2MQTT declares the other way up,
+    // `value_on: false`, since on means open. Reading it through the
+    // property's own on and off turned it over a second time, so the wire
+    // value is read as it comes.
     case 'ContactSensorState':
-      return value === undefined ? undefined : toBoolean(property, value) ? 0 : 1;
+      return value === undefined ? undefined : isShut(value) ? 0 : 1;
 
     case 'SmokeDetected':
     case 'OccupancyDetected':
@@ -170,6 +175,15 @@ function currentHeatingCooling(mode: string, siblings: Siblings): number {
     return HEATING_COOLING.OFF;
   }
   return current < target ? HEATING_COOLING.HEAT : HEATING_COOLING.OFF;
+}
+
+/** Whether a `contact` reading says the two halves touch. */
+function isShut(value: unknown): boolean {
+  if (typeof value === 'string') {
+    const said = value.trim().toLowerCase();
+    return said === 'true' || said === 'closed' || said === 'close';
+  }
+  return value === true || value === 1;
 }
 
 /** Reads a wire value as a boolean, using the property's own on and off values. */

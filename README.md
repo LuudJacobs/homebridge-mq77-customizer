@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.1.0
+# MQ77 Customizer 2.1.1
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 

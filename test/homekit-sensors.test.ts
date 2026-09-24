@@ -54,7 +54,12 @@ describe('what each reading is to HomeKit', () => {
   });
 
   it('says a shut door is contact detected, which is what HomeKit calls closed', () => {
-    // Zigbee2MQTT's contact is true while the two halves touch.
+    // Zigbee2MQTT's contact is true while the two halves touch, and it is
+    // declared the other way up from every other binary: on is open.
+    const contact = flag('contact', { onValue: false, offValue: true });
+    expect(toHomeKit('ContactSensorState', contact, true)).toBe(0);
+    expect(toHomeKit('ContactSensorState', contact, false)).toBe(1);
+    // However the property happens to be declared, the wire value decides.
     expect(toHomeKit('ContactSensorState', flag('contact'), true)).toBe(0);
     expect(toHomeKit('ContactSensorState', flag('contact'), false)).toBe(1);
   });
