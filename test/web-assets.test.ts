@@ -52,4 +52,20 @@ describe('web assets', () => {
       readFileSync(fileURLToPath(new URL(`../src/web/public/${icon}`, import.meta.url))),
     ).not.toThrow();
   });
+
+  it('gives an iPhone or iPad a home screen icon it can use', () => {
+    const href = html.match(/rel="apple-touch-icon"[^>]*href="\/([^"]+)"/)?.[1];
+    expect(href).toBe('apple-touch-icon.png');
+
+    const png = readFileSync(fileURLToPath(new URL(`../src/web/public/${href}`, import.meta.url)));
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
+    // 180 square, which is what iOS asks for.
+    expect(png.readUInt32BE(16)).toBe(180);
+    expect(png.readUInt32BE(20)).toBe(180);
+    // Nothing see-through: no alpha channel (colour types 4 and 6) and no
+    // transparency chunk, since iOS fills transparency with black and rounds
+    // the corners itself.
+    expect([4, 6]).not.toContain(png[25]);
+    expect(png.includes(Buffer.from('tRNS'))).toBe(false);
+  });
 });
