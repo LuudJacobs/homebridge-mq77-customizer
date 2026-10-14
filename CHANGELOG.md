@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Adding the interface to an iPhone or iPad home screen shows the MQ77 icon rather than a generic letter
+
 ## [2.1.1] - 2026-09-24
 
 ### Fixed
