@@ -92,6 +92,14 @@ describe('WebServer', () => {
     expect(await response.text()).toContain('MQ77 Customizer');
   });
 
+  it('hands out the home screen icon without a session, as an image', async () => {
+    // iOS fetches it when the page is added to a home screen, with no cookie.
+    const response = await fetch(`${context.base}/apple-touch-icon.png`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+
   it('refuses api access without a session', async () => {
     const response = await fetch(`${context.base}/api/state`);
     expect(response.status).toBe(401);
