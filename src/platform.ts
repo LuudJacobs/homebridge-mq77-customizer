@@ -14,6 +14,7 @@ import { MqttConnection } from './mqtt/client.js';
 import { RulesEngine } from './rules/engine.js';
 import { ntfy } from './rules/ntfy.js';
 import { LEGACY_STORAGE_DIR, STORAGE_DIR } from './settings.js';
+import { StateToggles } from './states.js';
 import { Store, storeFile } from './store.js';
 import { WebServer } from './web/server.js';
 
@@ -24,6 +25,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
   private readonly store: Store;
   private readonly accessories: AccessoryManager;
   private readonly rules: RulesEngine;
+  private readonly states: StateToggles;
   private web?: WebServer;
 
   constructor(
@@ -39,6 +41,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       log,
       storeFile(api.user.storagePath(), LEGACY_STORAGE_DIR),
     );
+    this.states = new StateToggles(this.store, this.mqtt, log);
     this.accessories = new AccessoryManager(api, log, this.catalog, this.store, this.mqtt);
     this.rules = new RulesEngine(
       this.catalog,
@@ -98,6 +101,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
 
     try {
       await this.catalog.start(this.settings.sources);
+      await this.catalog.attach(this.states);
     } catch (error) {
       this.log.error(`Could not start sources: ${describe(error)}`);
       return;
@@ -114,6 +118,7 @@ export class Mq77CustomizerPlatform implements DynamicPlatformPlugin {
       catalog: this.catalog,
       store: this.store,
       rules: this.rules,
+      states: this.states,
       log: this.log,
       onExposureChanged: () => this.accessories.sync(),
     });

@@ -5,6 +5,7 @@ import type { Logger } from '../logger.js';
 import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
+import { STATES_SOURCE } from '../states.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
@@ -255,6 +256,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // happened. Acting on it would fire every rule again on each reconnect.
     if (update.retained) {
       return;
+    }
+
+    // Before the rules it sets off, so it reads underneath them.
+    if (update.sourceId === STATES_SOURCE) {
+      this.noteToggle(update);
     }
 
     // Held back rather than written down at once: a press that sets a rule off
@@ -940,6 +946,40 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       detail: `${label} ${press.value}`,
       press,
     };
+    this.keep(entry);
+  }
+
+  /**
+   * Records a state toggle changing.
+   *
+   * Every change, whoever made it: a toggle is something the house is doing,
+   * and when it changed is half of what anybody looking it up wants to know.
+   * A rule that changed one has its own line just above.
+   */
+  private noteToggle(update: StateUpdate): void {
+    if (!('state' in update.changes)) {
+      return;
+    }
+    const value = String(update.changes.state);
+    const name = this.catalog.getDevice(update.sourceId, update.deviceId)?.name ?? update.deviceId;
+    this.keep({
+      at: update.at,
+      ruleId: `${update.sourceId}:${update.deviceId}`,
+      ruleName: name,
+      ruleKind: 'state',
+      outcome: 'fired',
+      detail: `${name} ${value}${update.byHand ? ' (by hand)' : ''}`,
+      changed: {
+        sourceId: update.sourceId,
+        deviceId: update.deviceId,
+        propertyKey: 'state',
+        value,
+      },
+      ...(update.byHand ? { byHand: true } : {}),
+    });
+  }
+
+  private keep(entry: LogEntry): void {
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
       this.entries.shift();

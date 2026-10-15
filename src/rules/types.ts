@@ -327,7 +327,8 @@ export interface LogEntry {
   ruleName: string;
   /** Which list the rule lives in, so the run log can be split the same way. */
   /** `action` is not a rule at all, but a button press worth seeing. */
-  ruleKind: 'standard' | 'mirror' | 'slider' | 'action';
+  /** Nor is `state`: a state toggle changing, by hand or by a rule. */
+  ruleKind: 'standard' | 'mirror' | 'slider' | 'action' | 'state';
   outcome: LogOutcome;
   /** Why, in a sentence. What the Homebridge log gets, and the last resort. */
   detail: string;
@@ -361,6 +362,8 @@ export interface LogEntry {
   step?: LogStep;
   /** What a mirror copied, and where to. */
   copy?: LogCopy;
+  /** A state toggle somebody flipped in the interface. */
+  byHand?: boolean;
 }
 
 /** The time a rule was set off by, in parts. */

@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.0] - 2026-10-15
+
+### Added
+
+- State toggles: a true or false kept by the plugin, for rules to set and read
+
 ## [2.1.3] - 2026-10-15
 
 ### Changed

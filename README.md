@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.1.3
+# MQ77 Customizer 2.2.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -194,6 +194,12 @@ Coming on from off lands where the device says it should, which Zigbee2MQTT keep
 Cycle is one button for the whole range: up to the top, back down to off, and up again from there. It starts upward whenever the level was last set by something other than the slider, and ignores a second press within a second, since it is a button to press rather than to hold.
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
+
+### State toggles
+
+A true or false the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ state toggle** above the device list adds one, with a name, a room and a value, and nothing for HomeKit.
+
+A toggle is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition, be set to true or false or flipped by an action, and be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 
