@@ -55,25 +55,23 @@ async function openRule(rule: unknown, tab = 'Automation') {
   return ui;
 }
 
-/** The first trigger row's device picker, wherever the panel keeps it. */
+/** The first trigger row's room picker, wherever the panel keeps it. */
 const pickerOptions = (ui: { document: Document }, view = '#automation') =>
-  [...(ui.document.querySelector(`${view} .device-picker`) as HTMLSelectElement).options].map(
+  [...(ui.document.querySelector(`${view} .room-picker`) as HTMLSelectElement).options].map(
     (option) => option.textContent,
   );
 
 describe('picking a time', () => {
-  it('offers Time at the bottom of the trigger picker, under the devices', async () => {
+  it('offers Current time at the bottom of the room picker, under the rooms', async () => {
     const ui = await openRule(automation());
-    const options = pickerOptions(ui);
-
-    expect(options.at(-1)).toBe('Current time');
-    // And it is the only thing there that is not a device.
-    expect(options.slice(0, -1)).toEqual(['lamp', 'remote']);
+    // The prompt, the one room these devices are in (none, so Unknown), and
+    // the clock, which is not a place.
+    expect(pickerOptions(ui)).toEqual(['Room', 'Unknown', 'Current time']);
   });
 
   it('turns the row into a time and a set of days when Time is chosen', async () => {
     const ui = await openRule(automation());
-    const picker = ui.document.querySelector('.triggers .device-picker') as HTMLSelectElement;
+    const picker = ui.document.querySelector('.triggers .room-picker') as HTMLSelectElement;
 
     picker.value = '__time';
     picker.dispatchEvent(new ui.window.Event('change'));
@@ -112,9 +110,10 @@ describe('picking a time', () => {
 
   it('goes back to a device, keeping nothing of the time', async () => {
     const ui = await openRule(automation({ triggers: [{ kind: 'time', at: '22:00' }] }));
-    const picker = ui.document.querySelector('.triggers .device-picker') as HTMLSelectElement;
+    const picker = ui.document.querySelector('.triggers .room-picker') as HTMLSelectElement;
 
-    picker.value = 'zigbee|0xa';
+    // A room, which comes with its first device.
+    picker.value = '__unroomed';
     picker.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
@@ -274,7 +273,7 @@ describe('a time as a condition', () => {
   }
 
   const conditionPicker = (ui: { document: Document }) =>
-    ui.document.querySelector('.conditions .device-picker') as HTMLSelectElement;
+    ui.document.querySelector('.conditions .room-picker') as HTMLSelectElement;
 
   it('offers Time at the bottom of the condition picker too', async () => {
     const ui = await openWith(

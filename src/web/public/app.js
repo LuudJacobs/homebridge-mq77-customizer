@@ -1785,6 +1785,9 @@ function clockIcon() {
 /** Whether something in a rule is a time rather than a device. */
 const isTime = (entry) => entry?.kind === 'time';
 
+/** The room picker's value for devices with no room set. */
+const UNROOMED = '__unroomed';
+
 /** The two ways an action counts from where a value already is. */
 const MOVES = new Set(['add', 'subtract']);
 
@@ -2748,7 +2751,7 @@ function drawWhenThen(body, draft) {
           trailing: last
             ? addButton('+ trigger', () => {
                 draft.triggers.push({
-                  ...blankRef(watchable),
+                  ...emptyRef(),
                   match: { kind: 'changedTo', value: '' },
                 });
                 drawTriggers();
@@ -2782,7 +2785,7 @@ function drawWhenThen(body, draft) {
     });
     branches.append(
       addButton('+ outcome', () => {
-        draft.branches.push({ actions: [{ ...blankRef(writable), value: '' }] });
+        draft.branches.push({ actions: [{ ...emptyRef(), value: '' }] });
         drawBranches();
       }),
     );
@@ -2873,7 +2876,7 @@ function actionEditor(branch) {
               : undefined,
           trailing: last
             ? addButton('+ action', () => {
-                branch.actions.push({ ...blankRef(writable), value: '' });
+                branch.actions.push({ ...emptyRef(), value: '' });
                 draw();
               })
             : undefined,
@@ -3097,7 +3100,7 @@ function drawSlider(body, draft) {
       buttons.append(sectionTitle(label));
 
       const add = () => {
-        triggers.push({ ...blankRef(watchable), match: { kind: 'changedTo', value: '' } });
+        triggers.push({ ...emptyRef(), match: { kind: 'changedTo', value: '' } });
         drawButtons();
       };
 
@@ -3518,7 +3521,7 @@ function renderGroup(group, groups, index, commit, redraw) {
 }
 
 function newTest() {
-  return { kind: 'test', ...blankRef(watchable), match: { kind: 'equals', value: '' } };
+  return { kind: 'test', ...emptyRef(), match: { kind: 'equals', value: '' } };
 }
 
 /** Reads what earlier versions stored, a flat list meaning all of them. */
@@ -3594,6 +3597,14 @@ function addButton(text, onClick) {
   return button;
 }
 
+/** A row nobody has pointed anywhere yet: no room, so no device either. */
+const emptyRef = () => ({ sourceId: '', deviceId: '', propertyKey: '' });
+
+/**
+ * The first device that can do the job. Only where something has to be
+ * there from the start: a brand-new rule is stored the moment it is made,
+ * and a slider cannot draw its steps without a target.
+ */
 function blankRef(pick) {
   const device = state.devices.find((candidate) => pick(candidate).length > 0);
   return {
@@ -3634,7 +3645,7 @@ function becomeNotify(ref) {
  * A notification's row: the picker, a title and the delay on the line, and
  * the message under them, as wide as those three and no wider.
  */
-function notifyParts(ref, options, devices) {
+function notifyParts(ref, options, pickers) {
   const title = document.createElement('input');
   title.type = 'text';
   title.className = 'notify-title';
@@ -3681,7 +3692,7 @@ function notifyParts(ref, options, devices) {
     options.onChange?.();
   });
 
-  return [devices, tail, message];
+  return [...pickers, tail, message];
 }
 
 /**
@@ -3703,14 +3714,6 @@ function becomeTime(ref, asCondition) {
   } else {
     delete ref.side;
   }
-}
-
-/** And back again, to whichever device the picker offers first. */
-function becomeDevice(ref, pick) {
-  for (const key of ['kind', 'at', 'offset', 'days', 'side']) {
-    delete ref[key];
-  }
-  Object.assign(ref, blankRef(pick), { match: { kind: 'changedTo', value: '' } });
 }
 
 /** The time it names, and either a side of it or the days it may run on. */
@@ -3825,71 +3828,129 @@ function refRow(ref, options) {
   const row = document.createElement('div');
   row.className = 'rule-row';
 
-  const devices = document.createElement('select');
-  // Wider than the rest of the row, since a device name is the longest thing
-  // on it and the one worth reading at a glance. Not `device`, which is the
-  // card a device is drawn in and would style this like one.
-  devices.className = 'device-picker';
-  // Always by name here, whatever the device list is sorted by. A rule is
-  // written by looking for a device by name, not by when it last reported.
-  for (const device of byName(state.devices.filter((candidate) => options.pick(candidate).length > 0))) {
+  // Two dropdowns rather than one long one: the room, then the device in it.
+  // A house of sixty devices is a long list to read for one name, and the
+  // room is the first thing anybody knows about the device they want.
+  const candidates = state.devices.filter((candidate) => options.pick(candidate).length > 0);
+  const roomOfDevice = (device) => device.exposure.room?.trim() || UNROOMED;
+
+  const rooms = document.createElement('select');
+  rooms.className = 'room-picker';
+  const offer = (select, value, text) => {
     const choice = document.createElement('option');
-    choice.value = `${device.sourceId}|${device.deviceId}`;
-    choice.textContent = displayName(device);
-    devices.append(choice);
+    choice.value = value;
+    choice.textContent = text;
+    select.append(choice);
+    return choice;
+  };
+  // Shown until a room is picked, and never picked itself.
+  const prompt = offer(rooms, '', 'Room');
+  prompt.disabled = true;
+  const named = [...new Set(candidates.map(roomOfDevice))].filter((room) => room !== UNROOMED);
+  for (const room of named.sort(compareNames)) {
+    offer(rooms, room, room);
   }
-  // Under the devices rather than among them: the picker is read looking for a
-  // device, which is what nearly every trigger is.
+  // After the rooms, in the word the device list uses for the same thing.
+  if (candidates.some((device) => roomOfDevice(device) === UNROOMED)) {
+    offer(rooms, UNROOMED, UNGROUPED);
+  }
+  // Under the rooms rather than among them: neither is a place.
   if (options.allowTime) {
-    const choice = document.createElement('option');
-    choice.value = TIME_PICK;
-    // `Current time`, not `Time`: it sits among device names, and what it
-    // offers is the clock as it stands rather than a time in the abstract.
-    choice.textContent = 'Current time';
-    devices.append(choice);
+    // `Current time`, not `Time`: what it offers is the clock as it stands
+    // rather than a time in the abstract.
+    offer(rooms, TIME_PICK, 'Current time');
   }
-  // Under the devices, the way the clock sits under them in a trigger row.
   // Only once a topic is set, but one already written stays listed, so
-  // opening a rule cannot quietly turn it into something else.
+  // opening a rule cannot quietly turn it into something else. One word,
+  // since `Send notification` is more than a dropdown this wide shows.
   if (options.allowNotify && (state.canNotify || isNotifyRef(ref))) {
-    const choice = document.createElement('option');
-    choice.value = NOTIFY_PICK;
-    choice.textContent = 'Send notification';
-    devices.append(choice);
+    offer(rooms, NOTIFY_PICK, 'Notification');
   }
 
-  devices.value = isTime(ref)
+  // Not `device`, which is the card a device is drawn in and would style
+  // this like one.
+  const devices = document.createElement('select');
+  devices.className = 'device-picker';
+
+  /** Fills the second dropdown with the room's devices, or empties and stops it. */
+  const fillDevices = (room) => {
+    devices.replaceChildren();
+    const inRoom = room && room !== TIME_PICK && room !== NOTIFY_PICK;
+    devices.disabled = !inRoom;
+    if (!inRoom) {
+      return;
+    }
+    // By name, whatever the device list is sorted by, and without the room:
+    // the dropdown beside it has just said it.
+    for (const device of byName(candidates.filter((candidate) => roomOfDevice(candidate) === room))) {
+      offer(devices, `${device.sourceId}|${device.deviceId}`, displayName(device, room));
+    }
+  };
+
+  const current = findDevice(ref);
+  rooms.value = isTime(ref)
     ? TIME_PICK
     : isNotifyRef(ref)
       ? NOTIFY_PICK
-      : `${ref.sourceId}|${ref.deviceId}`;
+      : current && candidates.includes(current)
+        ? roomOfDevice(current)
+        : '';
+  fillDevices(rooms.value);
+  if (current && !devices.disabled) {
+    devices.value = `${current.sourceId}|${current.deviceId}`;
+  }
 
-  // A notification names no device either: a title, a message, and when.
+  /** Points a row at the first device of a room, whatever it was before. */
+  const firstIn = (room) =>
+    byName(candidates.filter((candidate) => roomOfDevice(candidate) === room))[0];
+
+  /**
+   * A row that was a time or a notification becoming a device again.
+   * Its shape changes, so the editor draws it afresh.
+   */
+  const backToDevice = (room) => {
+    const device = firstIn(room);
+    for (const key of ['kind', 'at', 'offset', 'days', 'side', 'title', 'message']) {
+      delete ref[key];
+    }
+    Object.assign(ref, {
+      sourceId: device?.sourceId ?? '',
+      deviceId: device?.deviceId ?? '',
+      propertyKey: device ? (options.pick(device)[0]?.key ?? '') : '',
+    });
+    // A trigger or a condition matches; an action sends.
+    if (options.withValue) {
+      ref.value = '';
+    } else {
+      ref.match = { kind: 'changedTo', value: '' };
+    }
+    options.onChange?.();
+    options.redraw?.();
+  };
+
+  // A notification names no device: a title, a message, and when.
   if (isNotifyRef(ref)) {
-    devices.addEventListener('change', () => {
-      delete ref.kind;
-      delete ref.title;
-      delete ref.message;
-      Object.assign(ref, blankRef(options.pick), { value: '' });
-      options.onChange?.();
-      options.redraw?.();
+    rooms.addEventListener('change', () => {
+      if (rooms.value !== NOTIFY_PICK) {
+        backToDevice(rooms.value);
+      }
     });
     row.classList.add('notify-row');
-    row.append(...notifyParts(ref, options, devices));
+    row.append(...notifyParts(ref, options, [rooms, devices]));
     return row;
   }
 
   // A time names no device and no function, so the rest of the row is a time
   // rather than a property and a match.
   if (isTime(ref)) {
-    devices.addEventListener('change', () => {
-      becomeDevice(ref, options.pick);
-      options.onChange?.();
-      options.redraw?.();
+    rooms.addEventListener('change', () => {
+      if (rooms.value !== TIME_PICK) {
+        backToDevice(rooms.value);
+      }
     });
-    row.append(devices, ...timeParts(ref, options));
+    row.append(rooms, devices, ...timeParts(ref, options));
     if (options.onRemove) {
-      row.append(addButton('✕', options.onRemove));
+      row.append(addButton('\u2715', options.onRemove));
     }
     if (options.trailing) {
       row.append(options.trailing);
@@ -3911,6 +3972,9 @@ function refRow(ref, options) {
         : property.label;
       properties.append(choice);
     }
+    // Nothing to choose until a device is, the same as the device dropdown
+    // until a room is.
+    properties.disabled = !device;
     properties.value = ref.propertyKey;
     if (!properties.value) {
       ref.propertyKey = properties.options[0]?.value ?? '';
@@ -3920,19 +3984,35 @@ function refRow(ref, options) {
 
   const changed = () => options.onChange?.();
 
-  devices.addEventListener('change', () => {
-    if (devices.value === TIME_PICK) {
+  rooms.addEventListener('change', () => {
+    if (rooms.value === TIME_PICK) {
       becomeTime(ref, options.asCondition === true);
       options.onChange?.();
       options.redraw?.();
       return;
     }
-    if (devices.value === NOTIFY_PICK) {
+    if (rooms.value === NOTIFY_PICK) {
       becomeNotify(ref);
       options.onChange?.();
       options.redraw?.();
       return;
     }
+    // A room picked is a device picked: the first in it, which the second
+    // dropdown then shows and can change.
+    fillDevices(rooms.value);
+    const device = firstIn(rooms.value);
+    ref.sourceId = device?.sourceId ?? '';
+    ref.deviceId = device?.deviceId ?? '';
+    ref.propertyKey = '';
+    if (device) {
+      devices.value = `${device.sourceId}|${device.deviceId}`;
+    }
+    fillProperties();
+    redrawTail();
+    changed();
+  });
+
+  devices.addEventListener('change', () => {
     const [sourceId, deviceId] = devices.value.split('|');
     ref.sourceId = sourceId;
     ref.deviceId = deviceId;
@@ -3947,7 +4027,7 @@ function refRow(ref, options) {
     changed();
   });
 
-  row.append(devices, properties);
+  row.append(rooms, devices, properties);
 
   const tail = document.createElement('span');
   tail.className = 'rule-tail';
@@ -3956,8 +4036,11 @@ function refRow(ref, options) {
   function redrawTail() {
     tail.replaceChildren();
     const property = findProperty(ref);
+    // A row nobody has pointed at a device yet has nothing to match, send or
+    // wait for: only the buttons that remove it or add the next.
+    const pointed = Boolean(findDevice(ref));
 
-    if (options.withMatch) {
+    if (pointed && options.withMatch) {
       const kinds = document.createElement('select');
       for (const entry of MATCH_KINDS) {
         const choice = document.createElement('option');
@@ -3992,7 +4075,7 @@ function refRow(ref, options) {
       }
     }
 
-    if (options.withValue) {
+    if (pointed && options.withValue) {
       const moving = MOVES.has(ref.valueFrom?.kind);
       const mode = document.createElement('select');
       for (const entry of [
@@ -4063,7 +4146,7 @@ function refRow(ref, options) {
       }
     }
 
-    if (options.withDelay) {
+    if (pointed && options.withDelay) {
       const delay = document.createElement('input');
       delay.type = 'number';
       delay.className = 'delay';

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Rule editors pick a device in two steps: its room, then the device
+
 ## [2.1.2] - 2026-10-14
 
 ### Fixed

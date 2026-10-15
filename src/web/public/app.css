@@ -173,8 +173,12 @@ button {
 
 /* App shell */
 
+/*
+ * Wide enough for a whole action on one line: a room, a device, a property,
+ * how to set it, the value, the delay and the buttons after them.
+ */
 #app {
-  max-width: 60rem;
+  max-width: 62rem;
   margin: 0 auto;
   padding: 1rem 1rem 4rem;
 }
@@ -573,14 +577,17 @@ button.primary {
   width: 8rem;
 }
 
-.rule-row select.device-picker {
-  width: 15rem;
-}
+/*
+ * The room and the device are two dropdowns the width of every other one on
+ * the row, rather than one wide one: the room says half of what the device
+ * name used to, so the name fits.
+ */
 
 /*
- * A notification: the picker, a title and the delay on the line, and the
- * message under them, from the left of the picker to the right of the delay.
- * The widths are the ones those three boxes already have, added up.
+ * A notification: the room and device pickers, a title and the delay on the
+ * line, and the message under them, from the left of the room picker to the
+ * right of the delay. The widths are the ones those boxes already have, added
+ * up with the gaps between them.
  */
 .rule-row input.notify-title {
   width: 12rem;
@@ -588,7 +595,7 @@ button.primary {
 
 .rule-row textarea.notify-message {
   flex: 0 0 auto;
-  width: min(100%, calc(15rem + 0.4rem + 12rem + 0.4rem + 6rem));
+  width: min(100%, calc(8rem + 0.4rem + 8rem + 0.4rem + 12rem + 0.4rem + 6rem));
   min-height: 4.5rem;
   font: inherit;
   padding: 0.45rem 0.6rem;

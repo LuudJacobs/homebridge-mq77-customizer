@@ -52,18 +52,18 @@ async function openRule(actions: unknown[], canNotify = true) {
 }
 
 const picker = (ui: { document: Document }) =>
-  ui.document.querySelector('.actions .device-picker') as HTMLSelectElement;
+  ui.document.querySelector('.actions .room-picker') as HTMLSelectElement;
 
 const options = (ui: { document: Document }) =>
   [...picker(ui).options].map((option) => option.textContent);
 
 describe('sending a notification from the action row', () => {
-  it('is offered under the devices once a topic is set, and not before', async () => {
+  it('is offered under the rooms once a topic is set, and not before', async () => {
     const withTopic = await openRule([{ ...ref('0xb'), value: 'ON' }]);
-    expect(options(withTopic).at(-1)).toBe('Send notification');
+    expect(options(withTopic).at(-1)).toBe('Notification');
 
     const without = await openRule([{ ...ref('0xb'), value: 'ON' }], false);
-    expect(options(without)).not.toContain('Send notification');
+    expect(options(without)).not.toContain('Notification');
   });
 
   it('keeps one already written listed, whatever the settings say now', async () => {
@@ -126,7 +126,8 @@ describe('sending a notification from the action row', () => {
   it('goes back to a device when one is picked again', async () => {
     const ui = await openRule([{ kind: 'notify', message: 'Hallo' }]);
     const select = picker(ui);
-    select.value = 'zigbee|0xb';
+    // A room, which comes with its first device.
+    select.value = '__unroomed';
     select.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
