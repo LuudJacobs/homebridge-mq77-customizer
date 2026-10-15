@@ -12,6 +12,7 @@
   --good: #1a7f37;
   --sunken: #eef0f4;
   --radius: 10px;
+  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
@@ -28,6 +29,7 @@
     --error: #f27272;
     --good: #4ac26b;
     --sunken: #21252c;
+    --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239099a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 
@@ -135,6 +137,25 @@ select {
  * and both make a box a different width from the one beside it. Typed
  * instead, which is what everybody does anyway.
  */
+/*
+ * The browser draws its own caret hard against the right edge, and where it
+ * likes. Drawn here instead, so it sits the same distance in on every box.
+ */
+select {
+  appearance: none;
+  background-image: var(--caret);
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 0.6rem auto;
+  padding-right: 1.6rem;
+}
+
+/* The browser greyed its own; this one has to be told. */
+select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 input[type="time"]::-webkit-calendar-picker-indicator {
   display: none;
 }
@@ -173,12 +194,8 @@ button {
 
 /* App shell */
 
-/*
- * Wide enough for a whole action on one line: a room, a device, a property,
- * how to set it, the value, the delay and the buttons after them.
- */
 #app {
-  max-width: 62rem;
+  max-width: 60rem;
   margin: 0 auto;
   padding: 1rem 1rem 4rem;
 }
@@ -565,8 +582,18 @@ button.primary {
   opacity: 0.55;
 }
 
+/*
+ * The boxes on a rule row are set a little smaller than the text around them,
+ * and narrow enough for a whole action on one line: a room, a device, a
+ * property, how to set it, the value and the delay.
+ */
+.rule-row select,
+.rule-row input:not([type='checkbox']) {
+  font-size: 0.9em;
+}
+
 .rule-row select {
-  width: 8rem;
+  width: 7.5rem;
 }
 
 /*
@@ -574,7 +601,7 @@ button.primary {
  * is not a value box: the mirror editor puts one on a row of its own.
  */
 .rule-row input:not([type='checkbox']) {
-  width: 8rem;
+  width: 7.5rem;
 }
 
 /*
@@ -595,9 +622,10 @@ button.primary {
 
 .rule-row textarea.notify-message {
   flex: 0 0 auto;
-  width: min(100%, calc(8rem + 0.4rem + 8rem + 0.4rem + 12rem + 0.4rem + 6rem));
+  width: min(100%, calc(7.5rem + 0.4rem + 7.5rem + 0.4rem + 12rem + 0.4rem + 6rem));
   min-height: 4.5rem;
   font: inherit;
+  font-size: 0.9em;
   padding: 0.45rem 0.6rem;
   line-height: 1.35;
   border: 1px solid var(--line);
