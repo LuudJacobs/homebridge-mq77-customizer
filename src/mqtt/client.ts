@@ -19,6 +19,21 @@ export interface MqttMessage {
 
 export type MessageHandler = (message: MqttMessage) => void;
 
+/**
+ * Where topics that never leave the plugin live.
+ *
+ * Something the plugin keeps itself, a state toggle, is written the way a
+ * device is: a rule publishes to its set topic. Those publishes are handed
+ * straight back to whoever subscribed here instead of going to the broker.
+ * The MQTT spec keeps `$` topics for the broker's own use, so nothing a device
+ * publishes can ever land among them, and no wildcard reaches them either.
+ */
+export const LOCAL_PREFIX = '$mq77/';
+
+export function isLocal(topic: string): boolean {
+  return topic.startsWith(LOCAL_PREFIX);
+}
+
 interface Subscription {
   filter: string;
   handler: MessageHandler;
@@ -66,7 +81,9 @@ export class MqttConnection {
       // Subscriptions registered before the connection came up, and after a
       // session was not resumed, both need replaying.
       for (const subscription of this.subscriptions) {
-        this.sendSubscribe(subscription.filter);
+        if (!isLocal(subscription.filter)) {
+          this.sendSubscribe(subscription.filter);
+        }
       }
     });
 
@@ -75,25 +92,30 @@ export class MqttConnection {
     client.on('error', (error) => this.log.error(`MQTT error: ${error.message}`));
 
     client.on('message', (topic, payload, packet) => {
-      const message: MqttMessage = { topic, payload, retained: packet.retain === true };
-      for (const subscription of this.subscriptions) {
-        if (!topicMatches(subscription.filter, topic)) {
-          continue;
-        }
-        try {
-          subscription.handler(message);
-        } catch (error) {
-          this.log.error(`Handler for ${subscription.filter} threw on ${topic}: ${describe(error)}`);
-        }
-      }
+      this.dispatch({ topic, payload, retained: packet.retain === true });
     });
+  }
+
+  private dispatch(message: MqttMessage): void {
+    for (const subscription of this.subscriptions) {
+      if (!topicMatches(subscription.filter, message.topic)) {
+        continue;
+      }
+      try {
+        subscription.handler(message);
+      } catch (error) {
+        this.log.error(
+          `Handler for ${subscription.filter} threw on ${message.topic}: ${describe(error)}`,
+        );
+      }
+    }
   }
 
   subscribe(filter: string, handler: MessageHandler): () => void {
     const subscription: Subscription = { filter, handler };
     this.subscriptions.push(subscription);
 
-    if (this.client?.connected) {
+    if (this.client?.connected && !isLocal(filter)) {
       this.sendSubscribe(filter);
     }
 
@@ -103,13 +125,21 @@ export class MqttConnection {
         this.subscriptions.splice(index, 1);
       }
       // Only drop the broker subscription once nothing else wants the filter.
-      if (!this.subscriptions.some((s) => s.filter === filter)) {
+      if (!isLocal(filter) && !this.subscriptions.some((s) => s.filter === filter)) {
         this.client?.unsubscribe(filter);
       }
     };
   }
 
   publish(topic: string, payload: string, options: { retain?: boolean } = {}): void {
+    if (isLocal(topic)) {
+      // Later rather than now, the way an answer from the broker would come:
+      // whoever published is usually halfway through something of its own.
+      queueMicrotask(() =>
+        this.dispatch({ topic, payload: Buffer.from(payload), retained: false }),
+      );
+      return;
+    }
     if (!this.client?.connected) {
       this.log.warn(`Dropping publish to ${topic}, broker not connected`);
       return;

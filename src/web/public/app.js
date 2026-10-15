@@ -8,7 +8,7 @@ const state = {
   /** Hides everything that is not currently published to HomeKit. */
   /** Hides rules that are switched off. */
   /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true, action: false },
+  activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: true,
   /** Whether it says of a button that HomeKit hears it. */
@@ -27,6 +27,8 @@ const state = {
    * somewhere down the page under the name it has not been given yet.
    */
   pinned: undefined,
+  /** A state toggle just added and not named yet, which can go without asking. */
+  freshToggle: undefined,
   /** The last network scan, and whether one is running. */
   map: undefined,
   scanning: false,
@@ -92,11 +94,19 @@ const el = {
   addAutomation: document.getElementById('add-automation'),
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
+  addState: document.getElementById('add-state'),
+  kindState: document.getElementById('kind-state'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
   build: document.getElementById('build'),
 };
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
+
+/** Where the state toggles come from: the plugin itself, not a source on the broker. */
+const STATES = 'states';
+
+/** A true or false the plugin keeps, rather than a device on the network. */
+const isToggle = (device) => device?.sourceId === STATES;
 
 /** What the device is called here: the given name, or the source's own. */
 /**
@@ -116,7 +126,8 @@ const key = (device) => `${device.sourceId}:${device.deviceId}`;
  * which remote it is matters.
  */
 const displayName = (device, inRoom) => {
-  const name = device.exposure.label?.trim();
+  // A toggle's name is one somebody gave it, the way a label is.
+  const name = device.exposure.label?.trim() || (isToggle(device) ? device.name : undefined);
   const room = device.exposure.room?.trim();
   if (!name) {
     return device.name;
@@ -147,6 +158,14 @@ const DEVICE_TYPES = (() => {
   ].sort(([, a], [, b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   return [['', 'Not set'], ...named, ['other', 'Other']];
 })();
+
+/**
+ * Every kind there is, for naming and drawing one.
+ *
+ * A state toggle is a kind of its own that nothing else can be, so it is
+ * here and never in the picker.
+ */
+const KINDS = [...DEVICE_TYPES, ['state', 'State toggle']];
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -218,6 +237,12 @@ const TYPE_PATHS = {
   other: [
     'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
     'M12 8v4M12 12l-5 4M12 12l5 4',
+  ],
+  // A switch on a screen rather than on a wall: a track with the knob at one
+  // end, which is what true or false looks like anywhere it is set.
+  state: [
+    'M8 7h8a5 5 0 0 1 0 10H8A5 5 0 0 1 8 7Z',
+    'M16 14.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z',
   ],
 };
 
@@ -304,7 +329,7 @@ function typeIcon(device) {
     svg.append(path);
   }
   const title = document.createElementNS(SVG, 'title');
-  title.textContent = DEVICE_TYPES.find(([value]) => value === type)?.[1] ?? type;
+  title.textContent = KINDS.find(([value]) => value === type)?.[1] ?? type;
   svg.append(title);
   return svg;
 }
@@ -454,6 +479,12 @@ function listen() {
       Object.assign(device.state, payload.changes);
       for (const propertyKey of Object.keys(payload.changes)) {
         updateValue(device, propertyKey);
+      }
+      if (isToggle(device)) {
+        const choice = el.devices.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
+        if (choice) {
+          choice.value = String(device.state.state === true);
+        }
       }
       if (Object.keys(payload.changes).some((k) => k === BATTERY_LEFT || LOW_FLAGS.includes(k))) {
         const slot = el.devices.querySelector(`[data-battery="${CSS.escape(key(device))}"]`);
@@ -639,8 +670,7 @@ const SORT_KEYS = {
 /** The heading a device belongs under, when the list is grouped. */
 const GROUP_KEYS = {
   room: (device) => device.exposure.room?.trim() ?? '',
-  type: (device) =>
-    DEVICE_TYPES.find(([value]) => value === device.exposure.type)?.[1] ?? '',
+  type: (device) => KINDS.find(([value]) => value === device.exposure.type)?.[1] ?? '',
 };
 
 /** Devices with nothing set go under this, at the end. */
@@ -842,8 +872,14 @@ function renderDevice(device, inRoom) {
   name.textContent = displayName(device, inRoom);
   const seen = document.createElement('span');
   seen.className = 'device-seen';
-  seen.dataset.seen = key(device);
-  paintLastSeen(seen, device);
+  if (isToggle(device)) {
+    // Never heard from, since it is not out there: where it stands instead.
+    seen.dataset.value = `${key(device)}|state`;
+    paintValue(seen, device, 'state');
+  } else {
+    seen.dataset.seen = key(device);
+    paintLastSeen(seen, device);
+  }
   const badge = document.createElement('span');
   badge.dataset.badge = key(device);
   // The kind, and before it a red battery when that is low: one piece, so a
@@ -865,6 +901,13 @@ function renderDevice(device, inRoom) {
 
   const body = document.createElement('div');
   body.className = 'device-body';
+
+  if (isToggle(device)) {
+    body.append(renderToggle(device, name));
+    card.append(body);
+    paintBadge(badge, device);
+    return card;
+  }
 
   body.append(deviceOrigin(device));
   body.append(renderDeviceInfo(device, name));
@@ -904,6 +947,96 @@ function renderDevice(device, inRoom) {
   card.append(body);
   paintBadge(badge, device);
   return card;
+}
+
+/**
+ * A state toggle: what it is called, where it is, and whether it is true.
+ *
+ * Nothing about HomeKit, which never sees one, and nothing about where it
+ * came from, since that is here.
+ */
+function renderToggle(device, heading) {
+  const wrap = document.createElement('div');
+  wrap.className = 'toggle-body';
+  const row = document.createElement('div');
+  row.className = 'device-info';
+  const path = `/api/states/${encodeURIComponent(device.deviceId)}`;
+  const change = (body) =>
+    api(path, { method: 'PUT', body: JSON.stringify(body) }).catch((problem) =>
+      setStatus(problem.message, 'lost'),
+    );
+
+  const field = (label, control) => {
+    const holder = document.createElement('label');
+    holder.className = 'device-field';
+    holder.append(document.createTextNode(label), control);
+    return holder;
+  };
+
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.maxLength = 64;
+  name.value = device.name;
+  name.dataset.toggleName = key(device);
+  name.addEventListener('change', () => {
+    const given = name.value.trim();
+    // A toggle is found by its name in every rule, so it keeps one.
+    if (!given) {
+      name.value = device.name;
+      return;
+    }
+    device.name = given;
+    state.freshToggle = undefined;
+    heading.textContent = displayName(device);
+    change({ name: given });
+  });
+
+  const room = document.createElement('input');
+  room.type = 'text';
+  room.maxLength = 64;
+  room.placeholder = 'none';
+  room.value = device.exposure.room ?? '';
+  room.addEventListener('change', () => {
+    device.exposure.room = room.value.trim() || undefined;
+    heading.textContent = displayName(device);
+    save(device);
+    safeRender();
+  });
+
+  const value = document.createElement('select');
+  value.dataset.toggle = key(device);
+  for (const option of ['false', 'true']) {
+    const choice = document.createElement('option');
+    choice.value = option;
+    choice.textContent = option;
+    value.append(choice);
+  }
+  value.value = String(device.state.state === true);
+  value.addEventListener('change', () => change({ value: value.value === 'true' }));
+
+  row.append(field('Name', name), field('Room', room), field('Value', value));
+
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'danger';
+  remove.textContent = 'Delete';
+  const erase = async () => {
+    await api(path, { method: 'DELETE' }).catch((problem) => setStatus(problem.message, 'lost'));
+    state.open.delete(key(device));
+    await load();
+  };
+  // One only just added, and not yet named, is nothing to ask twice about.
+  if (state.freshToggle === key(device)) {
+    remove.addEventListener('click', erase);
+  } else {
+    armDelete(remove, erase);
+  }
+  footer.append(remove);
+
+  wrap.append(row, footer);
+  return wrap;
 }
 
 /** Whether a low battery on this device is sent to a phone. On unless turned off. */
@@ -1496,6 +1629,11 @@ el.kindAction.addEventListener('change', () => {
   renderLog();
 });
 
+el.kindState.addEventListener('change', () => {
+  state.activityKinds.state = el.kindState.checked;
+  renderLog();
+});
+
 async function start() {
   await load();
   listen();
@@ -1560,6 +1698,17 @@ function logParts(entry) {
       phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
       words(' '),
       phrase(words(pressWords(entry.press) ?? entry.detail)),
+    ];
+  }
+
+  // A toggle changing: where it stands now, and whether somebody did it.
+  if (entry.ruleKind === 'state') {
+    const device = findDevice(entry.changed ?? refOf(entry.ruleId));
+    const value = entry.changed?.value ?? '';
+    return [
+      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
+      words(' '),
+      phrase(words(entry.byHand ? `${value} (by hand)` : value)),
     ];
   }
 
@@ -1652,6 +1801,10 @@ const BINARY_WORDS = {
  * nothing about which of them moved.
  */
 function changeWords(changed) {
+  // A toggle has one thing to say, and its name has said what that is about.
+  if (isToggle(findDevice(changed))) {
+    return changed.value;
+  }
   const property = findProperty(changed);
 
   const words = property?.type === 'binary' ? BINARY_WORDS[property.semantic] : undefined;
@@ -2640,23 +2793,7 @@ function ruleFooter(rule, draft, body) {
   if (rule.id === state.pinned) {
     remove.addEventListener('click', erase);
   } else {
-    let armed;
-    remove.addEventListener('click', () => {
-      if (armed) {
-        clearTimeout(armed);
-        armed = undefined;
-        return erase();
-      }
-      remove.textContent = 'Confirm';
-      remove.classList.add('armed');
-      // Long enough to mean it, short enough that a button left saying
-      // Confirm cannot be pressed by mistake later.
-      armed = setTimeout(() => {
-        armed = undefined;
-        remove.textContent = 'Delete';
-        remove.classList.remove('armed');
-      }, CONFIRM_MS);
-    });
+    armDelete(remove, erase);
   }
 
   footer.append(save);
@@ -2669,6 +2806,27 @@ function ruleFooter(rule, draft, body) {
 
   footer.append(error, remove);
   return footer;
+}
+
+/** A Delete button that asks once more, and only means it the second time. */
+function armDelete(button, erase) {
+  let armed;
+  button.addEventListener('click', () => {
+    if (armed) {
+      clearTimeout(armed);
+      armed = undefined;
+      return erase();
+    }
+    button.textContent = 'Confirm';
+    button.classList.add('armed');
+    // Long enough to mean it, short enough that a button left saying
+    // Confirm cannot be pressed by mistake later.
+    armed = setTimeout(() => {
+      armed = undefined;
+      button.textContent = 'Delete';
+      button.classList.remove('armed');
+    }, CONFIRM_MS);
+  });
 }
 
 /**
@@ -4260,6 +4418,7 @@ const KIND_LABELS = {
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
+  state: 'state toggle',
 };
 
 function renderLog() {
@@ -4989,6 +5148,22 @@ el.addAutomation.addEventListener('click', () =>
     actions: [{ ...blankRef(writable), value: '' }],
   }),
 );
+
+el.addState.addEventListener('click', async () => {
+  try {
+    const created = await api('/api/states', { method: 'POST', body: '{}' });
+    const added = `${STATES}:${created.id}`;
+    state.open.add(added);
+    state.freshToggle = added;
+    await load();
+    // Named first, since `New state toggle` is nobody's name for anything.
+    const name = el.devices.querySelector(`[data-toggle-name="${CSS.escape(added)}"]`);
+    name?.focus();
+    name?.select();
+  } catch (problem) {
+    setStatus(problem.message, 'lost');
+  }
+});
 
 el.addSlider.addEventListener('click', () =>
   addRule({

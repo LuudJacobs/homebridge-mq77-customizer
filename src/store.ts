@@ -91,17 +91,30 @@ export interface DeviceExposure {
 }
 
 
+/**
+ * A true or false the plugin keeps itself, for rules to set and read.
+ *
+ * Away, guests, movie night: what the house is doing rather than what any
+ * one device is. Its room is kept with every other device's, in `exposures`.
+ */
+export interface StateToggle {
+  id: string;
+  name: string;
+  value: boolean;
+}
+
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
   rules: AnyRule[];
+  states: StateToggle[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
 
 function emptyState(): PersistedState {
-  return { version: STORE_VERSION, exposures: {}, rules: [] };
+  return { version: STORE_VERSION, exposures: {}, rules: [], states: [] };
 }
 
 /**
@@ -140,8 +153,7 @@ export class Store {
       const parsed: unknown = JSON.parse(contents);
       this.state = migrate(parsed);
 
-      this.startedFull =
-        Object.keys(this.state.exposures).length > 0 || this.state.rules.length > 0;
+      this.startedFull = hasAnything(this.state);
 
       // A dated copy of what was here before this run touches anything.
       await this.backup();
@@ -247,8 +259,7 @@ export class Store {
     const parsed = migrate(incoming);
     await this.backup(true);
     this.state = { ...parsed, sessionSecret: this.state.sessionSecret };
-    this.startedFull =
-      Object.keys(this.state.exposures).length > 0 || this.state.rules.length > 0;
+    this.startedFull = hasAnything(this.state);
     this.blocked = false;
     await this.save();
   }
@@ -293,15 +304,12 @@ export class Store {
    * is worth more than the write.
    */
   private async wouldWipe(): Promise<boolean> {
-    const empty =
-      Object.keys(this.state.exposures).length === 0 && this.state.rules.length === 0;
-    if (this.startedFull || !empty) {
+    if (this.startedFull || hasAnything(this.state)) {
       return false;
     }
 
     try {
-      const parsed = migrate(JSON.parse(await readFile(this.file, 'utf8')) as unknown);
-      return Object.keys(parsed.exposures).length > 0 || parsed.rules.length > 0;
+      return hasAnything(migrate(JSON.parse(await readFile(this.file, 'utf8')) as unknown));
     } catch {
       // Nothing readable there, so there is nothing to protect.
       return false;
@@ -372,8 +380,25 @@ function migrate(parsed: unknown): PersistedState {
     rules: (state.rules ?? []).filter(
       (rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer',
     ),
+    states: (Array.isArray(state.states) ? state.states : []).filter(isToggle),
     sessionSecret: state.sessionSecret,
   };
+}
+
+function isToggle(value: unknown): value is StateToggle {
+  const toggle = value as Partial<StateToggle> | undefined;
+  return (
+    typeof toggle?.id === 'string' &&
+    typeof toggle.name === 'string' &&
+    typeof toggle.value === 'boolean'
+  );
+}
+
+/** Whether there is anything in it somebody would miss. */
+function hasAnything(state: PersistedState): boolean {
+  return (
+    Object.keys(state.exposures).length > 0 || state.rules.length > 0 || state.states.length > 0
+  );
 }
 
 function isNotFound(error: unknown): boolean {
