@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.1.2
+# MQ77 Customizer 2.1.3
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -127,6 +127,7 @@ Rules live in three tabs: Automation, Mirror devices and Sliders. Automation is 
 Across all four:
 
 - anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
+- a device is picked in two steps, its room and then the device in it. Devices without a room are under Unknown
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
 - an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
 - a rule with several outcomes runs the first whose condition holds and skips the rest
@@ -144,7 +145,7 @@ An automation can be run by hand with the Trigger button beside Save, whether or
 
 ### Times
 
-An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the trigger picker, under the devices, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
+An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the room picker, under the rooms, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
 
 Only automations. A mirror and a slider are driven by their devices.
 
@@ -165,7 +166,7 @@ Far enough north there are days when the sun never reaches one of these points, 
 
 ### Notifications
 
-With a topic set under ntfy notifications, an action can send a message instead of setting a device: **Send notification**, at the bottom of the action picker. It takes a title and a message, and both may name what set the rule off:
+With a topic set under ntfy notifications, an action can send a message instead of setting a device: **Notification**, at the bottom of the room picker. It takes a title and a message, and both may name what set the rule off:
 
 - `<trigger>` the device, room first, or the time when the clock did it
 - `<property>` the function on it that moved
