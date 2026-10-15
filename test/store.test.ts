@@ -16,7 +16,7 @@ describe('Store', () => {
   it('starts empty when there is no file yet', async () => {
     const store = new Store(await temporaryFile(), silentLogger);
     await store.load();
-    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [] });
+    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [], states: [] });
   });
 
   it('creates the directory on first write', async () => {
@@ -63,7 +63,42 @@ describe('Store', () => {
     await writeFile(file, JSON.stringify({ version: 1 }), 'utf8');
     const store = new Store(file, silentLogger);
     await store.load();
-    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [] });
+    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [], states: [] });
+  });
+
+  it('keeps the state toggles, and drops one that is not', async () => {
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        states: [
+          { id: 'a1', name: 'Away', value: true },
+          { id: 'b2', name: 'Broken', value: 'yes' },
+        ],
+      }),
+      'utf8',
+    );
+    const store = new Store(file, silentLogger);
+    await store.load();
+    expect(store.data.states).toEqual([{ id: 'a1', name: 'Away', value: true }]);
+  });
+
+  it('counts a file with only toggles in it as one worth keeping', async () => {
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, states: [{ id: 'a1', name: 'Away', value: false }] }),
+      'utf8',
+    );
+    // A run that never read it, about to write nothing over it.
+    const blind = new Store(file, silentLogger);
+    Object.assign(blind, { startedFull: false });
+    await blind.save();
+
+    const kept = JSON.parse(await readFile(file, 'utf8')) as { states: unknown[] };
+    expect(kept.states).toHaveLength(1);
+    expect(blind.refusedToWrite).toBe(true);
   });
 
   it('drops a rule stored as a timer, and keeps everything beside it', async () => {

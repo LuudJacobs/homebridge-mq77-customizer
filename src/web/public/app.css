@@ -1101,6 +1101,12 @@ table.buttons td.in-homekit {
   border-bottom: 1px solid var(--line);
 }
 
+/* A toggle has nothing under its fields but Delete, whose own line divides them. */
+.toggle-body .device-info {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
 .device-field {
   display: flex;
   align-items: center;

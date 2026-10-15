@@ -127,4 +127,10 @@ export interface StateUpdate {
    * replayed on connect carries the time of the press, not of the replay.
    */
   reportedLastSeen?: string | number;
+  /**
+   * Set somebody flipping a state toggle in the interface, rather than a rule
+   * or a device. Only a toggle can be changed that way, and the activity log
+   * says so.
+   */
+  byHand?: boolean;
 }

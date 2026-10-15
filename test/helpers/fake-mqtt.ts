@@ -1,5 +1,5 @@
 import { topicMatches } from '../../src/mqtt/topics.js';
-import type { MessageHandler, MqttConnection } from '../../src/mqtt/client.js';
+import { isLocal, type MessageHandler, type MqttConnection } from '../../src/mqtt/client.js';
 
 interface Published {
   topic: string;
@@ -24,6 +24,12 @@ export class FakeMqtt {
   }
 
   publish(topic: string, payload: string, options: { retain?: boolean } = {}): void {
+    // Kept in the plugin, as the real connection does: never seen by the
+    // broker, so never in `published` either.
+    if (isLocal(topic)) {
+      queueMicrotask(() => this.deliver(topic, payload));
+      return;
+    }
     this.published.push({ topic, payload, retain: options.retain ?? false });
   }
 

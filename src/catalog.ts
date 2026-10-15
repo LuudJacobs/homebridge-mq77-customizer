@@ -57,19 +57,38 @@ export class Catalog extends EventEmitter<CatalogEvents> {
         mqtt: this.mqtt,
         log: prefixed(this.log, source.id),
       });
-
-      adapter.on('devices', () => {
-        this.reported.add(source.id);
-        this.rebuild();
-      });
-      adapter.on('state', (update) => this.handleState(update));
-
-      this.adapters.set(source.id, adapter);
-      this.sources.set(source.id, source);
-      await adapter.start();
+      await this.add(adapter, source);
     }
 
     this.rebuild();
+  }
+
+  /**
+   * Adds a source the plugin keeps itself rather than one on the broker.
+   *
+   * Its devices are rules only: they are things for rules to read and write,
+   * and HomeKit has its own way of keeping a switch that is not a device.
+   */
+  async attach(adapter: SourceAdapter): Promise<void> {
+    await this.add(adapter, {
+      id: adapter.sourceId,
+      adapter: adapter.sourceId,
+      baseTopic: '',
+      rulesOnly: true,
+    });
+    this.rebuild();
+  }
+
+  private async add(adapter: SourceAdapter, source: SourceConfig): Promise<void> {
+    adapter.on('devices', () => {
+      this.reported.add(source.id);
+      this.rebuild();
+    });
+    adapter.on('state', (update) => this.handleState(update));
+
+    this.adapters.set(source.id, adapter);
+    this.sources.set(source.id, source);
+    await adapter.start();
   }
 
   async stop(): Promise<void> {
