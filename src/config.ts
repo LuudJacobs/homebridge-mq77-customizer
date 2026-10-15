@@ -2,6 +2,7 @@ import { adapterNames, getAdapterFactory } from './adapters/index.js';
 import type { DeclaredDevice, SourceConfig } from './adapters/types.js';
 import type { Logger } from './logger.js';
 import type { BrokerConfig } from './mqtt/client.js';
+import { STATES_SOURCE } from './states.js';
 
 export interface WebConfig {
   port: number;
@@ -196,6 +197,11 @@ function resolveSources(raw: unknown, log: Logger): SourceConfig[] {
 
     if (seen.has(id)) {
       log.error(`Source id "${id}" is used more than once, skipping the duplicate`);
+      continue;
+    }
+
+    if (id === STATES_SOURCE) {
+      log.error(`Source id "${id}" is where the state toggles live, skipping this source`);
       continue;
     }
 

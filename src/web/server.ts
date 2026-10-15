@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { RulesEngine } from '../rules/engine.js';
 import { parseRule } from '../rules/validate.js';
+import { STATES_SOURCE, type StateToggles } from '../states.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
@@ -54,6 +55,8 @@ export interface WebServerDeps {
   catalog: Catalog;
   store: Store;
   rules: RulesEngine;
+  /** The state toggles, which are made, named and flipped from here. */
+  states?: StateToggles;
   log: Logger;
   /** Called after an exposure changes so HomeKit can be reconciled. */
   onExposureChanged: () => void;
@@ -164,6 +167,16 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
+      if (path === '/api/states' && request.method === 'POST') {
+        return this.createToggle(request, response);
+      }
+      if (path.startsWith('/api/states/') && request.method === 'PUT') {
+        const id = decodeURIComponent(path.slice('/api/states/'.length));
+        return this.changeToggle(id, request, response);
+      }
+      if (path.startsWith('/api/states/') && request.method === 'DELETE') {
+        return this.deleteToggle(decodeURIComponent(path.slice('/api/states/'.length)), response);
+      }
       if (path === '/api/settings' && request.method === 'GET') {
         return this.exportSettings(response);
       }
@@ -224,6 +237,16 @@ export class WebServer {
     }
 
     const exposure = sanitiseExposure(body?.exposure, device.properties.map((p) => p.key));
+    if (sourceId === STATES_SOURCE) {
+      // A toggle has a room and nothing else: no HomeKit, and a kind that is
+      // always its own.
+      const room = exposure.room;
+      this.deps.store.setExposure(`${sourceId}:${deviceId}`, {
+        properties: [],
+        ...(room ? { room } : {}),
+      });
+      return send(response, 200, { ok: true, exposure: toggleExposure(room) });
+    }
     this.deps.store.setExposure(`${sourceId}:${deviceId}`, exposure);
     this.deps.onExposureChanged();
 
@@ -266,6 +289,49 @@ export class WebServer {
       return send(response, 404, { error: 'No such rule' });
     }
     this.broadcast({ type: 'rules' });
+    return send(response, 200, { ok: true });
+  }
+
+  private async createToggle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!this.deps.states) {
+      return send(response, 501, { error: 'No state toggles here' });
+    }
+    const body = await readJson(request);
+    const name = toggleName(body?.name) ?? 'New state toggle';
+    const toggle = this.deps.states.create(name);
+    return send(response, 200, { id: toggle.id });
+  }
+
+  private async changeToggle(
+    id: string,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const toggles = this.deps.states;
+    if (!toggles?.find(id)) {
+      return send(response, 404, { error: 'No such state toggle' });
+    }
+    const body = await readJson(request);
+    if (body?.name !== undefined) {
+      const name = toggleName(body.name);
+      if (!name) {
+        return send(response, 400, { error: 'A state toggle needs a name' });
+      }
+      toggles.rename(id, name);
+    }
+    if (body?.value !== undefined) {
+      if (typeof body.value !== 'boolean') {
+        return send(response, 400, { error: 'A state toggle is true or false' });
+      }
+      toggles.set(id, body.value, true);
+    }
+    return send(response, 200, { ok: true });
+  }
+
+  private deleteToggle(id: string, response: ServerResponse): void {
+    if (!this.deps.states?.remove(id)) {
+      return send(response, 404, { error: 'No such state toggle' });
+    }
     return send(response, 200, { ok: true });
   }
 
@@ -351,7 +417,10 @@ export class WebServer {
         // it, both worth seeing when something is not reporting as expected.
         retained: device.retained,
         reportedLastSeen: this.deps.catalog.getReportedLastSeen(device.sourceId, device.deviceId),
-        exposure: this.deps.store.getExposure(key) ?? { properties: [] },
+        exposure:
+          device.sourceId === STATES_SOURCE
+            ? toggleExposure(this.deps.store.getExposure(key)?.room)
+            : (this.deps.store.getExposure(key) ?? { properties: [] }),
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
       };
     });
@@ -434,6 +503,7 @@ export class WebServer {
     }
 
     await this.deps.store.replaceAll(body);
+    this.deps.states?.reload();
     this.deps.onExposureChanged();
 
     const counts = {
@@ -489,6 +559,21 @@ function describeButtons(property: NormalisedProperty): unknown {
       actions.flatMap((action) => (action.event === undefined ? [] : [[action.value, action.event]])),
     ),
   }));
+}
+
+/**
+ * A toggle's exposure as the interface sees it.
+ *
+ * Its kind is not stored, since nothing could ever change it: it is said here
+ * so the interface groups and draws a toggle like any other kind.
+ */
+function toggleExposure(room: string | undefined): unknown {
+  return { properties: [], ...(room ? { room } : {}), type: 'state' };
+}
+
+function toggleName(raw: unknown): string | undefined {
+  const name = typeof raw === 'string' ? raw.trim().slice(0, 64) : '';
+  return name || undefined;
 }
 
 /** Keeps only property keys the device actually has, and known tile types. */
