@@ -45,6 +45,10 @@
               <input id="kind-slider" type="checkbox" checked />
               Slider
             </label>
+            <label class="toggle" for="kind-state">
+              <input id="kind-state" type="checkbox" checked />
+              State toggle
+            </label>
             <label class="toggle" for="kind-action">
               <input id="kind-action" type="checkbox" />
               Action
@@ -95,6 +99,9 @@
         <p class="hint">
           Tick what should appear in HomeKit. Changes apply immediately.
         </p>
+        <div class="rules-actions">
+          <button id="add-state" type="button">+ state toggle</button>
+        </div>
         <main id="devices"></main>
       </section>
 
