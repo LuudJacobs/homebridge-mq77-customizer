@@ -113,13 +113,15 @@ describe('the condition editor', () => {
     expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
   });
 
-  it('marks the device picker, which is wider than the rest of the row', async () => {
+  it('opens a row with a room picker and then a device picker', async () => {
     const ui = await openRule(legacyRule);
-    // The width lives in the stylesheet, the class is what hangs it there.
-    const first = ui.document.querySelector('.condition-group .rule-row')!;
-    expect(first.querySelector('select')!.classList.contains('device-picker')).toBe(true);
+    const [room, device] = [
+      ...ui.document.querySelectorAll('.condition-group .rule-row select'),
+    ] as HTMLSelectElement[];
+    expect(room!.classList.contains('room-picker')).toBe(true);
+    expect(device!.classList.contains('device-picker')).toBe(true);
     // Never `device`, which is the card class and would paint it like one.
-    expect(first.querySelector('select')!.classList.contains('device')).toBe(false);
+    expect(device!.classList.contains('device')).toBe(false);
   });
 
   it('offers a not toggle per group', async () => {
