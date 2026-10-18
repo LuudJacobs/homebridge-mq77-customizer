@@ -157,16 +157,33 @@ export interface NotifyAction {
   delayMs?: number;
 }
 
-/** What an outcome may do: set something on a device, or send a message. */
-export type AnyAction = Action | NotifyAction;
+/**
+ * Doing nothing, on purpose: the rule stops at this outcome.
+ *
+ * The first outcome whose condition holds is the one that runs, so one that
+ * ignores, ahead of the rest, is how a rule says "not when this is the case".
+ * It is the whole of its outcome: there is nothing to do beside nothing.
+ */
+export interface IgnoreAction {
+  kind: 'ignore';
+}
+
+/** What an outcome may do: set something on a device, send a message, or nothing. */
+export type AnyAction = Action | NotifyAction | IgnoreAction;
 
 export function isNotify(action: AnyAction): action is NotifyAction {
   return (action as NotifyAction).kind === 'notify';
 }
 
-/** The actions that name a device, leaving out the ones that send a message. */
+export function isIgnore(action: AnyAction): action is IgnoreAction {
+  return (action as IgnoreAction).kind === 'ignore';
+}
+
+/** The actions that name a device, leaving out messages and ignoring. */
 export function deviceActions(actions: AnyAction[]): Action[] {
-  return actions.filter((action): action is Action => !isNotify(action));
+  return actions.filter(
+    (action): action is Action => !isNotify(action) && !isIgnore(action),
+  );
 }
 
 /**
