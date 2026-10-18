@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- One way mirrors: the rest follow a trigger device, and nothing is copied back
 - Rule rows end in `or` between triggers and `and` between actions, and after a time
 - Devices with no kind set are listed first, under Unknown Devices
 
