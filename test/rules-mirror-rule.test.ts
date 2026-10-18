@@ -357,3 +357,74 @@ describe('parsing a mirror rule', () => {
     ).toEqual({ error: 'A function cannot be mirrored with itself' });
   });
 });
+
+describe('a one way mirror', () => {
+  const leader = { sourceId: 'zigbee', deviceId: SWITCH.id };
+
+  it('copies from its trigger device', async () => {
+    const { mqtt } = await harness([mirrorRule({ leader })]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(mqtt.published).toEqual([
+      { topic: `${SOCKET.topic}/set`, payload: '{"state":"ON"}', retain: false },
+    ]);
+  });
+
+  it('copies nothing back from the others', async () => {
+    const { mqtt, engine } = await harness([mirrorRule({ leader })]);
+
+    mqtt.deliver(SOCKET.topic, { state: 'ON' });
+    expect(mqtt.published).toEqual([]);
+    expect(engine.getLog()).toEqual([]);
+  });
+
+  it('never writes to its trigger device, another channel of it included', async () => {
+    const { mqtt } = await harness([
+      mirrorRule({
+        leader,
+        groups: [
+          [
+            { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l1' },
+            { sourceId: 'zigbee', deviceId: SWITCH.id, propertyKey: 'state_l2' },
+            { sourceId: 'zigbee', deviceId: SOCKET.id, propertyKey: 'state' },
+          ],
+        ],
+      }),
+    ]);
+
+    mqtt.deliver(SWITCH.topic, { state_l1: 'ON' });
+    expect(mqtt.published.map((message) => message.topic)).toEqual([`${SOCKET.topic}/set`]);
+  });
+});
+
+describe('reading a one way mirror', () => {
+  const groups = [
+    [
+      { sourceId: 'zigbee', deviceId: '0xa', propertyKey: 'state' },
+      { sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state' },
+    ],
+  ];
+
+  it('keeps the trigger device', () => {
+    const parsed = parseRule(
+      { kind: 'mirror', name: 'Een kant op', groups, leader: { sourceId: 'zigbee', deviceId: '0xb' } },
+      'm1',
+    );
+    expect('rule' in parsed && parsed.rule).toMatchObject({
+      leader: { sourceId: 'zigbee', deviceId: '0xb' },
+    });
+  });
+
+  it('refuses one that is not among the devices', () => {
+    const parsed = parseRule(
+      { kind: 'mirror', name: 'Een kant op', groups, leader: { sourceId: 'zigbee', deviceId: '0xc' } },
+      'm1',
+    );
+    expect(parsed).toEqual({ error: 'The trigger device has to be one of the mirrored devices' });
+  });
+
+  it('is two way without one', () => {
+    const parsed = parseRule({ kind: 'mirror', name: 'Heen en weer', groups }, 'm1');
+    expect('rule' in parsed && parsed.rule).not.toHaveProperty('leader');
+  });
+});

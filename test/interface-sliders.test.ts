@@ -157,8 +157,8 @@ describe('the sliders tab', () => {
 
     // One slider, several remotes.
     await ui.click(another);
-    // Nothing joining them: the heading says what the run of rows is for.
-    expect(ui.byText('span.joiner', 'or', '#sliders')).toBeNull();
+    // Any of them presses it.
+    expect(ui.byText('span.joiner', 'or', '#sliders')).not.toBeNull();
 
     // Saving reloads the list, so the check above has to come first.
     await ui.click(ui.byText('button.primary', 'Save', '#sliders'));

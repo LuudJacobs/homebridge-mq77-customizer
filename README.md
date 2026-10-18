@@ -94,6 +94,8 @@ Button names and gestures are worked out from the action names the device publis
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
 
+Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by.
+
 Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
@@ -182,6 +184,8 @@ Whether or not a topic is set, a low battery shows as a red, empty battery at th
 ### Mirror devices
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
+
+A mirror can be made one way under One way mirror: one of its devices is the trigger device, the rest follow it, and nothing they do is copied back. The list shows it with `→` where a two way mirror has `↔`.
 
 After a write the group is left to settle, one and a half seconds by default and set per rule between 0.25 and 60 seconds. A device reporting its old state once more is indistinguishable from somebody flipping a switch, so without the pause a group that disagrees would send itself back and forth for ever. The cost is that flipping a mirrored device again inside the window is ignored.
 

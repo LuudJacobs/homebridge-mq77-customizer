@@ -250,6 +250,11 @@ export interface MirrorRule {
   rateLimitMs?: number;
   /** How long the group is left alone after a write. See DEFAULT_SETTLE_MS. */
   settleMs?: number;
+  /**
+   * The trigger device of a one way mirror: the rest follow it, and nothing
+   * they do is copied back. Absent, every member follows every other.
+   */
+  leader?: { sourceId: string; deviceId: string };
 }
 
 /**
