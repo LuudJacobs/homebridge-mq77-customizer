@@ -175,12 +175,14 @@ describe('the trigger list', () => {
     expect(ui.document.querySelectorAll('#view-automation .rule-row')).toHaveLength(before + 1);
   });
 
-  it('leaves the triggers unjoined, since the heading says what they are', async () => {
+  it('joins the triggers with or, since any of them sets the rule off', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
 
-    expect(ui.byText('span.joiner', 'or', '.triggers')).toBeNull();
-    expect(ui.document.querySelectorAll('.triggers .rule-row')).toHaveLength(2);
+    const rows = ui.document.querySelectorAll('.triggers .rule-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelector('.joiner')?.textContent).toBe('or');
+    expect(rows[1]?.querySelector('.joiner')).toBeNull();
   });
 
   it('sends a list of triggers when saved', async () => {
