@@ -16,6 +16,7 @@ import type { Notifier } from './ntfy.js';
 import {
   deviceActions,
   isMirror,
+  isIgnore,
   isNotify,
   isRelative,
   isSlider,
@@ -374,6 +375,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       if (!from) {
         continue;
       }
+      // One way: only the trigger device is copied. What the others do is
+      // their own business, the rule's echo included.
+      if (rule.leader && !isDevice(from, rule.leader)) {
+        continue;
+      }
       const source = this.property(from);
       if (!source) {
         continue;
@@ -392,7 +398,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       const writes: { member: PropertyRef; target: NormalisedProperty; wanted: unknown }[] = [];
 
       for (const member of group) {
-        if (member === from) {
+        // Nor is the trigger device written to, another channel of it
+        // included: the rest follow it, not the other way round.
+        if (member === from || (rule.leader && isDevice(member, rule.leader))) {
           continue;
         }
         const target = this.property(member);
@@ -1065,6 +1073,16 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     this.lastFired.set(rule.id, now);
 
+    // Named only when there is a choice to name: one branch is just the rule.
+    const what = branches.length === 1 ? undefined : nameOf(chosen.branch, chosen.index);
+
+    // The rule stops here, having decided to, which is worth a line of its own
+    // rather than looking like it sent nothing by accident.
+    if (chosen.branch.actions.some(isIgnore)) {
+      this.record(rule, 'fired', 'ignored', { branch: what });
+      return;
+    }
+
     const problems: string[] = [];
     for (const action of chosen.branch.actions) {
       const problem = this.run(rule, action, trigger);
@@ -1073,8 +1091,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       }
     }
 
-    // Named only when there is a choice to name: one branch is just the rule.
-    const what = branches.length === 1 ? undefined : nameOf(chosen.branch, chosen.index);
     if (problems.length > 0) {
       this.record(rule, 'failed', problems.join('; '), { branch: what });
       return;
@@ -1095,6 +1111,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private run(rule: AnyRule, action: AnyAction, trigger: Fired): string | undefined {
     if (isNotify(action)) {
       return this.notify(rule, action, trigger);
+    }
+    if (isIgnore(action)) {
+      return undefined;
     }
 
     const property = this.property(action);
@@ -1563,6 +1582,11 @@ function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): b
     ref.deviceId === update.deviceId &&
     ref.propertyKey === propertyKey
   );
+}
+
+/** Whether a reference is to one device, whichever of its functions. */
+function isDevice(ref: PropertyRef, device: { sourceId: string; deviceId: string }): boolean {
+  return ref.sourceId === device.sourceId && ref.deviceId === device.deviceId;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   MIN_STEPS,
   MIN_WAIT_MS,
   WEEKDAYS,
+  isIgnore,
   isSunTime,
 } from './types.js';
 import { fromConditions } from './conditions.js';
@@ -145,6 +146,11 @@ function parseActions(raw: unknown): { actions: AnyAction[] } | { error: string 
   const actions: AnyAction[] = [];
 
   for (const entry of asArray(raw)) {
+    if (isObject(entry) && entry.kind === 'ignore') {
+      actions.push({ kind: 'ignore' });
+      continue;
+    }
+
     // A notification names no device, so it is read before anything asks for one.
     if (isObject(entry) && entry.kind === 'notify') {
       const message = typeof entry.message === 'string' ? entry.message.trim() : '';
@@ -193,6 +199,10 @@ function parseActions(raw: unknown): { actions: AnyAction[] } | { error: string 
       ...(!copies && !moves ? { value: value as string | number | boolean } : {}),
       ...(delay ? { delayMs: delay } : {}),
     });
+  }
+
+  if (actions.some(isIgnore) && actions.length > 1) {
+    return { error: 'An outcome that ignores does nothing else' };
   }
 
   return { actions };
@@ -312,6 +322,23 @@ function parseMirror(
       ? clamp(raw.settleMs, MIN_SETTLE_MS, MAX_SETTLE_MS)
       : undefined;
 
+  let leader: MirrorRule['leader'];
+  if (raw.leader !== undefined && raw.leader !== null) {
+    const { sourceId, deviceId } = isObject(raw.leader) ? raw.leader : {};
+    if (typeof sourceId !== 'string' || typeof deviceId !== 'string' || !sourceId || !deviceId) {
+      return { error: 'A one way mirror needs a trigger device' };
+    }
+    // Checked only once there is something to check against: a mirror still
+    // being drafted has its devices picked and no functions yet.
+    const member = groups
+      .flat()
+      .some((ref) => ref.sourceId === sourceId && ref.deviceId === deviceId);
+    if (groups.length > 0 && !member) {
+      return { error: 'The trigger device has to be one of the mirrored devices' };
+    }
+    leader = { sourceId, deviceId };
+  }
+
   return {
     rule: {
       id,
@@ -321,6 +348,7 @@ function parseMirror(
       groups,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
       ...(settleMs === undefined ? {} : { settleMs }),
+      ...(leader ? { leader } : {}),
     },
   };
 }

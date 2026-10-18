@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.0] - 2026-10-18
+
+### Added
+
+- Ignore as an action: an outcome that stops the rule and sends nothing
+- One way mirrors: the rest follow a trigger device, and nothing is copied back
+
+### Changed
+
+- Trigger rows end in `or` and action rows in `and`
+- Devices with no kind set are listed first, under Unknown Devices
+
+### Fixed
+
+- A condition after a time condition is joined with `and`
+
 ## [2.2.0] - 2026-10-15
 
 ### Added
