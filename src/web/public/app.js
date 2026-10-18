@@ -2216,7 +2216,7 @@ function ruleTriggers(rule) {
 
 /** Every action of a rule, across all of its outcomes. */
 function ruleActions(rule) {
-  return everyAction(rule).filter((action) => !isNotifyRef(action));
+  return everyAction(rule).filter((action) => !isNotifyRef(action) && !isIgnoreRef(action));
 }
 
 /** Every action a rule has, notifications included. */
@@ -2728,9 +2728,10 @@ function summarise(rule, inRoom) {
     phrase(
       // A rule that only sends a message has no device to name, and one that
       // does both says so after the devices it reaches.
+      // One that does nothing in any outcome says so rather than naming none.
       ...(actions.length
         ? deviceParts(actions[0], andMore(distinctDevices(actions)), inRoom)
-        : [words('notification')]),
+        : [words(notifies ? 'notification' : 'ignore')]),
       words(actions.length && notifies ? ' + notification' : ''),
       words(outcomes > 1 ? ` - ${outcomes} outcomes` : ''),
     ),
@@ -3074,6 +3075,8 @@ function actionEditor(branch) {
 
   const draw = () => {
     wrap.replaceChildren();
+    // Nothing to do is the whole of an outcome, so nothing is added to it.
+    const ignoring = branch.actions.some(isIgnoreRef);
     branch.actions.forEach((action, index) => {
       const last = index === branch.actions.length - 1;
       wrap.append(
@@ -3082,6 +3085,10 @@ function actionEditor(branch) {
           withValue: true,
           withDelay: true,
           allowNotify: true,
+          // Only first: what would come before it would be sent for nothing.
+          allowIgnore: index === 0,
+          // Picked, it takes the outcome over, and anything after it goes.
+          onIgnore: () => branch.actions.splice(1),
           redraw: draw,
           onRemove:
             branch.actions.length > 1
@@ -3092,7 +3099,7 @@ function actionEditor(branch) {
               : undefined,
           // Every one of them is sent.
           joiner: last ? undefined : 'and',
-          trailing: last
+          trailing: last && !ignoring
             ? addButton('+ action', () => {
                 branch.actions.push({ ...emptyRef(), value: '' });
                 draw();
@@ -3917,6 +3924,19 @@ const NOTIFY_PICK = '__notify';
 
 const isNotifyRef = (ref) => ref?.kind === 'notify';
 
+/** The picker's value for doing nothing, which stops the rule at its outcome. */
+const IGNORE_PICK = '__ignore';
+
+const isIgnoreRef = (ref) => ref?.kind === 'ignore';
+
+/** Turns a row into nothing to do, keeping nothing of what it was. */
+function becomeIgnore(ref) {
+  for (const key of Object.keys(ref)) {
+    delete ref[key];
+  }
+  ref.kind = 'ignore';
+}
+
 /** What a notification offers while it is empty: a sentence, not a list. */
 const MESSAGE_EXAMPLE = '<rule>: <trigger> <property> is <value>';
 
@@ -4166,6 +4186,10 @@ function refRow(ref, options) {
   if (options.allowNotify && (state.canNotify || isNotifyRef(ref))) {
     offer(rooms, NOTIFY_PICK, 'Notification');
   }
+  // Last of all: not a place, and not something sent either.
+  if (options.allowIgnore || isIgnoreRef(ref)) {
+    offer(rooms, IGNORE_PICK, 'Ignore');
+  }
 
   // Not `device`, which is the card a device is drawn in and would style
   // this like one.
@@ -4175,7 +4199,7 @@ function refRow(ref, options) {
   /** Fills the second dropdown with the room's devices, or empties and stops it. */
   const fillDevices = (room) => {
     devices.replaceChildren();
-    const inRoom = room && room !== TIME_PICK && room !== NOTIFY_PICK;
+    const inRoom = room && room !== TIME_PICK && room !== NOTIFY_PICK && room !== IGNORE_PICK;
     devices.disabled = !inRoom;
     if (!inRoom) {
       return;
@@ -4192,6 +4216,8 @@ function refRow(ref, options) {
     ? TIME_PICK
     : isNotifyRef(ref)
       ? NOTIFY_PICK
+      : isIgnoreRef(ref)
+        ? IGNORE_PICK
       : current && candidates.includes(current)
         ? roomOfDevice(current)
         : '';
@@ -4228,10 +4254,36 @@ function refRow(ref, options) {
     options.redraw?.();
   };
 
+  /** The outcome stopping here: this row is the whole of it, and redrawn as such. */
+  const ignoreInstead = () => {
+    becomeIgnore(ref);
+    options.onIgnore?.();
+    options.onChange?.();
+    options.redraw?.();
+  };
+
+  // Nothing to do has nothing to say about it either: the dropdown it was
+  // picked from is the whole row.
+  if (isIgnoreRef(ref)) {
+    rooms.addEventListener('change', () => {
+      if (rooms.value === NOTIFY_PICK) {
+        becomeNotify(ref);
+        options.onChange?.();
+        options.redraw?.();
+      } else if (rooms.value !== IGNORE_PICK) {
+        backToDevice(rooms.value);
+      }
+    });
+    row.append(rooms);
+    return row;
+  }
+
   // A notification names no device: a title, a message, and when.
   if (isNotifyRef(ref)) {
     rooms.addEventListener('change', () => {
-      if (rooms.value !== NOTIFY_PICK) {
+      if (rooms.value === IGNORE_PICK) {
+        ignoreInstead();
+      } else if (rooms.value !== NOTIFY_PICK) {
         backToDevice(rooms.value);
       }
     });
@@ -4300,6 +4352,10 @@ function refRow(ref, options) {
       becomeNotify(ref);
       options.onChange?.();
       options.redraw?.();
+      return;
+    }
+    if (rooms.value === IGNORE_PICK) {
+      ignoreInstead();
       return;
     }
     // A room picked is a device picked: the first in it, which the second

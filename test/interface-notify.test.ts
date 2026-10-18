@@ -60,7 +60,8 @@ const options = (ui: { document: Document }) =>
 describe('sending a notification from the action row', () => {
   it('is offered under the rooms once a topic is set, and not before', async () => {
     const withTopic = await openRule([{ ...ref('0xb'), value: 'ON' }]);
-    expect(options(withTopic).at(-1)).toBe('Notification');
+    // Below the rooms, with only Ignore under it.
+    expect(options(withTopic).slice(-2)).toEqual(['Notification', 'Ignore']);
 
     const without = await openRule([{ ...ref('0xb'), value: 'ON' }], false);
     expect(options(without)).not.toContain('Notification');

@@ -8,6 +8,7 @@ import {
   MIN_STEPS,
   MIN_WAIT_MS,
   WEEKDAYS,
+  isIgnore,
   isSunTime,
 } from './types.js';
 import { fromConditions } from './conditions.js';
@@ -145,6 +146,11 @@ function parseActions(raw: unknown): { actions: AnyAction[] } | { error: string 
   const actions: AnyAction[] = [];
 
   for (const entry of asArray(raw)) {
+    if (isObject(entry) && entry.kind === 'ignore') {
+      actions.push({ kind: 'ignore' });
+      continue;
+    }
+
     // A notification names no device, so it is read before anything asks for one.
     if (isObject(entry) && entry.kind === 'notify') {
       const message = typeof entry.message === 'string' ? entry.message.trim() : '';
@@ -193,6 +199,10 @@ function parseActions(raw: unknown): { actions: AnyAction[] } | { error: string 
       ...(!copies && !moves ? { value: value as string | number | boolean } : {}),
       ...(delay ? { delayMs: delay } : {}),
     });
+  }
+
+  if (actions.some(isIgnore) && actions.length > 1) {
+    return { error: 'An outcome that ignores does nothing else' };
   }
 
   return { actions };
