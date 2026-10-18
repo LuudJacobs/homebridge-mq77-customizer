@@ -312,6 +312,23 @@ function parseMirror(
       ? clamp(raw.settleMs, MIN_SETTLE_MS, MAX_SETTLE_MS)
       : undefined;
 
+  let leader: MirrorRule['leader'];
+  if (raw.leader !== undefined && raw.leader !== null) {
+    const { sourceId, deviceId } = isObject(raw.leader) ? raw.leader : {};
+    if (typeof sourceId !== 'string' || typeof deviceId !== 'string' || !sourceId || !deviceId) {
+      return { error: 'A one way mirror needs a trigger device' };
+    }
+    // Checked only once there is something to check against: a mirror still
+    // being drafted has its devices picked and no functions yet.
+    const member = groups
+      .flat()
+      .some((ref) => ref.sourceId === sourceId && ref.deviceId === deviceId);
+    if (groups.length > 0 && !member) {
+      return { error: 'The trigger device has to be one of the mirrored devices' };
+    }
+    leader = { sourceId, deviceId };
+  }
+
   return {
     rule: {
       id,
@@ -321,6 +338,7 @@ function parseMirror(
       groups,
       ...(rateLimitMs === undefined ? {} : { rateLimitMs }),
       ...(settleMs === undefined ? {} : { settleMs }),
+      ...(leader ? { leader } : {}),
     },
   };
 }

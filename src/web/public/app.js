@@ -2173,6 +2173,20 @@ function boundElsewhere(ref, ruleId) {
   return taken;
 }
 
+/** Two references to one device, whichever of its functions they name. */
+const sameDevice = (a, b) => a.sourceId === b.sourceId && a.deviceId === b.deviceId;
+
+/**
+ * The trigger device of a one way mirror, as one of its members, or nothing
+ * for a mirror that copies both ways.
+ */
+function leaderOf(rule) {
+  if (rule.kind !== 'mirror' || !rule.leader) {
+    return undefined;
+  }
+  return (rule.groups ?? []).flat().find((ref) => ref && sameDevice(ref, rule.leader));
+}
+
 /** Everything that sets a rule off, whichever kind of rule it is. */
 function startsOf(rule) {
   if (rule.kind === 'mirror') {
@@ -2229,6 +2243,10 @@ function ruleRefs(rule) {
 /** First device on each side, which is what the two orderings compare. */
 function ruleSides(rule) {
   if (rule.kind === 'mirror') {
+    const leader = leaderOf(rule);
+    if (leader) {
+      return { trigger: leader, target: ruleRefs(rule).find((ref) => !sameDevice(ref, leader)) };
+    }
     const refs = ruleRefs(rule);
     return { trigger: refs[0], target: refs[1] };
   }
@@ -2248,8 +2266,13 @@ function ruleSides(rule) {
  */
 function affectedRefs(rule) {
   if (rule.kind === 'mirror') {
-    // Every member is both sides of a mirror, so all of them are affected.
-    return (rule.groups ?? []).flat().filter(Boolean);
+    // Every member is both sides of a mirror, so all of them are affected,
+    // except in a one way mirror, where the trigger device is only followed.
+    const leader = leaderOf(rule);
+    return (rule.groups ?? [])
+      .flat()
+      .filter(Boolean)
+      .filter((ref) => !leader || !sameDevice(ref, leader));
   }
   if (rule.kind === 'slider') {
     return [rule.target].filter(Boolean);
@@ -2667,12 +2690,27 @@ function summarise(rule, inRoom) {
     }
     const members = [...seen.values()];
     const fields = rule.groups?.length ?? 0;
+    const tail = words(`· ${fields} field${fields === 1 ? '' : 's'}`);
+    const leader = leaderOf(rule);
+    if (leader) {
+      // One way: the trigger device first, then the ones following it.
+      const followers = members.filter((ref) => !sameDevice(ref, leader));
+      return [
+        phrase(...deviceParts(leader, ' →', inRoom)),
+        words(' '),
+        ...followers.flatMap((ref, index) => [
+          phrase(...deviceParts(ref, index < followers.length - 1 ? ',' : '', inRoom)),
+          words(' '),
+        ]),
+        tail,
+      ];
+    }
     return [
       ...members.flatMap((ref, index) => [
         phrase(...deviceParts(ref, index < members.length - 1 ? ' ↔' : '', inRoom)),
         words(' '),
       ]),
-      words(`· ${fields} field${fields === 1 ? '' : 's'}`),
+      tail,
     ];
   }
 
@@ -3341,6 +3379,7 @@ function drawMirror(body, draft) {
       }
       pruneGroups();
       drawFields();
+      drawOneWay();
     });
     label.append(box, document.createTextNode(displayName(device)));
     devices.append(label);
@@ -3374,6 +3413,75 @@ function drawMirror(body, draft) {
   body.append(sectionTitle('Functions to mirror'));
   const fields = document.createElement('div');
   body.append(fields);
+
+  body.append(sectionTitle('One way mirror'));
+  const oneWay = document.createElement('div');
+  oneWay.className = 'one-way';
+  body.append(oneWay);
+  // Kept apart from the trigger device itself, so the box stays ticked while
+  // there is no device to pick yet.
+  let oneWayOn = Boolean(draft.leader);
+
+  /**
+   * Whether one device leads and the rest follow it, and which one.
+   *
+   * Always one of the ticked devices: a leader that is unticked hands over
+   * to the first in the list, and there is no picking none.
+   */
+  function drawOneWay() {
+    oneWay.replaceChildren();
+    const devices = selected();
+    const idOf = (device) => `${device.sourceId}|${device.deviceId}`;
+
+    const label = document.createElement('label');
+    label.className = 'toggle';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = oneWayOn;
+    box.addEventListener('change', () => {
+      oneWayOn = box.checked;
+      drawOneWay();
+    });
+    label.append(box, document.createTextNode('Enable one way mirror'));
+    oneWay.append(label);
+
+    const leading = devices.find(
+      (device) =>
+        device.sourceId === draft.leader?.sourceId && device.deviceId === draft.leader?.deviceId,
+    );
+    const leader = oneWayOn ? (leading ?? devices[0]) : undefined;
+    if (leader) {
+      draft.leader = { sourceId: leader.sourceId, deviceId: leader.deviceId };
+    } else {
+      delete draft.leader;
+    }
+    if (!oneWayOn) {
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'option';
+    const named = document.createElement('label');
+    named.textContent = 'Trigger device';
+    const pick = document.createElement('select');
+    pick.className = 'leader-picker';
+    for (const device of devices) {
+      const choice = document.createElement('option');
+      choice.value = idOf(device);
+      choice.textContent = displayName(device);
+      pick.append(choice);
+    }
+    pick.disabled = devices.length === 0;
+    if (leader) {
+      pick.value = idOf(leader);
+    }
+    pick.addEventListener('change', () => {
+      const [sourceId, deviceId] = pick.value.split('|');
+      draft.leader = { sourceId, deviceId };
+    });
+    row.append(named, pick);
+    oneWay.append(row);
+  }
 
   function selected() {
     return candidates.filter((device) => chosen.has(`${device.sourceId}|${device.deviceId}`));
@@ -3573,6 +3681,7 @@ function drawMirror(body, draft) {
   }
 
   drawFields();
+  drawOneWay();
 }
 
 /**
