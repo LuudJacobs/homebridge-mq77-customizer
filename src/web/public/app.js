@@ -2904,8 +2904,8 @@ function drawWhenThen(body, draft) {
                   drawTriggers();
                 }
               : undefined,
-          // Nothing joining them: the heading says what the run of rows is
-          // for, and any of them fires the rule.
+          // Any of them fires the rule.
+          joiner: last ? undefined : 'or',
           trailing: last
             ? addButton('+ trigger', () => {
                 draft.triggers.push({
@@ -3032,6 +3032,8 @@ function actionEditor(branch) {
                   draw();
                 }
               : undefined,
+          // Every one of them is sent.
+          joiner: last ? undefined : 'and',
           trailing: last
             ? addButton('+ action', () => {
                 branch.actions.push({ ...emptyRef(), value: '' });
@@ -3279,8 +3281,8 @@ function drawSlider(body, draft) {
               triggers.splice(index, 1);
               drawButtons();
             },
-            // No "or" between them: a heading of its own already says what
-            // this run of rows is for, and any of them presses it.
+            // Any of them presses it.
+            joiner: last ? undefined : 'or',
             trailing: last ? addButton('+ trigger', add) : undefined,
           }),
         );
@@ -3803,6 +3805,14 @@ function becomeNotify(ref) {
  * A notification's row: the picker, a title and the delay on the line, and
  * the message under them, as wide as those three and no wider.
  */
+/** The word joining a row to the one under it: `and` or `or`. */
+function joinerOf(word) {
+  const joiner = document.createElement('span');
+  joiner.className = 'joiner inline';
+  joiner.textContent = word;
+  return joiner;
+}
+
 function notifyParts(ref, options, pickers) {
   const title = document.createElement('input');
   title.type = 'text';
@@ -3834,6 +3844,9 @@ function notifyParts(ref, options, pickers) {
   }
   if (options.onRemove) {
     tail.append(addButton('\u2715', options.onRemove));
+  }
+  if (options.joiner) {
+    tail.append(joinerOf(options.joiner));
   }
   if (options.trailing) {
     tail.append(options.trailing);
@@ -4110,6 +4123,11 @@ function refRow(ref, options) {
     if (options.onRemove) {
       row.append(addButton('\u2715', options.onRemove));
     }
+    // Drawn here as well: a time is a row like any other, and without it the
+    // row after a time read as though nothing joined them.
+    if (options.joiner) {
+      row.append(joinerOf(options.joiner));
+    }
     if (options.trailing) {
       row.append(options.trailing);
     }
@@ -4331,10 +4349,7 @@ function refRow(ref, options) {
     // The word joining this row to the next one, and the button that adds
     // another, both belong on this line rather than on one of their own.
     if (options.joiner) {
-      const joiner = document.createElement('span');
-      joiner.className = 'joiner inline';
-      joiner.textContent = options.joiner;
-      tail.append(joiner);
+      tail.append(joinerOf(options.joiner));
     }
 
     if (options.trailing) {
