@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Rule rows end in `or` between triggers and `and` between actions, and after a time
+
 ## [2.2.0] - 2026-10-15
 
 ### Added
