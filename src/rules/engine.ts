@@ -374,6 +374,11 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       if (!from) {
         continue;
       }
+      // One way: only the trigger device is copied. What the others do is
+      // their own business, the rule's echo included.
+      if (rule.leader && !isDevice(from, rule.leader)) {
+        continue;
+      }
       const source = this.property(from);
       if (!source) {
         continue;
@@ -392,7 +397,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       const writes: { member: PropertyRef; target: NormalisedProperty; wanted: unknown }[] = [];
 
       for (const member of group) {
-        if (member === from) {
+        // Nor is the trigger device written to, another channel of it
+        // included: the rest follow it, not the other way round.
+        if (member === from || (rule.leader && isDevice(member, rule.leader))) {
           continue;
         }
         const target = this.property(member);
@@ -1563,6 +1570,11 @@ function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): b
     ref.deviceId === update.deviceId &&
     ref.propertyKey === propertyKey
   );
+}
+
+/** Whether a reference is to one device, whichever of its functions. */
+function isDevice(ref: PropertyRef, device: { sourceId: string; deviceId: string }): boolean {
+  return ref.sourceId === device.sourceId && ref.deviceId === device.deviceId;
 }
 
 /**

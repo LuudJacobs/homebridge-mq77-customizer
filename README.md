@@ -185,6 +185,8 @@ Whether or not a topic is set, a low battery shows as a red, empty battery at th
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
 
+A mirror can be made one way under One way mirror: one of its devices is the trigger device, the rest follow it, and nothing they do is copied back. The list shows it with `→` where a two way mirror has `↔`.
+
 After a write the group is left to settle, one and a half seconds by default and set per rule between 0.25 and 60 seconds. A device reporting its old state once more is indistinguishable from somebody flipping a switch, so without the pause a group that disagrees would send itself back and forth for ever. The cost is that flipping a mirrored device again inside the window is ignored.
 
 ### Sliders

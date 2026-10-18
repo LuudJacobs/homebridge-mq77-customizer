@@ -179,3 +179,82 @@ describe('changing which devices a mirror covers', () => {
     expect(body.groups[0]).toHaveLength(2);
   });
 });
+
+describe('a one way mirror', () => {
+  const oneWayBox = (ui: { document: Document }) =>
+    [...ui.document.querySelectorAll('#mirror .one-way label.toggle')].find(
+      (label) => label.textContent === 'Enable one way mirror',
+    )?.querySelector('input') as HTMLInputElement;
+  const leaderPick = (ui: { document: Document }) =>
+    ui.document.querySelector('#mirror .one-way select.leader-picker') as HTMLSelectElement | null;
+  const leaderOf = async (ui: Awaited<ReturnType<typeof openMirror>>) =>
+    ((await saved(ui)) as unknown as { leader?: { deviceId: string } }).leader;
+
+  it('is a section of its own, off to begin with and asking nothing more', async () => {
+    const ui = await openMirror();
+    expect(ui.byText('#mirror p.group-title', 'One way mirror')).not.toBeNull();
+    expect(oneWayBox(ui).checked).toBe(false);
+    expect(leaderPick(ui)).toBeNull();
+    expect(await leaderOf(ui)).toBeUndefined();
+  });
+
+  it('picks a trigger device from the mirrored ones, the first to begin with', async () => {
+    const ui = await openMirror();
+    await tick(ui, oneWayBox(ui), true);
+
+    const pick = leaderPick(ui)!;
+    expect(pick.previousElementSibling?.textContent).toBe('Trigger device');
+    expect([...pick.options].map((option) => option.textContent)).toEqual(['lamp_a', 'lamp_b']);
+    // There is no picking none.
+    expect(pick.value).toBe('zigbee|0xa');
+    expect(await leaderOf(ui)).toEqual({ sourceId: 'zigbee', deviceId: '0xa' });
+  });
+
+  it('saves the one chosen, and opens on it again', async () => {
+    const ui = await openMirror();
+    await tick(ui, oneWayBox(ui), true);
+    const pick = leaderPick(ui)!;
+    pick.value = 'zigbee|0xb';
+    pick.dispatchEvent(new ui.window.Event('change'));
+    expect(await leaderOf(ui)).toEqual({ sourceId: 'zigbee', deviceId: '0xb' });
+
+    const again = await openMirror([{ ...pair, leader: { sourceId: 'zigbee', deviceId: '0xb' } }]);
+    expect(oneWayBox(again).checked).toBe(true);
+    expect(leaderPick(again)?.value).toBe('zigbee|0xb');
+  });
+
+  it('hands over to the first device left when its trigger device is unticked', async () => {
+    const ui = await openMirror([{ ...pair, leader: { sourceId: 'zigbee', deviceId: '0xa' } }]);
+    const boxes = deviceBoxes(ui);
+    await tick(ui, boxes.find((box) => !box.checked)!, true);
+    await tick(ui, boxes[0]!, false);
+
+    expect(leaderPick(ui)?.value).toBe('zigbee|0xb');
+    expect(await leaderOf(ui)).toEqual({ sourceId: 'zigbee', deviceId: '0xb' });
+  });
+
+  it('is two way again once it is switched off', async () => {
+    const ui = await openMirror([{ ...pair, leader: { sourceId: 'zigbee', deviceId: '0xb' } }]);
+    await tick(ui, oneWayBox(ui), false);
+    expect(leaderPick(ui)).toBeNull();
+    expect(await leaderOf(ui)).toBeUndefined();
+  });
+
+  it('reads as one way in the list', async () => {
+    const both = await openInterface({ state: { devices }, rules: [pair] });
+    await both.click(both.byText('button.tab', 'Mirror devices'));
+    const line = (ui: { document: Document }) => {
+      const meta = ui.document.querySelector('#mirror .device-meta')!.cloneNode(true) as Element;
+      meta.querySelectorAll('title').forEach((title) => title.remove());
+      return meta.textContent;
+    };
+    expect(line(both)).toBe('lamp_a ↔ lamp_b · 1 field');
+
+    const one = await openInterface({
+      state: { devices },
+      rules: [{ ...pair, groups: [[ref('0xa'), ref('0xb'), ref('0xc')]], leader: { sourceId: 'zigbee', deviceId: '0xb' } }],
+    });
+    await one.click(one.byText('button.tab', 'Mirror devices'));
+    expect(line(one)).toBe('lamp_b → lamp_a, lamp_c · 1 field');
+  });
+});
