@@ -136,12 +136,13 @@ describe('grouping the device list', () => {
     device('0xa', 'a_lamp', { room: 'Kitchen', type: 'light' }),
     device('0xb', 'b_lamp', { room: 'Hall', type: 'sensor' }),
     device('0xc', 'c_lamp', {}),
+    device('0xd', 'd_lamp', { type: 'light' }),
   ];
 
-  it('groups by room, with the unset ones last', async () => {
+  it('groups by room, with the unset ones last, after the devices with no kind', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'room');
-    expect(headings(ui)).toEqual(['Hall', 'Kitchen', 'Unknown']);
+    expect(headings(ui)).toEqual(['Unknown Devices', 'Hall', 'Kitchen', 'Unknown']);
   });
 
   it('offers every kind, including the ones added later', async () => {
@@ -207,14 +208,32 @@ describe('grouping the device list', () => {
   it('groups by type, naming the kinds rather than their values', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'type');
-    expect(headings(ui)).toEqual(['Light', 'Sensor', 'Unknown']);
+    expect(headings(ui)).toEqual(['Unknown Devices', 'Light', 'Sensor']);
   });
 
-  it('shows a plain list again when sorted by name', async () => {
+  it('splits a list sorted by name into the devices with no kind and the rest', async () => {
     const ui = await openDevices(devices);
+    await sortBy(ui, 'name');
+    expect(headings(ui)).toEqual(['Unknown Devices', 'Known Devices']);
+    expect(names(ui)).toEqual(['c_lamp', 'a_lamp', 'b_lamp', 'd_lamp']);
+  });
+
+  it('shows a plain list again once every device has a kind', async () => {
+    const ui = await openDevices(devices.filter((entry) => entry.exposure.type));
     await sortBy(ui, 'name');
     expect(headings(ui)).toEqual([]);
     expect(names(ui)).toHaveLength(3);
+  });
+
+  it('keeps a device with no kind at the top when it has a room, named with it', async () => {
+    const ui = await openDevices([
+      device('0xa', 'a_lamp', { room: 'Kitchen', type: 'light' }),
+      device('0xe', 'e_lamp', { room: 'Kitchen', label: 'Spot' }),
+    ]);
+    await sortBy(ui, 'room');
+    expect(headings(ui)).toEqual(['Unknown Devices', 'Kitchen']);
+    // Not under its room's heading, so the room is still said.
+    expect(names(ui)).toEqual(['Kitchen Spot', 'a_lamp']);
   });
 
   it('finds a device by its room', async () => {

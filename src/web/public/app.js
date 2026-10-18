@@ -817,6 +817,10 @@ function matchesFilter(device, term) {
     .some((field) => field.toLowerCase().includes(term));
 }
 
+/** Where the devices nobody has said the kind of are listed, ahead of the rest. */
+const UNKNOWN_DEVICES = 'Unknown Devices';
+const KNOWN_DEVICES = 'Known Devices';
+
 function render() {
   const term = currentFilter();
   const visible = sortDevices(
@@ -827,19 +831,6 @@ function render() {
 
   el.devices.replaceChildren();
 
-  const grouping = GROUP_KEYS[state.sorts.devices];
-  if (grouping && visible.length > 0) {
-    // Only a room heading has said the room. Grouping by kind has not.
-    const byRoom = state.sorts.devices === 'room';
-    for (const [heading, devices] of intoGroups(visible, grouping)) {
-      el.devices.append(groupHeading(heading));
-      for (const device of devices) {
-        el.devices.append(renderDevice(device, byRoom ? heading : undefined));
-      }
-    }
-    return;
-  }
-
   if (visible.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
@@ -849,7 +840,36 @@ function render() {
     return;
   }
 
-  for (const device of visible) {
+  // First, whatever the list is sorted or grouped by: a device with no kind
+  // is one somebody has still to look at, which is easiest at the top. In
+  // the order the list is sorted in, and out of any room it is in.
+  const unknown = visible.filter((device) => !device.exposure.type);
+  const known = visible.filter((device) => device.exposure.type);
+  if (unknown.length > 0) {
+    el.devices.append(groupHeading(UNKNOWN_DEVICES));
+    for (const device of unknown) {
+      el.devices.append(renderDevice(device));
+    }
+  }
+
+  const grouping = GROUP_KEYS[state.sorts.devices];
+  if (grouping) {
+    // Only a room heading has said the room. Grouping by kind has not.
+    const byRoom = state.sorts.devices === 'room';
+    for (const [heading, devices] of intoGroups(known, grouping)) {
+      el.devices.append(groupHeading(heading));
+      for (const device of devices) {
+        el.devices.append(renderDevice(device, byRoom ? heading : undefined));
+      }
+    }
+    return;
+  }
+
+  // A heading only to tell these from the ones above, so not without them.
+  if (unknown.length > 0 && known.length > 0) {
+    el.devices.append(groupHeading(KNOWN_DEVICES));
+  }
+  for (const device of known) {
     el.devices.append(renderDevice(device));
   }
 }
