@@ -29,6 +29,13 @@ const state = {
   pinned: undefined,
   /** A state toggle just added and not named yet, which can go without asking. */
   freshToggle: undefined,
+  /**
+   * Which sections of which lists are open, keyed `list|heading`.
+   *
+   * For as long as the page is open, so switching tabs or the sort finds
+   * them as they were left. Anything not in here is closed.
+   */
+  sections: new Map(),
   /** The last network scan, and whether one is running. */
   map: undefined,
   scanning: false,
@@ -697,11 +704,48 @@ function intoGroups(items, headingOf) {
   );
 }
 
-function groupHeading(text) {
+/**
+ * A heading and what is under it, folded away until the heading is clicked.
+ *
+ * Closed to begin with, except Unknown Devices, which is there to be
+ * noticed. While a filter is typed, a section with anything in it shows
+ * open, and goes back to how it was once the filter is cleared.
+ */
+function appendSection(container, list, title, items) {
+  const key = `${list}|${title}`;
+  const open = Boolean(currentFilter()) || (state.sections.get(key) ?? title === UNKNOWN_DEVICES);
+
   const heading = document.createElement('h3');
-  heading.className = 'rule-group';
-  heading.textContent = text;
-  return heading;
+  heading.className = 'rule-group section-title';
+  heading.textContent = `${title} (${items.length})`;
+  heading.tabIndex = 0;
+  heading.setAttribute('role', 'button');
+
+  const body = document.createElement('div');
+  body.className = 'section-items';
+  body.append(...items);
+
+  const show = (shown) => {
+    body.hidden = !shown;
+    heading.classList.toggle('open', shown);
+    heading.setAttribute('aria-expanded', String(shown));
+  };
+  show(open);
+
+  const flip = () => {
+    const shown = body.hidden;
+    show(shown);
+    state.sections.set(key, shown);
+  };
+  heading.addEventListener('click', flip);
+  heading.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      flip();
+    }
+  });
+
+  container.append(heading, body);
 }
 
 /** What each tab offers, and what it says it is filtering. */
@@ -846,10 +890,7 @@ function render() {
   const unknown = visible.filter((device) => !device.exposure.type);
   const known = visible.filter((device) => device.exposure.type);
   if (unknown.length > 0) {
-    el.devices.append(groupHeading(UNKNOWN_DEVICES));
-    for (const device of unknown) {
-      el.devices.append(renderDevice(device));
-    }
+    appendSection(el.devices, 'devices', UNKNOWN_DEVICES, unknown.map((device) => renderDevice(device)));
   }
 
   const grouping = GROUP_KEYS[state.sorts.devices];
@@ -857,17 +898,20 @@ function render() {
     // Only a room heading has said the room. Grouping by kind has not.
     const byRoom = state.sorts.devices === 'room';
     for (const [heading, devices] of intoGroups(known, grouping)) {
-      el.devices.append(groupHeading(heading));
-      for (const device of devices) {
-        el.devices.append(renderDevice(device, byRoom ? heading : undefined));
-      }
+      appendSection(
+        el.devices,
+        'devices',
+        heading,
+        devices.map((device) => renderDevice(device, byRoom ? heading : undefined)),
+      );
     }
     return;
   }
 
   // A heading only to tell these from the ones above, so not without them.
   if (unknown.length > 0 && known.length > 0) {
-    el.devices.append(groupHeading(KNOWN_DEVICES));
+    appendSection(el.devices, 'devices', KNOWN_DEVICES, known.map((device) => renderDevice(device)));
+    return;
   }
   for (const device of known) {
     el.devices.append(renderDevice(device));
@@ -2420,10 +2464,12 @@ function renderRuleList(kind, container, emptyText) {
     );
 
     for (const [heading, grouped] of ordered) {
-      container.append(groupHeading(heading));
-      for (const rule of grouped) {
-        container.append(renderRule(rule, undefined, heading === UNGROUPED ? '' : heading));
-      }
+      appendSection(
+        container,
+        kind,
+        heading,
+        grouped.map((rule) => renderRule(rule, undefined, heading === UNGROUPED ? '' : heading)),
+      );
     }
     return;
   }
@@ -2497,19 +2543,17 @@ function renderByTrigger(container, rules) {
   );
 
   for (const group of ordered) {
-    const heading = document.createElement('h3');
-    heading.className = 'rule-group';
-    heading.textContent = group.name;
-    container.append(heading);
-
     group.entries.sort(
       (a, b) =>
         compareNames(describeTrigger(a.trigger), describeTrigger(b.trigger)) ||
         compareNames(a.rule.name, b.rule.name),
     );
-    for (const entry of group.entries) {
-      container.append(renderRule(entry.rule, entry));
-    }
+    appendSection(
+      container,
+      'trigger',
+      group.name,
+      group.entries.map((entry) => renderRule(entry.rule, entry)),
+    );
   }
 }
 

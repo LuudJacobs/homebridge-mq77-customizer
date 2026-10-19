@@ -1243,6 +1243,28 @@ table.buttons td.in-homekit {
   margin-top: 0.2rem;
 }
 
+/*
+ * A section heading is the whole line to click, with a triangle in front that
+ * points down while what is under it shows.
+ */
+.section-title {
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-title::before {
+  content: '\25B6\FE0E';
+  display: inline-block;
+  width: 1.1em;
+  font-size: 0.75em;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.section-title.open::before {
+  transform: rotate(90deg);
+}
+
 .condition-group {
   border: 1px solid var(--line);
   border-radius: 7px;
