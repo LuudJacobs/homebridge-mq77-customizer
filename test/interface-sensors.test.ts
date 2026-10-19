@@ -62,10 +62,12 @@ describe('choosing what an occupancy reading becomes in HomeKit', () => {
     const select = card.querySelector('select.sensor-type') as HTMLSelectElement;
     select.value = 'Occupancy';
     select.dispatchEvent(new ui.window.Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 300));
     await ui.settle();
-
     expect(tag()).toBe('occupancy sensor');
+    // Nothing is sent until Save.
+    expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
+
+    await ui.click(card.querySelector('.rule-footer button.primary'));
     const saved = ui.requests.findLast((request) => request.path === '/api/exposure')?.body as {
       exposure: { sensorTypes?: Record<string, string> };
     };

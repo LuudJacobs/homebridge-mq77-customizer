@@ -124,6 +124,11 @@ export class Catalog extends EventEmitter<CatalogEvents> {
     return undefined;
   }
 
+  /** Drops a device from its source's list, where the source keeps one of its own. */
+  forget(sourceId: string, deviceId: string): void {
+    this.adapters.get(sourceId)?.forget?.(deviceId);
+  }
+
   hasReported(sourceId: string): boolean {
     return this.reported.has(sourceId);
   }

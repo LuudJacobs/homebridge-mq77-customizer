@@ -57,7 +57,9 @@ Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign i
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
-Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
+Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit and press Save. It takes effect at once, with no Homebridge restart.
+
+Every panel, a device's or a rule's, keeps what is changed in it until Save. Until then its name is marked with `*` and Revert puts back what is saved, and the list keeps sorting and grouping by what is saved. Reloading or leaving the page with anything unsaved asks first. Delete on a device forgets everything set for it: a Zigbee2MQTT device shows again at once with nothing set, a JSON topic when it next publishes.
 
 Per device you can also:
 

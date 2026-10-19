@@ -122,8 +122,8 @@ describe('the low battery warning setting', () => {
 
     box.checked = false;
     box.dispatchEvent(new ui.window.Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 300));
     await ui.settle();
+    await ui.click(card.querySelector('.rule-footer button.primary'));
 
     const saved = ui.requests.findLast((request) => request.path === '/api/exposure')?.body as {
       exposure: { batteryWarning?: boolean };

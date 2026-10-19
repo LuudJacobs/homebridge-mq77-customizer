@@ -101,10 +101,12 @@ describe('the fields on a device', () => {
 
     const room = ui.document.querySelectorAll('.device-field input')[1] as HTMLInputElement;
     room.value = 'Kitchen';
-    room.dispatchEvent(new ui.window.Event('change'));
-    // Saving is held back a moment, so typing does not send a request a letter.
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    room.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    // Nothing is sent until Save.
+    expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
 
+    await ui.click(card.querySelector('.rule-footer button.primary'));
     const saved = ui.requests.findLast((request) => request.path === '/api/exposure')?.body as {
       exposure: { room: string };
     };

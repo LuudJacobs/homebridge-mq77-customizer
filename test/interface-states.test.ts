@@ -105,27 +105,28 @@ describe('a state toggle in the device list', () => {
     expect(ui.byText('button.danger', 'Delete', '#devices')).not.toBeNull();
   });
 
-  it('is renamed and flipped through the toggles, and given a room like any device', async () => {
+  it('is renamed, flipped and given a room on Save, and not before', async () => {
     const ui = await openInterface({ state: { devices: devices() } });
     const card = cardOf(ui, 'Gang Away');
     await ui.openCard(card);
 
     const name = fieldOf(card, 'Name');
     name.value = ' Weg ';
-    name.dispatchEvent(new ui.window.Event('change'));
+    name.dispatchEvent(new ui.window.Event('input'));
     const value = fieldOf(card, 'Value');
     value.value = 'true';
     value.dispatchEvent(new ui.window.Event('change'));
+    const room = fieldOf(card, 'Room');
+    room.value = 'Hal';
+    room.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
+    expect(ui.requests.some((request) => request.path.startsWith('/api/states/'))).toBe(false);
+    expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
+
+    await ui.click(card.querySelector('.rule-footer button.primary'));
 
     const toToggle = ui.requests.filter((request) => request.path === '/api/states/t1');
-    expect(toToggle.map((request) => request.body)).toEqual([{ name: 'Weg' }, { value: true }]);
-
-    const room = fieldOf(cardOf(ui, 'Gang Weg'), 'Room');
-    room.value = 'Hal';
-    room.dispatchEvent(new ui.window.Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await ui.settle();
+    expect(toToggle.map((request) => request.body)).toEqual([{ name: 'Weg', value: true }]);
     const saved = ui.requests.findLast((request) => request.path === '/api/exposure')?.body as {
       deviceId: string;
       exposure: { room?: string };
@@ -133,17 +134,17 @@ describe('a state toggle in the device list', () => {
     expect(saved).toMatchObject({ deviceId: 't1', exposure: { room: 'Hal' } });
   });
 
-  it('keeps its name when the box is emptied', async () => {
+  it('will not save without a name', async () => {
     const ui = await openInterface({ state: { devices: devices() } });
     const card = cardOf(ui, 'Gang Away');
     await ui.openCard(card);
 
     const name = fieldOf(card, 'Name');
     name.value = '  ';
-    name.dispatchEvent(new ui.window.Event('change'));
-    await ui.settle();
+    name.dispatchEvent(new ui.window.Event('input'));
+    await ui.click(card.querySelector('.rule-footer button.primary'));
 
-    expect(name.value).toBe('Away');
+    expect(card.querySelector('.rule-footer .error')?.textContent).toBe('It needs a name');
     expect(ui.requests.some((request) => request.path === '/api/states/t1')).toBe(false);
   });
 
@@ -162,7 +163,7 @@ describe('a state toggle in the device list', () => {
     const card = cardOf(ui, 'Gang Away');
     await ui.openCard(card);
 
-    const remove = ui.byText('button.danger', 'Delete', '#devices');
+    const remove = card.querySelector('button.danger');
     await ui.click(remove);
     expect(ui.requests.some((request) => request.path === '/api/states/t1')).toBe(false);
     await ui.click(remove);

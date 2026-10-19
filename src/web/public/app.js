@@ -36,6 +36,15 @@ const state = {
    * them as they were left. Anything not in here is closed.
    */
   sections: new Map(),
+  /**
+   * What has been changed in a device's panel and not saved, by device.
+   *
+   * Kept here rather than on the device, so the list keeps reading what is
+   * saved, and so a redraw, a tab switch or a live update leaves it alone.
+   */
+  deviceDrafts: new Map(),
+  /** The same for rules, by id: the rule as edited, and as it was drawn first. */
+  ruleDrafts: new Map(),
   /** The last network scan, and whether one is running. */
   map: undefined,
   scanning: false,
@@ -487,7 +496,9 @@ function listen() {
       for (const propertyKey of Object.keys(payload.changes)) {
         updateValue(device, propertyKey);
       }
-      if (isToggle(device)) {
+      // Followed in its panel only while nothing there has been changed: a
+      // value somebody has picked and not saved yet is theirs.
+      if (isToggle(device) && !state.deviceDrafts.has(key(device))) {
         const choice = el.devices.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
         if (choice) {
           choice.value = String(device.state.state === true);
@@ -614,27 +625,6 @@ function formatValue(device, propertyKey) {
   return property?.unit ? `${text} ${property.unit}` : text;
 }
 
-const pending = new Map();
-
-/** Debounced per device, so ticking several boxes quickly is one write. */
-function save(device) {
-  clearTimeout(pending.get(key(device)));
-  pending.set(
-    key(device),
-    setTimeout(() => {
-      api('/api/exposure', {
-        method: 'PUT',
-        body: JSON.stringify({
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          exposure: device.exposure,
-        }),
-      })
-        .then(() => refreshBadge(device))
-        .catch((error) => setStatus(error.message, 'lost'));
-    }, 250),
-  );
-}
 
 /** How many of a device's functions actually reach HomeKit. */
 function exposedCount(device) {
@@ -656,13 +646,6 @@ function paintBadge(badge, device) {
   const count = exposedCount(device);
   badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
   badge.className = count === 0 ? 'badge none' : 'badge';
-}
-
-function refreshBadge(device) {
-  const badge = el.devices.querySelector(`[data-badge="${CSS.escape(key(device))}"]`);
-  if (badge) {
-    paintBadge(badge, device);
-  }
 }
 
 /** What each ordering compares, other than last seen which is a number. */
@@ -933,7 +916,10 @@ function renderDevice(device, inRoom) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = displayName(device, inRoom);
+  // What is saved, marked when the panel holds changes that are not.
+  name.dataset.name = key(device);
+  name.dataset.base = displayName(device, inRoom);
+  name.textContent = `${isDeviceDirty(device) ? '* ' : ''}${name.dataset.base}`;
   const seen = document.createElement('span');
   seen.className = 'device-seen';
   if (isToggle(device)) {
@@ -967,27 +953,31 @@ function renderDevice(device, inRoom) {
   body.className = 'device-body';
 
   if (isToggle(device)) {
-    body.append(renderToggle(device, name));
+    body.append(renderToggle(device));
     card.append(body);
     paintBadge(badge, device);
     return card;
   }
 
-  body.append(deviceOrigin(device));
-  body.append(renderDeviceInfo(device, name));
+  // The panel works on a copy, so nothing reaches HomeKit or the list until
+  // Save, and Revert has the saved one to go back to.
+  const editing = editingOf(device);
 
-  const options = renderOptions(device);
+  body.append(deviceOrigin(device));
+  body.append(renderDeviceInfo(editing));
+
+  const options = renderOptions(editing);
   if (options.childElementCount > 0) {
     body.append(options);
   }
 
-  for (const [title, properties] of groupProperties(device)) {
+  for (const [title, properties] of groupProperties(editing)) {
     const heading = document.createElement('p');
     heading.className = 'group-title';
     heading.textContent = title;
     body.append(heading);
     for (const property of properties) {
-      body.append(renderProperty(device, property));
+      body.append(renderProperty(editing, property));
     }
     // Under the readings rather than over them, fenced off: these are said
     // about the device, where everything above is a function of it.
@@ -1005,30 +995,171 @@ function renderDevice(device, inRoom) {
   // After the diagnostics, and only where there is a battery to watch and
   // somewhere to send the warning.
   if (state.canNotify && hasBattery(device)) {
-    body.append(batteryWarning(device));
+    body.append(batteryWarning(editing));
   }
 
+  body.append(deviceFooter(device, editing));
   card.append(body);
   paintBadge(badge, device);
   return card;
+}
+
+/** A device as its panel shows it: what was changed there, or else what is saved. */
+function editingOf(device) {
+  const exposure = state.deviceDrafts.get(key(device)) ?? structuredClone(device.exposure);
+  return { ...device, exposure };
+}
+
+/**
+ * Text that says the same whatever order it was built in.
+ *
+ * Ticking a box off and on again puts its key last, which is not a change,
+ * so keys are sorted and so are lists of plain values.
+ */
+function canonical(value) {
+  return JSON.stringify(value, (_, inner) => {
+    if (Array.isArray(inner)) {
+      return inner.every((item) => item === null || typeof item !== 'object')
+        ? [...inner].sort()
+        : inner;
+    }
+    if (inner && typeof inner === 'object') {
+      return Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)));
+    }
+    return inner;
+  });
+}
+
+/** Whether a device's panel holds anything that differs from what is saved. */
+function isDeviceDirty(device) {
+  const draft = state.deviceDrafts.get(key(device));
+  if (!draft) {
+    return false;
+  }
+  if (isToggle(device)) {
+    return (
+      draft.name.trim() !== device.name ||
+      draft.room.trim() !== (device.exposure.room ?? '') ||
+      draft.value !== draft.was
+    );
+  }
+  return canonical(draft) !== canonical(device.exposure);
+}
+
+/** Puts the `*` and the Revert button right after something in a panel changed. */
+function paintDirty(device) {
+  const dirty = isDeviceDirty(device);
+  for (const name of el.devices.querySelectorAll(`[data-name="${CSS.escape(key(device))}"]`)) {
+    name.textContent = `${dirty ? '* ' : ''}${name.dataset.base}`;
+  }
+  for (const revert of el.devices.querySelectorAll(`[data-revert="${CSS.escape(key(device))}"]`)) {
+    revert.hidden = !dirty;
+  }
+}
+
+/** Something in a device's panel changed: kept, and said so in its header. */
+function touched(editing) {
+  state.deviceDrafts.set(key(editing), editing.exposure);
+  paintDirty(editing);
+}
+
+/**
+ * Save, Revert and Delete, the way a rule has them.
+ *
+ * Delete forgets what was set here. A source that lists what it has shows
+ * the device again at once, with nothing set; one that lists what it hears
+ * shows it again when it next says something.
+ */
+function deviceFooter(device, editing) {
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      const answer = await api('/api/exposure', {
+        method: 'PUT',
+        body: JSON.stringify({
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          exposure: editing.exposure,
+        }),
+      });
+      device.exposure = answer.exposure ?? editing.exposure;
+      state.deviceDrafts.delete(key(device));
+      // Saved, so it can take its place in the list and its kind in the header.
+      safeRender();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  footer.append(save, revertButton(device), error, deleteDevice(device));
+  return footer;
+}
+
+function revertButton(device) {
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  revert.dataset.revert = key(device);
+  revert.hidden = !isDeviceDirty(device);
+  revert.addEventListener('click', () => {
+    state.deviceDrafts.delete(key(device));
+    safeRender();
+  });
+  return revert;
+}
+
+function deleteDevice(device) {
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'danger';
+  remove.textContent = 'Delete';
+  armDelete(remove, async () => {
+    await api('/api/devices', {
+      method: 'DELETE',
+      body: JSON.stringify({ sourceId: device.sourceId, deviceId: device.deviceId }),
+    }).catch((problem) => setStatus(problem.message, 'lost'));
+    state.deviceDrafts.delete(key(device));
+    state.open.delete(key(device));
+    await load();
+  });
+  return remove;
 }
 
 /**
  * A state toggle: what it is called, where it is, and whether it is true.
  *
  * Nothing about HomeKit, which never sees one, and nothing about where it
- * came from, since that is here.
+ * came from, since that is here. Like every panel, nothing in it is kept
+ * until Save, the value included.
  */
-function renderToggle(device, heading) {
+function renderToggle(device) {
   const wrap = document.createElement('div');
   wrap.className = 'toggle-body';
   const row = document.createElement('div');
   row.className = 'device-info';
   const path = `/api/states/${encodeURIComponent(device.deviceId)}`;
-  const change = (body) =>
-    api(path, { method: 'PUT', body: JSON.stringify(body) }).catch((problem) =>
-      setStatus(problem.message, 'lost'),
-    );
+
+  // `was` is the value when the panel was first changed, so a rule moving it
+  // in the meantime is not undone by saving a new name.
+  const draft = state.deviceDrafts.get(key(device)) ?? {
+    name: device.name,
+    room: device.exposure.room ?? '',
+    value: device.state.state === true,
+    was: device.state.state === true,
+  };
+  const keep = () => {
+    state.deviceDrafts.set(key(device), draft);
+    paintDirty(device);
+  };
 
   const field = (label, control) => {
     const holder = document.createElement('label');
@@ -1040,31 +1171,21 @@ function renderToggle(device, heading) {
   const name = document.createElement('input');
   name.type = 'text';
   name.maxLength = 64;
-  name.value = device.name;
+  name.value = draft.name;
   name.dataset.toggleName = key(device);
-  name.addEventListener('change', () => {
-    const given = name.value.trim();
-    // A toggle is found by its name in every rule, so it keeps one.
-    if (!given) {
-      name.value = device.name;
-      return;
-    }
-    device.name = given;
-    state.freshToggle = undefined;
-    heading.textContent = displayName(device);
-    change({ name: given });
+  name.addEventListener('input', () => {
+    draft.name = name.value;
+    keep();
   });
 
   const room = document.createElement('input');
   room.type = 'text';
   room.maxLength = 64;
   room.placeholder = 'none';
-  room.value = device.exposure.room ?? '';
-  room.addEventListener('change', () => {
-    device.exposure.room = room.value.trim() || undefined;
-    heading.textContent = displayName(device);
-    save(device);
-    safeRender();
+  room.value = draft.room;
+  room.addEventListener('input', () => {
+    draft.room = room.value;
+    keep();
   });
 
   const value = document.createElement('select');
@@ -1075,29 +1196,72 @@ function renderToggle(device, heading) {
     choice.textContent = option;
     value.append(choice);
   }
-  value.value = String(device.state.state === true);
-  value.addEventListener('change', () => change({ value: value.value === 'true' }));
+  value.value = String(draft.value);
+  value.addEventListener('change', () => {
+    draft.value = value.value === 'true';
+    keep();
+  });
 
   row.append(field('Name', name), field('Room', room), field('Value', value));
 
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    // A toggle is found by its name in every rule, so it keeps one.
+    const given = draft.name.trim();
+    if (!given) {
+      error.textContent = 'It needs a name';
+      return;
+    }
+    try {
+      await api(path, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: given,
+          ...(draft.value === draft.was ? {} : { value: draft.value }),
+        }),
+      });
+      await api('/api/exposure', {
+        method: 'PUT',
+        body: JSON.stringify({
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          exposure: { properties: [], room: draft.room.trim() || undefined },
+        }),
+      });
+      state.deviceDrafts.delete(key(device));
+      state.freshToggle = undefined;
+      await load();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'danger';
   remove.textContent = 'Delete';
   const erase = async () => {
     await api(path, { method: 'DELETE' }).catch((problem) => setStatus(problem.message, 'lost'));
+    state.deviceDrafts.delete(key(device));
     state.open.delete(key(device));
     await load();
   };
-  // One only just added, and not yet named, is nothing to ask twice about.
+  // One only just added, and not yet saved, is nothing to ask twice about.
   if (state.freshToggle === key(device)) {
     remove.addEventListener('click', erase);
   } else {
     armDelete(remove, erase);
   }
-  footer.append(remove);
+  footer.append(save, revertButton(device), error, remove);
 
   wrap.append(row, footer);
   return wrap;
@@ -1123,7 +1287,7 @@ function batteryWarning(device) {
     } else {
       device.exposure.batteryWarning = false;
     }
-    save(device);
+    touched(device);
   });
   label.append(box, document.createTextNode('Send notification when battery runs low'));
 
@@ -1172,16 +1336,12 @@ function deviceOrigin(device) {
  * accessory can set or read them. The name is the exception, and only where
  * the source names nothing itself.
  */
-function renderDeviceInfo(device, heading) {
+function renderDeviceInfo(device) {
   const row = document.createElement('div');
   row.className = 'device-info';
 
-  const repaint = () => {
-    heading.textContent = displayName(device);
-    save(device);
-    // The icon lives in the header, which is not redrawn on its own.
-    safeRender();
-  };
+  // The header keeps the saved name and kind until Save, with a `*` meanwhile.
+  const repaint = () => touched(device);
 
   const field = (label, value, placeholder, onChange) => {
     const wrap = document.createElement('label');
@@ -1192,7 +1352,7 @@ function renderDeviceInfo(device, heading) {
     input.value = value ?? '';
     input.placeholder = placeholder;
     input.maxLength = 64;
-    input.addEventListener('change', () => onChange(input.value.trim()));
+    input.addEventListener('input', () => onChange(input.value.trim()));
     wrap.append(input);
     return wrap;
   };
@@ -1264,7 +1424,7 @@ function renderOptions(device) {
     select.title = forced ? `Fixed to ${forced} by the functions selected` : '';
     select.addEventListener('change', () => {
       device.exposure.tileTypes = { ...device.exposure.tileTypes, [endpoint]: select.value };
-      save(device);
+      touched(device);
     });
     option.append(label, select);
     wrap.append(option);
@@ -1302,7 +1462,7 @@ function renderOptions(device) {
         delete types[property.key];
       }
       device.exposure.sensorTypes = types;
-      save(device);
+      touched(device);
       // The tag beside the reading says which it became.
       const tag = document.querySelector(
         `[data-role-tag="${CSS.escape(key(device))}|${CSS.escape(property.key)}"]`,
@@ -1335,7 +1495,7 @@ function renderOptions(device) {
     checkbox.disabled = device.rulesOnly;
     checkbox.addEventListener('change', () => {
       device.exposure.splitEndpoints = checkbox.checked;
-      save(device);
+      touched(device);
     });
     const label = document.createElement('label');
     label.htmlFor = checkbox.id;
@@ -1468,7 +1628,7 @@ function renderProperty(device, property) {
       selected.delete(property.key);
     }
     device.exposure.properties = [...selected];
-    save(device);
+    touched(device);
     // On/off decides whether the tile picker is shown at all, brightness,
     // speed and swing decide what it is locked to, and actions reveal their
     // per button gestures. All of them change what belongs on screen.
@@ -1562,7 +1722,7 @@ function renderButton(device, property, button) {
       perButton[button.name] = [...current];
       buttons[property.key] = perButton;
       device.exposure.buttons = buttons;
-      save(device);
+      touched(device);
     });
 
     const label = document.createElement('label');
@@ -1696,6 +1856,22 @@ el.kindAction.addEventListener('change', () => {
 el.kindState.addEventListener('change', () => {
   state.activityKinds.state = el.kindState.checked;
   renderLog();
+});
+
+/** Whether any panel, of a device or a rule, holds something not saved. */
+function anythingUnsaved() {
+  return (
+    state.devices.some((device) => isDeviceDirty(device)) ||
+    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id))
+  );
+}
+
+// The browser's own question, and only with something to lose.
+window.addEventListener('beforeunload', (event) => {
+  if (anythingUnsaved()) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
 });
 
 async function start() {
@@ -2592,8 +2768,11 @@ function renderRule(rule, occurrence, inRoom) {
   const name = document.createElement('span');
   name.className = 'device-name';
   // Only a room heading has said the room. A heading naming the device that
-  // sets a rule off has said nothing about where the rule acts.
-  name.textContent = ruleTitle(rule, inRoom !== undefined);
+  // sets a rule off has said nothing about where the rule acts. Marked while
+  // its panel holds changes that are not saved.
+  name.dataset.ruleName = rule.id;
+  name.dataset.base = ruleTitle(rule, inRoom !== undefined);
+  name.textContent = `${isRuleDirty(rule.id) ? '* ' : ''}${name.dataset.base}`;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
   // Under a trigger heading the rule is named first and what sets it off
@@ -2825,7 +3004,10 @@ function enabledToggle(rule) {
 function renderRuleBody(rule) {
   const body = document.createElement('div');
   body.className = 'device-body';
-  const draft = structuredClone(rule);
+  // Picked up again where one was being edited, so redrawing the list for a
+  // live update or a tab switch loses nothing.
+  const kept = state.ruleDrafts.get(rule.id);
+  const draft = kept?.draft ?? structuredClone(rule);
 
   const nameRow = document.createElement('div');
   nameRow.className = 'option';
@@ -2852,8 +3034,41 @@ function renderRuleBody(rule) {
   }
 
   body.append(shape);
+
+  // Taken once the form has been drawn, since drawing settles a few things
+  // in it, and comparing with the stored rule would call that a change.
+  if (!kept) {
+    state.ruleDrafts.set(rule.id, { draft, baseline: JSON.stringify(draft) });
+  }
+  // Anything at all in the panel might have moved the draft on, and the
+  // handlers that do run before this does.
+  for (const kind of ['input', 'change', 'click']) {
+    body.addEventListener(kind, () => setTimeout(() => paintRuleDirty(rule.id), 0));
+  }
+
   body.append(ruleFooter(rule, draft, body));
   return body;
+}
+
+/** Whether a rule's panel holds anything that differs from what is saved. */
+function isRuleDirty(id) {
+  const kept = state.ruleDrafts.get(id);
+  return Boolean(kept) && JSON.stringify(kept.draft) !== kept.baseline;
+}
+
+/** The `*`, Revert and Trigger of every place a rule is listed, after a change. */
+function paintRuleDirty(id) {
+  const dirty = isRuleDirty(id);
+  const scope = document.getElementById('app') ?? document;
+  for (const name of scope.querySelectorAll(`[data-rule-name="${CSS.escape(id)}"]`)) {
+    name.textContent = `${dirty ? '* ' : ''}${name.dataset.base}`;
+  }
+  for (const revert of scope.querySelectorAll(`[data-rule-revert="${CSS.escape(id)}"]`)) {
+    revert.hidden = !dirty;
+  }
+  for (const trigger of scope.querySelectorAll(`[data-rule-trigger="${CSS.escape(id)}"]`)) {
+    trigger.hidden = id === state.pinned || dirty;
+  }
 }
 
 function ruleFooter(rule, draft, body) {
@@ -2868,8 +3083,15 @@ function ruleFooter(rule, draft, body) {
   save.textContent = 'Save';
   save.addEventListener('click', async () => {
     error.textContent = '';
+    // On or off is the switch in the header's business, saved as it is
+    // clicked, so what the draft remembers of it is out of date.
+    const stored = state.rules.find((candidate) => candidate.id === rule.id) ?? rule;
     try {
-      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      await api('/api/rules', {
+        method: 'PUT',
+        body: JSON.stringify({ ...draft, enabled: stored.enabled }),
+      });
+      state.ruleDrafts.delete(rule.id);
       // Saved, so it has a name worth sorting by and can take its place.
       if (state.pinned === rule.id) {
         state.pinned = undefined;
@@ -2880,6 +3102,16 @@ function ruleFooter(rule, draft, body) {
     }
   });
 
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  revert.dataset.ruleRevert = rule.id;
+  revert.hidden = !isRuleDirty(rule.id);
+  revert.addEventListener('click', () => {
+    state.ruleDrafts.delete(rule.id);
+    renderRules();
+  });
+
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'danger';
@@ -2887,6 +3119,7 @@ function ruleFooter(rule, draft, body) {
 
   const erase = async () => {
     await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
+    state.ruleDrafts.delete(rule.id);
     state.openRules.delete(rule.id);
     await loadRules();
   };
@@ -2899,12 +3132,12 @@ function ruleFooter(rule, draft, body) {
     armDelete(remove, erase);
   }
 
-  footer.append(save);
+  footer.append(save, revert);
 
   // Mirrors and sliders have no single thing to set off: every member of a
   // mirror is a trigger, and a slider has four buttons doing four things.
   if (rule.kind !== 'mirror' && rule.kind !== 'slider') {
-    footer.append(triggerButton(rule, draft, body, error));
+    footer.append(triggerButton(rule, error));
   }
 
   footer.append(error, remove);
@@ -2941,24 +3174,15 @@ function armDelete(button, erase) {
  * two agree again: a button that has gone is unmistakable, where a greyed
  * one is a shade nobody notices.
  */
-function triggerButton(rule, draft, body, error) {
+function triggerButton(rule, error) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'trigger';
   button.textContent = 'Trigger';
   button.title = 'Run this rule now, whether or not it is switched on';
 
-  const saved = JSON.stringify(draft);
-  const check = () => {
-    button.hidden = rule.id === state.pinned || JSON.stringify(draft) !== saved;
-  };
-  check();
-
-  // Anything at all in the panel might have moved the draft on, and the
-  // handlers that do run before this does.
-  for (const kind of ['input', 'change', 'click']) {
-    body.addEventListener(kind, () => setTimeout(check, 0));
-  }
+  button.dataset.ruleTrigger = rule.id;
+  button.hidden = rule.id === state.pinned || isRuleDirty(rule.id);
 
   button.addEventListener('click', async () => {
     error.textContent = '';

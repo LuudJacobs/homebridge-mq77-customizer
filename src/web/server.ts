@@ -167,6 +167,9 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
+      if (path === '/api/devices' && request.method === 'DELETE') {
+        return this.forgetDevice(request, response);
+      }
       if (path === '/api/states' && request.method === 'POST') {
         return this.createToggle(request, response);
       }
@@ -289,6 +292,35 @@ export class WebServer {
       return send(response, 404, { error: 'No such rule' });
     }
     this.broadcast({ type: 'rules' });
+    return send(response, 200, { ok: true });
+  }
+
+  /**
+   * Forgets what was set for a device: its name, room, kind and tiles.
+   *
+   * Nothing stops it coming back. A source that lists what it has, as
+   * Zigbee2MQTT does, shows it again at once with nothing set; one that lists
+   * what it hears shows it again when it next says something.
+   */
+  private async forgetDevice(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJson(request);
+    const sourceId = typeof body?.sourceId === 'string' ? body.sourceId : undefined;
+    const deviceId = typeof body?.deviceId === 'string' ? body.deviceId : undefined;
+    if (!sourceId || !deviceId) {
+      return send(response, 400, { error: 'sourceId and deviceId are required' });
+    }
+    if (sourceId === STATES_SOURCE) {
+      return this.deleteToggle(deviceId, response);
+    }
+
+    this.deps.store.update((state) => {
+      delete state.exposures[`${sourceId}:${deviceId}`];
+    });
+    this.deps.catalog.forget(sourceId, deviceId);
+    this.deps.onExposureChanged();
+    // The list changed even where the source still has the device: what was
+    // set for it has gone.
+    this.broadcast({ type: 'devices' });
     return send(response, 200, { ok: true });
   }
 
