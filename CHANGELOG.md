@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Sorting and filtering sit on each tab's own line, beside its buttons
+
 ## [2.4.0] - 2026-10-19
 
 ### Added
