@@ -194,7 +194,7 @@ describe('listing automations under their trigger', () => {
   it('puts a heading per trigger device, in name order', async () => {
     const ui = await openTab('Automation', [aqara, shelly, shellyToo]);
     await sortBy(ui, 'trigger');
-    expect(headings(ui)).toEqual(['hall_lamp', 'porch_lamp']);
+    expect(headings(ui)).toEqual(['hall_lamp (2)', 'porch_lamp (1)']);
   });
 
   it('names the automation, then what sets it off', async () => {
@@ -220,8 +220,8 @@ describe('listing automations under their trigger', () => {
     const ui = await openTab('Automation', [shelly, evening, dusk]);
     await sortBy(ui, 'trigger');
 
-    expect(headings(ui)).toContain('Current time');
-    expect(headings(ui)).not.toContain('No device');
+    expect(headings(ui)).toContain('Current time (2)');
+    expect(headings(ui).some((heading) => heading.startsWith('No device'))).toBe(false);
 
     // And the line under it says what the clock said, rather than falling
     // back to the word for a property it has not got.
@@ -258,7 +258,7 @@ describe('listing automations under their trigger', () => {
     await sortBy(ui, 'trigger');
 
     // The list answers what a button does, so one rule can answer twice.
-    expect(headings(ui)).toEqual(['hall_lamp', 'porch_lamp']);
+    expect(headings(ui)).toEqual(['hall_lamp (1)', 'porch_lamp (1)']);
     expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
   });
 
@@ -286,7 +286,7 @@ describe('listing automations under their trigger', () => {
     });
     const ui = await openTab('Automation', [orphan, shelly]);
     await sortBy(ui, 'trigger');
-    expect(headings(ui)).toEqual(['hall_lamp', 'No device']);
+    expect(headings(ui)).toEqual(['hall_lamp (1)', 'No device (1)']);
   });
 });
 
@@ -401,7 +401,7 @@ describe('naming a rule by where it acts', () => {
       (node) => node.textContent,
     );
     // It is the answer in both rooms, so it is listed in both.
-    expect(headings).toEqual(['Kitchen', 'Study']);
+    expect(headings).toEqual(['Kitchen (1)', 'Study (1)']);
     expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
 
     // And it still says both under either, since the other room is news.
@@ -858,7 +858,7 @@ describe('grouping automations by the device they act on', () => {
     const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
       (node) => node.textContent,
     );
-    expect(headings).toEqual(['Kitchen', 'Unknown']);
+    expect(headings).toEqual(['Kitchen (1)', 'Unknown (1)']);
   });
 
 });

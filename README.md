@@ -94,7 +94,7 @@ Button names and gestures are worked out from the action names the device publis
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
 
-Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by.
+Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by. Every heading in a list says how many are under it and folds them away when clicked. Headings start closed, except Unknown Devices, and open while a filter finds something under them.
 
 Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
