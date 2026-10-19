@@ -6,10 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- State toggles are internal states, holding a Boolean, Text or a Number
-- Every panel saves with Save, marks unsaved changes with `*` and can Revert them
+## [2.4.0] - 2026-10-19
+
+### Added
+
+- Internal states can hold Text or a Number as well as true or false
 - Devices can be deleted, forgetting everything set for them
 - List sections fold away and say how many are in them
+
+### Changed
+
+- State toggles are called internal states
+- Every panel saves with Save, marks unsaved changes with `*` and can Revert them
 
 ## [2.3.0] - 2026-10-18
 
