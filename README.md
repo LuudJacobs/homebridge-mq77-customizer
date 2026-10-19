@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.4.0
+# MQ77 Customizer 2.5.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -54,6 +54,8 @@ What was described is logged at startup, so a topic that matches no device is vi
 ## Usage
 
 Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
+
+Every tab has an address of its own, `/automation`, `/controllers` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Controllers, every rule on a button is a link to it.
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 

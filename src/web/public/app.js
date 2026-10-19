@@ -66,6 +66,7 @@ const el = {
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
   kindFilters: document.getElementById('kind-filters'),
+  tools: document.getElementById('tab-tools'),
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
   kindSlider: document.getElementById('kind-slider'),
@@ -869,6 +870,13 @@ function paintControls() {
   el.filter.hidden = view === 'map' || view === 'controllers';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
+
+  // On the open tab's own line, before its buttons, and gone where there is
+  // nothing to sort or filter, so no line is drawn in front of the buttons.
+  document.querySelector(`#view-${view} .rules-actions`)?.prepend(el.tools);
+  el.tools.hidden = [el.kindFilters, el.unusedFilter, el.homekitFilter, el.sort, el.filter].every(
+    (control) => control.hidden,
+  );
 }
 
 const currentFilter = () => (state.filters[state.view] ?? '').trim().toLowerCase();
@@ -921,6 +929,11 @@ const UNKNOWN_DEVICES = 'Unknown Devices';
 const KNOWN_DEVICES = 'Known Devices';
 
 function render() {
+  drawDevices();
+  settleLink('devices', el.devices);
+}
+
+function drawDevices() {
   const term = currentFilter();
   const visible = sortDevices(
     state.devices.filter(
@@ -976,6 +989,7 @@ function render() {
 function renderDevice(device, inRoom) {
   const card = document.createElement('details');
   card.className = 'device';
+  card.dataset.link = shortLink(key(device));
   card.open = state.open.has(key(device));
   card.addEventListener('toggle', () => {
     if (card.open) {
@@ -986,6 +1000,7 @@ function renderDevice(device, inRoom) {
   });
 
   const summary = document.createElement('summary');
+  summary.addEventListener('click', () => setTimeout(() => markOpen(key(device), card.open)));
   const name = document.createElement('span');
   name.className = 'device-name';
   // What is saved, marked when the panel holds changes that are not.
@@ -1973,6 +1988,12 @@ window.addEventListener('beforeunload', (event) => {
 async function start() {
   await load();
   listen();
+  // The plain address is Devices, said as such so it can be copied.
+  const view = viewOfAddress();
+  if (location.pathname === '/') {
+    setAddress(addressOf(view, linkOfAddress()), false);
+  }
+  follow(view, linkOfAddress());
 }
 
 // A first visit has no session yet, so a plain login form is the right result
@@ -2430,6 +2451,7 @@ function findProperty(ref) {
 async function loadRules() {
   const [rules, log] = await Promise.all([api('/api/rules'), api('/api/log')]);
   state.rules = rules.rules;
+  state.rulesLoaded = true;
   state.log = log.entries;
   renderRules();
   renderLog();
@@ -2448,6 +2470,10 @@ function renderRules() {
   safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
   safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
+  const lists = { automation: el.automation, mirror: el.mirror, sliders: el.sliders };
+  if (lists[state.view]) {
+    settleLink(state.view, lists[state.view]);
+  }
 }
 
 /**
@@ -2846,6 +2872,7 @@ function renderRule(rule, occurrence, inRoom) {
   // One rule can be listed under several of its triggers, and opening it in
   // one place should not open it in the others.
   const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
+  card.dataset.link = shortLink(rule.id);
   card.open = state.openRules.has(key);
 
   /**
@@ -2872,6 +2899,7 @@ function renderRule(rule, occurrence, inRoom) {
   });
 
   const summary = document.createElement('summary');
+  summary.addEventListener('click', () => setTimeout(() => markOpen(rule.id, card.open)));
   const name = document.createElement('span');
   name.className = 'device-name';
   // Only a room heading has said the room. A heading naming the device that
@@ -5143,7 +5171,11 @@ function renderControllers() {
           line.append(button);
         }
         const action = document.createElement('td');
-        action.textContent = answer.text;
+        if (answer.rule) {
+          action.append(ruleLink(answer.rule, answer.text));
+        } else {
+          action.textContent = answer.text;
+        }
         if (answer.kind !== 'rule') {
           action.className = answer.kind;
         }
@@ -5155,6 +5187,28 @@ function renderControllers() {
     card.append(table);
     el.controllers.append(card);
   }
+}
+
+/**
+ * A rule's name that goes to it: its tab, opened and in view.
+ *
+ * A real link, so it can be opened elsewhere or copied; a plain click stays
+ * on the page.
+ */
+function ruleLink(rule, text) {
+  const link = document.createElement('a');
+  link.className = 'rule-link';
+  link.textContent = text;
+  link.href = addressOf(viewOfRule(rule), shortLink(rule.id));
+  link.addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    setAddress(link.getAttribute('href'), true);
+    follow(viewOfRule(rule), shortLink(rule.id));
+  });
+  return link;
 }
 
 /** Said of a button rather than being something it sets off. */
@@ -5171,7 +5225,7 @@ const HOMEKIT_ANSWER = { kind: 'in-homekit', text: 'In HomeKit' };
  * nothing answers at all, with both ticks down, is not listed.
  */
 function buttonAnswers(row) {
-  const answers = row.rules.map((named) => ({ kind: 'rule', text: named }));
+  const answers = row.rules.map((named) => ({ kind: 'rule', text: named.text, rule: named.rule }));
 
   if (row.homekit && state.homekitButtons) {
     answers.push(HOMEKIT_ANSWER);
@@ -5278,8 +5332,8 @@ function rulesOn(controller, propertyKey, value) {
       // Which of a slider's four buttons this is, since the name alone would
       // be the same on all of them.
       const title = part ? `${ruleTitle(rule)} (${part})` : ruleTitle(rule);
-      if (!named.includes(title)) {
-        named.push(title);
+      if (!named.some((entry) => entry.text === title)) {
+        named.push({ text: title, rule });
       }
     }
   }
@@ -5639,6 +5693,146 @@ async function scanNetwork() {
   }
 }
 
+/** The tabs, each with an address of its own: `/automation`. */
+const VIEWS = ['devices', 'automation', 'mirror', 'sliders', 'activity', 'controllers', 'map'];
+
+/** The tab a rule is kept on. */
+const viewOfRule = (rule) =>
+  rule.kind === 'mirror' ? 'mirror' : rule.kind === 'slider' ? 'sliders' : 'automation';
+
+/** Which tab the address is for, Devices for anything it does not name. */
+function viewOfAddress() {
+  const slug = location.pathname.replace(/^\/+|\/+$/g, '');
+  return VIEWS.includes(slug) ? slug : 'devices';
+}
+
+/** What the address's # names, a device or a rule, if anything. */
+function linkOfAddress() {
+  return location.hash.slice(1).toUpperCase() || undefined;
+}
+
+const addressOf = (view, link) => `/${view}${link ? `#${link}` : ''}`;
+
+/**
+ * The # of a device or a rule: eight of A to Z and 0 to 9, worked out from
+ * its id.
+ *
+ * An id is a long UUID, or a topic full of slashes, which makes a poor
+ * address. The same id always gives the same eight, so nothing is stored for
+ * it, and there are close to three million million of them, so two things in
+ * one house will not share one. cyrb53, a quick hash of a string.
+ */
+function shortLink(id) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let index = 0; index < id.length; index++) {
+    const code = id.charCodeAt(index);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return (hash % 36 ** 8).toString(36).toUpperCase().padStart(8, '0');
+}
+
+/**
+ * Writes the address without going anywhere.
+ *
+ * Not every page may: one opened from a file, or framed somewhere else,
+ * refuses, and the interface works the same without it.
+ */
+function setAddress(url, push) {
+  try {
+    if (push) {
+      history.pushState(null, '', url);
+    } else {
+      history.replaceState(null, '', url);
+    }
+  } catch {
+    // Nowhere to write it, which changes nothing else.
+  }
+}
+
+/** A tab picked by hand: a step that back and forward go through. */
+function openTab(view) {
+  if (view !== state.view || location.hash) {
+    setAddress(addressOf(view), true);
+  }
+  state.link = undefined;
+  showView(view);
+}
+
+/**
+ * A card opened or closed by hand says so in the address, so what is in
+ * the address bar is a link to it. Not a step back and forward go through.
+ */
+function markOpen(id, open) {
+  const link = shortLink(id);
+  if (open) {
+    setAddress(addressOf(state.view, link), false);
+  } else if (linkOfAddress() === link) {
+    setAddress(addressOf(state.view), false);
+  }
+}
+
+/** Goes where an address points: its tab, and what its # names, opened. */
+function follow(view, id) {
+  state.link = id ? { view, id } : undefined;
+  showView(view);
+}
+
+/**
+ * Once a list is drawn, opens what a link points at: every listing of it,
+ * the sections it is in unfolded, and the first of them scrolled to.
+ *
+ * Hidden by the filter, the filter is emptied and the list drawn again; the
+ * sort stays as it was. Not there at all, the link is let go once there is
+ * no more to wait for.
+ */
+function settleLink(view, container) {
+  const link = state.link;
+  if (!link || link.view !== view || state.view !== view) {
+    return;
+  }
+  const cards = [...container.querySelectorAll('[data-link]')].filter(
+    (card) => card.dataset.link === link.id,
+  );
+
+  if (cards.length === 0) {
+    if (state.filters[view]) {
+      state.filters[view] = '';
+      el.filter.value = '';
+      if (view === 'devices') {
+        render();
+      } else {
+        renderRules();
+      }
+      return;
+    }
+    if (view === 'devices' || state.rulesLoaded) {
+      state.link = undefined;
+    }
+    return;
+  }
+
+  state.link = undefined;
+  for (const card of cards) {
+    const items = card.closest('.section-items');
+    if (items?.hidden) {
+      items.previousElementSibling?.click();
+    }
+    if (!card.open) {
+      card.open = true;
+      card.dispatchEvent(new Event('toggle'));
+    }
+  }
+  cards[0].scrollIntoView?.({ block: 'start' });
+}
+
+// Back and forward step through tabs, and open whatever the address names.
+window.addEventListener('popstate', () => follow(viewOfAddress(), linkOfAddress()));
+
 function showView(view) {
   state.view = view;
   el.viewDevices.hidden = view !== 'devices';
@@ -5710,23 +5904,24 @@ function drawTabOptions() {
 
 drawTabOptions();
 
-el.tabSelect.addEventListener('change', () => showView(el.tabSelect.value));
+el.tabSelect.addEventListener('change', () => openTab(el.tabSelect.value));
 
 // Narrowing the window while the map is open would otherwise leave a page
 // with nothing on it, since the map is hidden and the dropdown cannot say so.
 narrow.addEventListener('change', () => {
   if (narrow.matches && state.view === 'map') {
+    setAddress(addressOf('devices'), false);
     showView('devices');
   }
   drawTabOptions();
 });
 
-el.tabDevices.addEventListener('click', () => showView('devices'));
-el.tabAutomation.addEventListener('click', () => showView('automation'));
-el.tabMirror.addEventListener('click', () => showView('mirror'));
-el.tabSliders.addEventListener('click', () => showView('sliders'));
+el.tabDevices.addEventListener('click', () => openTab('devices'));
+el.tabAutomation.addEventListener('click', () => openTab('automation'));
+el.tabMirror.addEventListener('click', () => openTab('mirror'));
+el.tabSliders.addEventListener('click', () => openTab('sliders'));
 
-el.tabControllers.addEventListener('click', () => showView('controllers'));
+el.tabControllers.addEventListener('click', () => openTab('controllers'));
 el.clearLog.addEventListener('click', async () => {
   try {
     await api('/api/log', { method: 'DELETE' });
@@ -5737,8 +5932,8 @@ el.clearLog.addEventListener('click', async () => {
   }
 });
 
-el.tabActivity.addEventListener('click', () => showView('activity'));
-el.tabMap.addEventListener('click', () => showView('map'));
+el.tabActivity.addEventListener('click', () => openTab('activity'));
+el.tabMap.addEventListener('click', () => openTab('map'));
 el.scanMap.addEventListener('click', () => scanNetwork());
 
 // One device panel at a time, and anywhere else closes it.

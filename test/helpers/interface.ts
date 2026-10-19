@@ -23,6 +23,8 @@ export async function openInterface(options: {
   state: Snapshot;
   rules?: unknown[];
   log?: unknown[];
+  /** Where the page is opened, for following an address: `/automation#r1`. */
+  at?: string;
 }) {
   // Anything the page throws is collected rather than swallowed, since a
   // handler that fails silently is the whole difficulty with this code.
@@ -33,7 +35,7 @@ export async function openInterface(options: {
 
   const dom = new JSDOM(read('index.html'), {
     runScripts: 'outside-only',
-    url: 'http://localhost/',
+    url: `http://localhost${options.at ?? '/'}`,
     virtualConsole,
   });
   const { window } = dom;
