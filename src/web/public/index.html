@@ -31,40 +31,6 @@
             >connecting</span
           >
         </h1>
-        <div class="header-actions">
-          <span id="kind-filters" class="kind-filters" hidden>
-            <label class="toggle" for="kind-automation">
-              <input id="kind-automation" type="checkbox" checked />
-              Automation
-            </label>
-            <label class="toggle" for="kind-mirror">
-              <input id="kind-mirror" type="checkbox" checked />
-              Mirror
-            </label>
-            <label class="toggle" for="kind-slider">
-              <input id="kind-slider" type="checkbox" checked />
-              Slider
-            </label>
-            <label class="toggle" for="kind-state">
-              <input id="kind-state" type="checkbox" checked />
-              Internal state
-            </label>
-            <label class="toggle" for="kind-action">
-              <input id="kind-action" type="checkbox" />
-              Action
-            </label>
-          </span>
-          <label id="unused-buttons-filter" class="toggle" for="unused-buttons" hidden>
-            <input id="unused-buttons" type="checkbox" checked />
-            Unused buttons
-          </label>
-          <label id="homekit-buttons-filter" class="toggle" for="homekit-buttons" hidden>
-            <input id="homekit-buttons" type="checkbox" checked />
-            HomeKit buttons
-          </label>
-          <select id="sort" title="Sort the list"></select>
-          <input id="filter" type="search" />
-        </div>
       </header>
 
       <div class="tab-bar">
@@ -95,71 +61,102 @@
         </a>
       </div>
 
+      <div id="tab-tools" class="tab-tools">
+        <span id="kind-filters" class="kind-filters" hidden>
+          <label class="toggle" for="kind-automation">
+            <input id="kind-automation" type="checkbox" checked />
+            Automation
+          </label>
+          <label class="toggle" for="kind-mirror">
+            <input id="kind-mirror" type="checkbox" checked />
+            Mirror
+          </label>
+          <label class="toggle" for="kind-slider">
+            <input id="kind-slider" type="checkbox" checked />
+            Slider
+          </label>
+          <label class="toggle" for="kind-state">
+            <input id="kind-state" type="checkbox" checked />
+            Internal state
+          </label>
+          <label class="toggle" for="kind-action">
+            <input id="kind-action" type="checkbox" />
+            Action
+          </label>
+        </span>
+        <label id="unused-buttons-filter" class="toggle" for="unused-buttons" hidden>
+          <input id="unused-buttons" type="checkbox" checked />
+          Unused buttons
+        </label>
+        <label id="homekit-buttons-filter" class="toggle" for="homekit-buttons" hidden>
+          <input id="homekit-buttons" type="checkbox" checked />
+          HomeKit buttons
+        </label>
+        <select id="sort" title="Sort the list"></select>
+        <input id="filter" type="search" />
+      </div>
+
       <section id="view-devices">
-        <p class="hint">
-          Tick what should appear in HomeKit, then save.
-        </p>
         <div class="rules-actions">
-          <button id="add-state" type="button">+ internal state</button>
+          <span class="tab-buttons">
+            <button id="add-state" type="button">+ internal state</button>
+          </span>
         </div>
         <main id="devices"></main>
       </section>
 
       <section id="view-automation" hidden>
-        <p class="hint">
-          When something happens on one device, send something to another.
-        </p>
         <div class="rules-actions">
-          <button id="add-automation" type="button">+ automation</button>
+          <span class="tab-buttons">
+            <button id="add-automation" type="button">+ automation</button>
+          </span>
         </div>
         <main id="automation"></main>
       </section>
 
       <section id="view-mirror" hidden>
-        <p class="hint">
-          Keep the same function on several devices in step.
-        </p>
         <div class="rules-actions">
-          <button id="add-mirror" type="button">+ mirror</button>
+          <span class="tab-buttons">
+            <button id="add-mirror" type="button">+ mirror</button>
+          </span>
         </div>
         <main id="mirror"></main>
       </section>
 
       <section id="view-sliders" hidden>
-        <p class="hint">
-          Control a slider via buttons. The slider is cut into steps, and a press moves it one step.
-        </p>
         <div class="rules-actions">
-          <button id="add-slider" type="button">+ slider</button>
+          <span class="tab-buttons">
+            <button id="add-slider" type="button">+ slider</button>
+          </span>
         </div>
         <main id="sliders"></main>
       </section>
 
 
       <section id="view-map" hidden>
-        <p class="hint">
-          How the Zigbee network is put together: what reaches the hub directly, and what
-          reaches it through something else. Scanning questions every device in turn, so it
-          takes a while and is only done when asked.
-        </p>
         <div class="rules-actions">
-          <button id="scan-map" type="button">Scan the network</button>
-          <span id="map-status" class="device-meta"></span>
+          <span class="tab-buttons">
+            <span id="map-status" class="device-meta"></span>
+            <button id="scan-map" type="button">Scan the network</button>
+          </span>
         </div>
         <div id="map" class="map"><div id="map-tip" class="map-tip" hidden></div></div>
       </section>
 
       <section id="view-controllers" hidden>
         <div class="rules-actions">
-          <button id="download-controllers" type="button">Download</button>
+          <span class="tab-buttons">
+            <button id="download-controllers" type="button">Download</button>
+          </span>
         </div>
         <div id="controllers"></div>
       </section>
 
       <section id="view-activity" hidden>
-        <p class="hint">Log what has been ran and what triggered it.</p>
         <div class="rules-actions">
-          <button id="clear-log" type="button">Clear</button>
+          <span class="tab-buttons">
+            <button id="clear-log" type="button">Clear</button>
+          </span>
         </div>
         <div id="activity-log" class="log"></div>
       </section>
