@@ -39,6 +39,20 @@ const CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
 };
 
+/**
+ * The tabs, each with an address of its own. The page answers every one of
+ * them and works out from the address which tab to show.
+ */
+const TAB_PATHS = new Set([
+  '/devices',
+  '/automation',
+  '/mirror',
+  '/sliders',
+  '/activity',
+  '/controllers',
+  '/map',
+]);
+
 /** Slows down password guessing without needing any state. */
 const FAILED_LOGIN_DELAY_MS = 500;
 
@@ -566,7 +580,8 @@ export class WebServer {
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {
-    const relative = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
+    const page = path === '/' || TAB_PATHS.has(path.replace(/\/+$/, ''));
+    const relative = page ? 'index.html' : path.replace(/^\/+/, '');
     // normalize collapses any `..` before it can escape the public directory.
     const file = join(PUBLIC_DIR, normalize(relative));
     if (!file.startsWith(PUBLIC_DIR)) {
