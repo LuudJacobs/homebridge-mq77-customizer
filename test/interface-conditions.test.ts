@@ -133,7 +133,7 @@ describe('the condition editor', () => {
   it('sends an expression when saved, not a flat list', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', 'Add or', '.conditions'));
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     // The first request to that path is the listing, which carries no body.
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
@@ -188,7 +188,7 @@ describe('the trigger list', () => {
   it('sends a list of triggers when saved', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ trigger', '.triggers'));
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       triggers: unknown[];
@@ -245,7 +245,7 @@ describe('branches', () => {
     name.value = 'nobody home';
     name.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { label?: string }[];
@@ -314,7 +314,7 @@ describe('branches', () => {
     seconds!.value = '30';
     seconds!.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     const saved = () =>
       ui.requests.findLast((request) => request.body !== undefined)?.body as { waitMs?: number };
@@ -325,7 +325,7 @@ describe('branches', () => {
     seconds!.value = '';
     seconds!.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     // Emptied is no wait at all, rather than a wait of nothing.
     expect(saved().waitMs).toBeUndefined();
@@ -379,7 +379,7 @@ describe('branches', () => {
   it('sends a list of branches when saved', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ outcome'));
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { when?: unknown; actions: unknown[] }[];

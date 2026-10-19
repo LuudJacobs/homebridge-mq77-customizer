@@ -138,7 +138,7 @@ describe('moving a value from the action row', () => {
     box.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
 
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { actions: { valueFrom?: { kind: string }; value?: unknown }[] }[];
     };

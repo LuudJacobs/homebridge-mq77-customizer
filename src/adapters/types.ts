@@ -95,6 +95,13 @@ export interface SourceAdapter extends EventEmitter<AdapterEvents> {
    * called because somebody asked for it.
    */
   getNetworkMap?(): Promise<NetworkMap>;
+  /**
+   * Drops a device until the source mentions it again.
+   *
+   * Only a source that builds its list from what it hears. One that is told
+   * what it has, as Zigbee2MQTT is, would only list it again at once.
+   */
+  forget?(deviceId: string): void;
 }
 
 export type AdapterFactory = (context: AdapterContext) => SourceAdapter;

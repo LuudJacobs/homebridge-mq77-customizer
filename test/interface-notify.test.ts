@@ -104,7 +104,7 @@ describe('sending a notification from the action row', () => {
     message.value = '<trigger> staat aan';
     message.dispatchEvent(new ui.window.Event('input'));
     await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { actions: unknown[] }[];
