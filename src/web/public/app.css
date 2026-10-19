@@ -91,8 +91,9 @@ h1 {
   padding: 1rem;
 }
 
+/* One width on every tab, whatever its longest choice is. */
 #sort {
-  max-width: 9rem;
+  width: 9rem;
 }
 
 #login form {
@@ -211,7 +212,7 @@ header {
 
 /*
  * What sorts and filters the tab that is open, on the left of the line its
- * buttons are on, and the buttons on the right, a thin line between them.
+ * buttons are on, and the buttons on the right.
  */
 .tab-tools {
   display: flex;
@@ -227,10 +228,9 @@ header {
   align-items: center;
 }
 
-.tab-tools:not([hidden]) + .tab-buttons {
-  border-left: 1px solid var(--line);
-  margin-left: 0.25rem;
-  padding-left: 0.75rem;
+/* Activity is filtered by its text first, then by kind. */
+#view-activity .tab-tools > #filter {
+  order: -1;
 }
 
 /* A word beside the title rather than a pill of its own. */
