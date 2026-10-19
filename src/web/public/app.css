@@ -1255,13 +1255,19 @@ table.buttons td.in-homekit {
 .section-title::before {
   content: '\25B6\FE0E';
   display: inline-block;
-  width: 1.1em;
-  font-size: 0.75em;
+  position: relative;
+  top: -1px;
+  width: 1.4em;
+  font-size: 0.9em;
   color: var(--muted);
-  transition: transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    top 0.15s ease;
 }
 
+/* Turned, it sits lower in its box, so it is moved to stay in line. */
 .section-title.open::before {
+  top: 4px;
   transform: rotate(90deg);
 }
 
