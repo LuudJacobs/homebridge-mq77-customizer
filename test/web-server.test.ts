@@ -680,3 +680,19 @@ describe('the network map', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('the address of a tab', () => {
+  it('is answered with the page, signed in or not', async () => {
+    const context = await harness();
+    try {
+      for (const path of ['/devices', '/automation', '/mirror/', '/map']) {
+        const response = await fetch(`${context.base}${path}`);
+        expect(response.status, path).toBe(200);
+        expect(await response.text(), path).toContain('MQ77 Customizer');
+      }
+      expect((await fetch(`${context.base}/nothing-here`)).status).toBe(404);
+    } finally {
+      await context.server.stop();
+    }
+  });
+});
