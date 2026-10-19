@@ -91,16 +91,25 @@ export interface DeviceExposure {
 }
 
 
+/** What an internal state holds: a truth, a short word, or a whole number. */
+export type StateType = 'boolean' | 'text' | 'number';
+
+export const STATE_TYPES: StateType[] = ['boolean', 'text', 'number'];
+
 /**
- * A true or false the plugin keeps itself, for rules to set and read.
+ * A value the plugin keeps itself, for rules to set and read: an internal
+ * state.
  *
  * Away, guests, movie night: what the house is doing rather than what any
  * one device is. Its room is kept with every other device's, in `exposures`.
+ * Called a state toggle when it could only be true or false, which is what
+ * one stored then still is.
  */
 export interface StateToggle {
   id: string;
   name: string;
-  value: boolean;
+  type: StateType;
+  value: boolean | string | number;
 }
 
 export interface PersistedState {
@@ -380,18 +389,23 @@ function migrate(parsed: unknown): PersistedState {
     rules: (state.rules ?? []).filter(
       (rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer',
     ),
-    states: (Array.isArray(state.states) ? state.states : []).filter(isToggle),
+    states: (Array.isArray(state.states) ? state.states : []).flatMap(readToggle),
     sessionSecret: state.sessionSecret,
   };
 }
 
-function isToggle(value: unknown): value is StateToggle {
+/** One stored state, or nothing for one that is not; one from before types is a truth. */
+function readToggle(value: unknown): StateToggle[] {
   const toggle = value as Partial<StateToggle> | undefined;
-  return (
-    typeof toggle?.id === 'string' &&
-    typeof toggle.name === 'string' &&
-    typeof toggle.value === 'boolean'
-  );
+  if (typeof toggle?.id !== 'string' || typeof toggle.name !== 'string') {
+    return [];
+  }
+  const type = toggle.type ?? 'boolean';
+  const fits =
+    (type === 'boolean' && typeof toggle.value === 'boolean') ||
+    (type === 'text' && typeof toggle.value === 'string') ||
+    (type === 'number' && Number.isInteger(toggle.value));
+  return fits ? [{ id: toggle.id, name: toggle.name, type, value: toggle.value as never }] : [];
 }
 
 /** Whether there is anything in it somebody would miss. */

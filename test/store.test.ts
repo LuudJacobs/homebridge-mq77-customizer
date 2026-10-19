@@ -81,7 +81,8 @@ describe('Store', () => {
     );
     const store = new Store(file, silentLogger);
     await store.load();
-    expect(store.data.states).toEqual([{ id: 'a1', name: 'Away', value: true }]);
+    // Stored before there were types, so a truth.
+    expect(store.data.states).toEqual([{ id: 'a1', name: 'Away', type: 'boolean', value: true }]);
   });
 
   it('counts a file with only toggles in it as one worth keeping', async () => {

@@ -85,7 +85,7 @@ describe('ignoring as an action', () => {
     expect(row.querySelectorAll('button')).toHaveLength(0);
     expect(ui.byText('button.add-row', '+ action', '.actions')).toBeNull();
 
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { actions: unknown[] }[];
     };

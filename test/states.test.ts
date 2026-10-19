@@ -335,13 +335,18 @@ describe('the web interface', () => {
     const made = (await (await call('/api/states', { method: 'POST', body: '{}' })).json()) as {
       id: string;
     };
-    expect(toggles.find(made.id)).toEqual({ id: made.id, name: 'New state toggle', value: false });
+    expect(toggles.find(made.id)).toEqual({
+      id: made.id,
+      name: 'New internal state',
+      type: 'boolean',
+      value: false,
+    });
 
     await call(`/api/states/${made.id}`, {
       method: 'PUT',
       body: JSON.stringify({ name: ' Away ', value: true }),
     });
-    expect(toggles.find(made.id)).toEqual({ id: made.id, name: 'Away', value: true });
+    expect(toggles.find(made.id)).toEqual({ id: made.id, name: 'Away', type: 'boolean', value: true });
 
     expect(
       (await call(`/api/states/${made.id}`, { method: 'PUT', body: '{"name":"  "}' })).status,
@@ -377,6 +382,29 @@ describe('the web interface', () => {
     ]);
   });
 
+  it('takes a type, and only values that type can hold', async () => {
+    const { call, toggles } = await serve();
+    const made = (await (
+      await call('/api/states', { method: 'POST', body: '{"type":"text"}' })
+    ).json()) as { id: string };
+    expect(toggles.find(made.id)).toMatchObject({ type: 'text', value: '' });
+
+    const put = (body: unknown) =>
+      call(`/api/states/${made.id}`, { method: 'PUT', body: JSON.stringify(body) });
+    expect((await put({ value: ' film-avond ' })).status).toBe(200);
+    expect(toggles.find(made.id)?.value).toBe('film-avond');
+    expect((await put({ value: 'twee woorden' })).status).toBe(400);
+    expect((await put({ value: 'veel-te-lang-hoor' })).status).toBe(400);
+
+    // A new type and a value for it, in one go.
+    expect((await put({ type: 'number', value: -4 })).status).toBe(200);
+    expect(toggles.find(made.id)).toMatchObject({ type: 'number', value: -4 });
+    expect((await put({ value: 1.5 })).status).toBe(400);
+    // Refused whole: not renamed either.
+    expect((await put({ name: 'Ander', type: 'kleur' })).status).toBe(400);
+    expect(toggles.find(made.id)?.name).toBe('New internal state');
+  });
+
   it('does not let another device be one', async () => {
     const { call, store } = await serve();
     await call('/api/exposure', {
@@ -404,5 +432,105 @@ describe('the web interface', () => {
 
     await call(`/api/states/${away.id}`, { method: 'DELETE' });
     expect(store.data.rules[0]).toMatchObject({ triggers: [toggle(away.id)] });
+  });
+});
+
+describe('the three types', () => {
+  it('reads a Text state as it can hold it, and a Number as a whole one', async () => {
+    const { toggles, catalog } = await harness();
+    const mode = toggles.create('Modus', 'text');
+    const guests = toggles.create('Gasten', 'number');
+
+    expect(catalog.getDevice(STATES_SOURCE, mode.id)?.properties[0]).toMatchObject({ type: 'text' });
+    expect(catalog.getDevice(STATES_SOURCE, guests.id)?.properties[0]).toMatchObject({
+      type: 'numeric',
+      step: 1,
+    });
+    expect(toggles.find(mode.id)?.value).toBe('');
+    expect(toggles.find(guests.id)?.value).toBe(0);
+
+    toggles.set(mode.id, ' film-avond! en meer ');
+    expect(toggles.find(mode.id)?.value).toBe('film-avonden');
+    toggles.set(guests.id, '-3.7');
+    expect(toggles.find(guests.id)?.value).toBe(-3);
+    expect(toggles.set(guests.id, 'veel')).toBe(false);
+    expect(toggles.find(guests.id)?.value).toBe(-3);
+  });
+
+  it('starts again from its new type when that changes', async () => {
+    const { toggles, engine } = await harness();
+    const away = toggles.create('Away');
+    toggles.set(away.id, true);
+
+    toggles.retype(away.id, 'number');
+    expect(toggles.find(away.id)).toMatchObject({ type: 'number', value: 0 });
+    expect(engine.getLog()[0]?.detail).toBe('Away 0');
+  });
+
+  it('counts up and down by an action', async () => {
+    const { toggles, store, mqtt } = await harness();
+    const guests = toggles.create('Gasten', 'number');
+    store.update((state) => {
+      state.rules = [
+        automation({
+          triggers: [{ ...device(SOCKET.id), match: { kind: 'changed' } }],
+          branches: [{ actions: [{ ...toggle(guests.id), valueFrom: { kind: 'add' }, value: 2 }] }],
+        }),
+      ];
+    });
+
+    mqtt.deliver(SOCKET.topic, { state: 'ON' });
+    await settle();
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    await settle();
+    expect(toggles.find(guests.id)?.value).toBe(4);
+  });
+
+  it('sets a rule off when a Text state comes to contain something, either case', async () => {
+    const { toggles, store, mqtt } = await harness();
+    const mode = toggles.create('Modus', 'text');
+    store.update((state) => {
+      state.rules = [
+        automation({
+          triggers: [{ ...toggle(mode.id), match: { kind: 'contains', value: 'FILM' } }],
+          branches: [{ actions: [{ ...device(SOCKET.id), value: 'OFF' }] }],
+        }),
+      ];
+    });
+
+    toggles.set(mode.id, 'thuis');
+    expect(mqtt.published).toEqual([]);
+    toggles.set(mode.id, 'filmavond');
+    expect(mqtt.published).toHaveLength(1);
+    // Changing to another value that has it sets it off again.
+    toggles.set(mode.id, 'filmnacht');
+    expect(mqtt.published).toHaveLength(2);
+  });
+
+  it('is asked in a condition by number', async () => {
+    const { toggles, store, mqtt } = await harness();
+    const guests = toggles.create('Gasten', 'number');
+    store.update((state) => {
+      state.rules = [
+        automation({
+          triggers: [{ ...device(SOCKET.id), match: { kind: 'changedTo', value: 'ON' } }],
+          branches: [
+            {
+              when: { kind: 'test', ...toggle(guests.id), match: { kind: 'above', value: 2 } },
+              actions: [{ ...device(LAMP.id), value: 'ON' }],
+            },
+          ],
+        }),
+      ];
+    });
+
+    toggles.set(guests.id, 2);
+    mqtt.deliver(SOCKET.topic, { state: 'ON' });
+    expect(mqtt.published).toEqual([]);
+
+    mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+    toggles.set(guests.id, 3);
+    mqtt.deliver(SOCKET.topic, { state: 'ON' });
+    expect(mqtt.published.map((message) => message.topic)).toEqual([`${LAMP.topic}/set`]);
   });
 });
