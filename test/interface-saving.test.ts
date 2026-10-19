@@ -78,6 +78,24 @@ describe('a device panel', () => {
     expect(revertOf(cardOf(ui, '0xa')).hidden).toBe(true);
   });
 
+  it('is marked as soon as its name or room is typed, without being redrawn', async () => {
+    const { ui, card } = await open();
+    const [name, room] = [...card.querySelectorAll('.device-field input')] as HTMLInputElement[];
+
+    name!.value = 'Lamp';
+    name!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    expect(nameOf(card)).toBe('* a_lamp');
+    expect(revertOf(card).hidden).toBe(false);
+
+    name!.value = '';
+    name!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    expect(nameOf(card)).toBe('a_lamp');
+
+    room!.value = 'Hal';
+    room!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    expect(nameOf(card)).toBe('* a_lamp');
+  });
+
   it('goes back to what is saved on Revert', async () => {
     const { ui, card } = await open();
     await change(ui, tick(card));
