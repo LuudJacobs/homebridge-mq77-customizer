@@ -6,8 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.5.0] - 2026-10-19
+
+### Added
+
 - Every tab, device and rule has an address to link to
+- Rules on a button in Controllers link to the rule
+
+### Changed
+
 - Sorting and filtering sit on each tab's own line, beside its buttons
+- The line explaining each tab is gone
 
 ## [2.4.0] - 2026-10-19
 
