@@ -844,6 +844,13 @@ table.buttons tr.next-button td {
  * column is read down the page across all of them, and a width per table
  * would step in and out on the way down.
  */
+/* A rule on a button goes to the rule, said by its underline alone. */
+a.rule-link,
+a.rule-link:visited {
+  color: inherit;
+  text-decoration: underline;
+}
+
 table.buttons td:first-child {
   width: var(--button-column, 8rem);
   white-space: nowrap;
