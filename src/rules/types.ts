@@ -5,7 +5,9 @@ export type Match =
   | { kind: 'notEquals'; value: string | number | boolean }
   | { kind: 'changedTo'; value: string | number | boolean }
   | { kind: 'above'; value: number }
-  | { kind: 'below'; value: number };
+  | { kind: 'below'; value: number }
+  /** A piece of text anywhere in the value, whichever case either is in. */
+  | { kind: 'contains'; value: string };
 
 /** Points at one property of one device, on any source. */
 export interface PropertyRef {

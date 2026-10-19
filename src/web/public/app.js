@@ -27,7 +27,7 @@ const state = {
    * somewhere down the page under the name it has not been given yet.
    */
   pinned: undefined,
-  /** A state toggle just added and not named yet, which can go without asking. */
+  /** An internal state just added and not saved yet, which can go without asking. */
   freshToggle: undefined,
   /**
    * Which sections of which lists are open, keyed `list|heading`.
@@ -118,11 +118,83 @@ const el = {
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
-/** Where the state toggles come from: the plugin itself, not a source on the broker. */
+/** Where the internal states come from: the plugin itself, not a source on the broker. */
 const STATES = 'states';
 
 /** A true or false the plugin keeps, rather than a device on the network. */
 const isToggle = (device) => device?.sourceId === STATES;
+
+/** What an internal state holds, read off its one function. */
+function stateTypeOf(device) {
+  const type = device?.properties[0]?.type;
+  return type === 'binary' ? 'boolean' : type === 'numeric' ? 'number' : 'text';
+}
+
+/** What a row points at holds, when it is an internal state, or nothing for a device. */
+const internalType = (ref) => {
+  const device = findDevice(ref);
+  return isToggle(device) ? stateTypeOf(device) : undefined;
+};
+
+const STATE_TYPE_NAMES = [
+  ['boolean', 'Boolean'],
+  ['text', 'Text'],
+  ['number', 'Number'],
+];
+
+/** What a state starts at, and goes back to when its type changes. */
+const STATE_STARTS_AT = { boolean: false, text: '', number: 0 };
+
+/** Text as a Text state can hold it: anything else dropped, and twelve at most. */
+const cleanText = (text) => String(text).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+
+/**
+ * A box for a value of one type, keeping to what that type can hold as it is
+ * typed in: a truth from a list, text that loses what it cannot hold, a
+ * whole number.
+ */
+function stateValueInput(type, value, onChange) {
+  if (type === 'boolean') {
+    const select = document.createElement('select');
+    for (const option of ['false', 'true']) {
+      const choice = document.createElement('option');
+      choice.value = option;
+      choice.textContent = option;
+      select.append(choice);
+    }
+    select.value = String(value === true);
+    select.addEventListener('change', () => onChange(select.value === 'true'));
+    return select;
+  }
+  const input = document.createElement('input');
+  if (type === 'number') {
+    input.type = 'number';
+    input.step = 1;
+    input.value = String(value ?? 0);
+    input.addEventListener('input', () => {
+      const number = Math.trunc(Number(input.value));
+      onChange(Number.isFinite(number) ? number : 0);
+    });
+    // Settled once typing stops, so a fraction cannot stay on screen.
+    input.addEventListener('change', () => {
+      const number = Math.trunc(Number(input.value));
+      input.value = String(Number.isFinite(number) ? number : 0);
+    });
+    return input;
+  }
+  input.type = 'text';
+  input.maxLength = 12;
+  input.placeholder = 'a-z 0-9 - _';
+  input.value = String(value ?? '');
+  input.addEventListener('input', () => {
+    const cleaned = cleanText(input.value);
+    if (cleaned !== input.value) {
+      input.value = cleaned;
+    }
+    onChange(cleaned);
+  });
+  return input;
+}
 
 /** What the device is called here: the given name, or the source's own. */
 /**
@@ -178,10 +250,10 @@ const DEVICE_TYPES = (() => {
 /**
  * Every kind there is, for naming and drawing one.
  *
- * A state toggle is a kind of its own that nothing else can be, so it is
- * here and never in the picker.
+ * An internal state is a kind of its own that nothing else can be, so it
+ * is here and never in the picker.
  */
-const KINDS = [...DEVICE_TYPES, ['state', 'State toggle']];
+const KINDS = [...DEVICE_TYPES, ['state', 'Internal state']];
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -501,7 +573,7 @@ function listen() {
       if (isToggle(device) && !state.deviceDrafts.has(key(device))) {
         const choice = el.devices.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
         if (choice) {
-          choice.value = String(device.state.state === true);
+          choice.value = String(device.state.state);
         }
       }
       if (Object.keys(payload.changes).some((k) => k === BATTERY_LEFT || LOW_FLAGS.includes(k))) {
@@ -1040,6 +1112,7 @@ function isDeviceDirty(device) {
     return (
       draft.name.trim() !== device.name ||
       draft.room.trim() !== (device.exposure.room ?? '') ||
+      draft.type !== draft.wasType ||
       draft.value !== draft.was
     );
   }
@@ -1135,7 +1208,8 @@ function deleteDevice(device) {
 }
 
 /**
- * A state toggle: what it is called, where it is, and whether it is true.
+ * An internal state: what it is called, where it is, what it holds and what
+ * it is now.
  *
  * Nothing about HomeKit, which never sees one, and nothing about where it
  * came from, since that is here. Like every panel, nothing in it is kept
@@ -1153,8 +1227,10 @@ function renderToggle(device) {
   const draft = state.deviceDrafts.get(key(device)) ?? {
     name: device.name,
     room: device.exposure.room ?? '',
-    value: device.state.state === true,
-    was: device.state.state === true,
+    type: stateTypeOf(device),
+    wasType: stateTypeOf(device),
+    value: device.state.state,
+    was: device.state.state,
   };
   const keep = () => {
     state.deviceDrafts.set(key(device), draft);
@@ -1188,21 +1264,36 @@ function renderToggle(device) {
     keep();
   });
 
-  const value = document.createElement('select');
-  value.dataset.toggle = key(device);
-  for (const option of ['false', 'true']) {
+  const type = document.createElement('select');
+  for (const [option, text] of STATE_TYPE_NAMES) {
     const choice = document.createElement('option');
     choice.value = option;
-    choice.textContent = option;
-    value.append(choice);
+    choice.textContent = text;
+    type.append(choice);
   }
-  value.value = String(draft.value);
-  value.addEventListener('change', () => {
-    draft.value = value.value === 'true';
+  type.value = draft.type;
+
+  const valueField = document.createElement('label');
+  valueField.className = 'device-field';
+  const drawValue = () => {
+    const value = stateValueInput(draft.type, draft.value, (picked) => {
+      draft.value = picked;
+      keep();
+    });
+    value.dataset.toggle = key(device);
+    valueField.replaceChildren(document.createTextNode('Value'), value);
+  };
+  drawValue();
+
+  // A truth means nothing as a number, so the value starts again.
+  type.addEventListener('change', () => {
+    draft.type = type.value;
+    draft.value = STATE_STARTS_AT[draft.type];
+    drawValue();
     keep();
   });
 
-  row.append(field('Name', name), field('Room', room), field('Value', value));
+  row.append(field('Name', name), field('Room', room), field('Type', type), valueField);
 
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
@@ -1222,11 +1313,13 @@ function renderToggle(device) {
       return;
     }
     try {
+      const retyped = draft.type !== draft.wasType;
       await api(path, {
         method: 'PUT',
         body: JSON.stringify({
           name: given,
-          ...(draft.value === draft.was ? {} : { value: draft.value }),
+          ...(retyped ? { type: draft.type } : {}),
+          ...(retyped || draft.value !== draft.was ? { value: draft.value } : {}),
         }),
       });
       await api('/api/exposure', {
@@ -1900,6 +1993,17 @@ const MATCH_KINDS = [
   { kind: 'above', label: 'rises above' },
   { kind: 'below', label: 'falls below' },
 ];
+
+/** What a Text state can be asked: the whole of it, or a piece, either case. */
+const TEXT_MATCH_KINDS = [
+  { kind: 'changedTo', label: 'becomes' },
+  { kind: 'equals', label: 'matches' },
+  { kind: 'contains', label: 'contains' },
+  { kind: 'changed', label: 'changes' },
+];
+
+/** The tests a row offers, for what it points at. */
+const matchKindsFor = (ref) => (internalType(ref) === 'text' ? TEXT_MATCH_KINDS : MATCH_KINDS);
 
 const OUTCOME_LABELS = {
   fired: 'ran',
@@ -2667,7 +2771,7 @@ function describeTrigger(trigger) {
   }
   const property = findProperty(trigger);
   const label = property?.label ?? trigger.propertyKey ?? 'something';
-  const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
+  const verb = matchKindsFor(trigger).find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
   const value = trigger.match?.value;
   const hasValue = value !== undefined && value !== '';
   const said =
@@ -3606,7 +3710,9 @@ function drawSlider(body, draft) {
         const last = index === triggers.length - 1;
         buttons.append(
           refRow(trigger, {
-            pick: watchable,
+            // Text and Number states are for automations.
+            pick: (device) =>
+              isToggle(device) && stateTypeOf(device) !== 'boolean' ? [] : watchable(device),
             withMatch: true,
             starts: true,
             ruleId: draft.id,
@@ -3638,7 +3744,13 @@ function drawMirror(body, draft) {
   const devices = document.createElement('div');
   devices.className = 'mirror-devices';
 
-  const candidates = byName(state.devices.filter((device) => writable(device).length > 0));
+  // Text and Number states are for automations; a truth mirrors like any switch.
+  const candidates = byName(
+    state.devices.filter(
+      (device) =>
+        writable(device).length > 0 && (!isToggle(device) || stateTypeOf(device) === 'boolean'),
+    ),
+  );
   for (const device of candidates) {
     const id = `${device.sourceId}|${device.deviceId}`;
     const label = document.createElement('label');
@@ -4671,11 +4783,16 @@ function refRow(ref, options) {
 
     if (pointed && options.withMatch) {
       const kinds = document.createElement('select');
-      for (const entry of MATCH_KINDS) {
+      const offered = matchKindsFor(ref);
+      for (const entry of offered) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = entry.label;
         kinds.append(choice);
+      }
+      // A state whose type changed since may hold a test it no longer has.
+      if (!offered.some((entry) => entry.kind === ref.match.kind)) {
+        ref.match = { kind: offered[0].kind, value: '' };
       }
       kinds.value = ref.match.kind;
       kinds.addEventListener('change', () => {
@@ -4698,7 +4815,10 @@ function refRow(ref, options) {
             },
             // Only where this row is what sets a rule off. A condition asks
             // what a device is doing, which any number of rules may ask.
-            options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {},
+            {
+              ...(options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {}),
+              clean: internalType(ref) === 'text',
+            },
           ),
         );
       }
@@ -4707,18 +4827,31 @@ function refRow(ref, options) {
     if (pointed && options.withValue) {
       const moving = MOVES.has(ref.valueFrom?.kind);
       const mode = document.createElement('select');
-      for (const entry of [
-        { kind: 'literal', label: 'set to' },
-        { kind: 'trigger', label: 'match the trigger' },
-        // Only where there is a number to move. One already set stays listed
-        // whatever the device says now, so opening a rule cannot rewrite it.
-        ...(property?.type === 'numeric' || moving
-          ? [
-              { kind: 'add', label: 'increase by' },
-              { kind: 'subtract', label: 'decrease by' },
-            ]
-          : []),
-      ]) {
+      const internal = internalType(ref);
+      const set = { kind: 'literal', label: 'set to' };
+      const moves = [
+        { kind: 'add', label: 'increase by' },
+        { kind: 'subtract', label: 'decrease by' },
+      ];
+      // A Text state is only ever set, and a Number set or counted; neither
+      // copies what set the rule off. A truth is as any device's on or off.
+      const modes =
+        internal === 'text'
+          ? [set]
+          : internal === 'number'
+            ? [set, ...moves]
+            : [
+                set,
+                { kind: 'trigger', label: 'match the trigger' },
+                // Only where there is a number to move. One already set stays
+                // listed whatever the device says now, so opening a rule
+                // cannot rewrite it.
+                ...(property?.type === 'numeric' || moving ? moves : []),
+              ];
+      if (!modes.some((entry) => entry.kind === (ref.valueFrom?.kind ?? 'literal'))) {
+        delete ref.valueFrom;
+      }
+      for (const entry of modes) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = entry.label;
@@ -4769,7 +4902,7 @@ function refRow(ref, options) {
               ref.value = value;
               changed();
             },
-            { withToggle: true },
+            { withToggle: true, clean: internal === 'text' },
           ),
         );
       }
@@ -4874,8 +5007,22 @@ function valueInput(property, current, onChange, options = {}) {
   if (property?.max !== undefined) {
     input.max = property.max;
   }
+  if (property?.step !== undefined) {
+    input.step = property.step;
+  }
+  // What a Text state can hold, and nothing it cannot, as it is typed.
+  if (options.clean) {
+    input.maxLength = 12;
+    input.placeholder = 'a-z 0-9 - _';
+  }
   input.value = current ?? '';
   input.addEventListener('input', () => {
+    if (options.clean) {
+      const cleaned = cleanText(input.value);
+      if (cleaned !== input.value) {
+        input.value = cleaned;
+      }
+    }
     onChange(input.type === 'number' ? Number(input.value) : input.value);
   });
   return input;
@@ -4886,7 +5033,7 @@ const KIND_LABELS = {
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
-  state: 'state toggle',
+  state: 'internal state',
 };
 
 function renderLog() {
@@ -5624,7 +5771,7 @@ el.addState.addEventListener('click', async () => {
     state.open.add(added);
     state.freshToggle = added;
     await load();
-    // Named first, since `New state toggle` is nobody's name for anything.
+    // Named first, since `New internal state` is nobody's name for anything.
     const name = el.devices.querySelector(`[data-toggle-name="${CSS.escape(added)}"]`);
     name?.focus();
     name?.select();

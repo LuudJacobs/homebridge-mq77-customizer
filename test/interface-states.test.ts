@@ -33,7 +33,26 @@ const lamp = () => ({
   lastSeen: {},
 });
 
-/** A state toggle the way the server lists one. */
+/** An internal state the way the server lists one. */
+const property = (type: string) =>
+  type === 'text'
+    ? { type: 'text' }
+    : type === 'number'
+      ? { type: 'numeric', step: 1 }
+      : { type: 'binary', onValue: true, offValue: false, toggleValue: 'toggle' };
+
+const typed = (deviceId: string, name: string, type: string, value: unknown) => {
+  const made = toggle(deviceId, name, false);
+  Object.assign(made.properties[0]!, property(type));
+  for (const key of ['onValue', 'offValue', 'toggleValue']) {
+    if (type !== 'boolean') {
+      delete (made.properties[0] as Record<string, unknown>)[key];
+    }
+  }
+  made.state = { state: value as never };
+  return made;
+};
+
 const toggle = (deviceId: string, name: string, value: boolean, room?: string) => ({
   sourceId: 'states',
   deviceId,
@@ -75,14 +94,14 @@ const fieldOf = (card: Element, label: string) =>
     .find((field) => field.firstChild?.textContent === label)
     ?.querySelector('input, select') as HTMLInputElement & HTMLSelectElement;
 
-describe('a state toggle in the device list', () => {
+describe('an internal state in the device list', () => {
   it('is drawn as its own kind, says where it stands, and is rules only', async () => {
     const ui = await openInterface({ state: { devices: devices() } });
     // Named with its room, the way a device with a name of its own is.
     const card = cardOf(ui, 'Gang Away');
 
     expect(card.querySelector('summary svg.type-icon.state title')?.textContent).toBe(
-      'State toggle',
+      'Internal state',
     );
     expect(card.querySelector('.device-seen')?.textContent).toBe('false');
     expect(card.querySelector('summary .badge')?.textContent).toBe('rules only');
@@ -100,7 +119,12 @@ describe('a state toggle in the device list', () => {
       'true',
     ]);
     expect(fieldOf(card, 'Value').value).toBe('false');
-    expect(fieldOf(card, 'Type')).toBeUndefined();
+    expect([...fieldOf(card, 'Type').options].map((option) => option.textContent)).toEqual([
+      'Boolean',
+      'Text',
+      'Number',
+    ]);
+    expect(fieldOf(card, 'Type').value).toBe('boolean');
     expect(card.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     expect(ui.byText('button.danger', 'Delete', '#devices')).not.toBeNull();
   });
@@ -175,11 +199,11 @@ describe('a state toggle in the device list', () => {
     const card = cardOf(ui, 'Gang Lamp');
     await ui.openCard(card);
     const kinds = [...fieldOf(card, 'Type').options].map((option) => option.textContent);
-    expect(kinds).not.toContain('State toggle');
+    expect(kinds).not.toContain('Internal state');
   });
 });
 
-describe('adding a state toggle', () => {
+describe('adding an internal state', () => {
   it('makes one from the devices tab and opens it to be named', async () => {
     const ui = await openInterface({ state: { devices: devices() } });
     ui.responses['POST /api/states'] = { id: 't3' };
@@ -188,7 +212,7 @@ describe('adding a state toggle', () => {
       devices: [...devices(), toggle('t3', 'New state toggle', false)],
     };
 
-    await ui.click(ui.byText('#view-devices button', '+ state toggle'));
+    await ui.click(ui.byText('#view-devices button', '+ internal state'));
 
     expect(ui.requests.some((request) => request.path === '/api/states')).toBe(true);
     const card = cardOf(ui, 'New state toggle');
@@ -201,7 +225,7 @@ describe('adding a state toggle', () => {
   });
 });
 
-describe('a state toggle in rules', () => {
+describe('an internal state in rules', () => {
   const rule = {
     id: 'r1',
     name: 'Weg',
@@ -243,7 +267,7 @@ describe('a state toggle in rules', () => {
   });
 });
 
-describe('a state toggle in the activity log', () => {
+describe('an internal state in the activity log', () => {
   const log = [
     {
       at: Date.now(),
@@ -262,7 +286,7 @@ describe('a state toggle in the activity log', () => {
     await ui.click(ui.byText('button.tab', 'Activity'));
 
     const line = ui.document.querySelector('#activity-log .log-line')!;
-    expect(line.querySelector('.tag')?.textContent).toBe('state toggle');
+    expect(line.querySelector('.tag')?.textContent).toBe('internal state');
     const what = line.querySelector('.log-what')!;
     // With its kind drawn in front, the way every device in the log is.
     expect(what.querySelector('svg.type-icon.state')).not.toBeNull();
@@ -280,5 +304,115 @@ describe('a state toggle in the activity log', () => {
     box.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
     expect(ui.document.querySelector('#activity-log .log-line')).toBeNull();
+  });
+});
+
+describe('the type of an internal state', () => {
+  it('is changed on the card, starting the value again, and saved with it', async () => {
+    const ui = await openInterface({ state: { devices: devices() } });
+    const card = cardOf(ui, 'Gang Away');
+    await ui.openCard(card);
+
+    const type = fieldOf(card, 'Type');
+    type.value = 'number';
+    type.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    const value = fieldOf(card, 'Value');
+    expect(value.type).toBe('number');
+    expect(value.value).toBe('0');
+
+    value.value = '-3';
+    value.dispatchEvent(new ui.window.Event('input'));
+    await ui.click(card.querySelector('.rule-footer button.primary'));
+    expect(ui.requests.findLast((request) => request.path === '/api/states/t1')?.body).toEqual({
+      name: 'Away',
+      type: 'number',
+      value: -3,
+    });
+  });
+
+  it('drops what a Text state cannot hold as it is typed', async () => {
+    const ui = await openInterface({
+      state: { devices: [...devices(), typed('t3', 'Modus', 'text', 'thuis')] },
+    });
+    const card = cardOf(ui, 'Modus');
+    await ui.openCard(card);
+
+    const value = fieldOf(card, 'Value');
+    expect(value.value).toBe('thuis');
+    value.value = 'film avond!-en_meer';
+    value.dispatchEvent(new ui.window.Event('input'));
+    expect(value.value).toBe('filmavond-en');
+  });
+});
+
+describe('Text and Number states in rules', () => {
+  const states = () => [
+    ...devices(),
+    typed('t3', 'Modus', 'text', 'thuis'),
+    typed('t4', 'Gasten', 'number', 2),
+  ];
+  const ref = (deviceId: string) => ({ sourceId: 'states', deviceId, propertyKey: 'state' });
+
+  async function openRule(rule: unknown) {
+    const ui = await openInterface({ state: { devices: states() }, rules: [rule] });
+    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+    return ui;
+  }
+  const rule = (trigger: unknown, action: unknown) => ({
+    id: 'r1',
+    name: 'Regel',
+    enabled: true,
+    triggers: [trigger],
+    branches: [{ actions: [action] }],
+  });
+  const selects = (row: Element) =>
+    [...row.querySelectorAll('.rule-tail select')] as HTMLSelectElement[];
+  const texts = (select: HTMLSelectElement) => [...select.options].map((option) => option.textContent);
+
+  it('asks a Text state whether it becomes, matches or contains something', async () => {
+    const ui = await openRule(
+      rule({ ...ref('t3'), match: { kind: 'contains', value: 'film' } }, { ...ref('t4'), value: 1 }),
+    );
+    const [kinds] = selects(ui.document.querySelector('.triggers .rule-row')!);
+    expect(texts(kinds!)).toEqual(['becomes', 'matches', 'contains', 'changes']);
+    expect(kinds!.value).toBe('contains');
+  });
+
+  it('only sets a Text state, keeping to what it can hold', async () => {
+    const ui = await openRule(
+      rule({ ...ref('t4'), match: { kind: 'changed' } }, { ...ref('t3'), value: 'film' }),
+    );
+    const row = ui.document.querySelector('.actions .rule-row')!;
+    const [mode] = selects(row);
+    expect(texts(mode!)).toEqual(['set to']);
+    const value = row.querySelector('.rule-tail input:not(.delay)') as HTMLInputElement;
+    value.value = 'twee woorden';
+    value.dispatchEvent(new ui.window.Event('input'));
+    expect(value.value).toBe('tweewoorden');
+  });
+
+  it('sets a Number state, or counts it up or down', async () => {
+    const ui = await openRule(
+      rule({ ...ref('t3'), match: { kind: 'changed' } }, { ...ref('t4'), value: 3 }),
+    );
+    const [mode] = selects(ui.document.querySelector('.actions .rule-row')!);
+    expect(texts(mode!)).toEqual(['set to', 'increase by', 'decrease by']);
+  });
+
+  it('leaves Text and Number states out of mirrors', async () => {
+    const ui = await openInterface({
+      state: { devices: states() },
+      rules: [{ id: 'm1', kind: 'mirror', name: 'Samen', enabled: true, groups: [] }],
+    });
+    await ui.click(ui.byText('button.tab', 'Mirror devices'));
+    await ui.openCard(ui.document.querySelector('#mirror .rule') as HTMLDetailsElement);
+    const offered = [...ui.document.querySelectorAll('#mirror .mirror-devices label')].map(
+      (label) => label.textContent,
+    );
+    expect(offered).toContain('Gang Away');
+    expect(offered).not.toContain('Modus');
+    expect(offered).not.toContain('Gasten');
   });
 });

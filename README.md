@@ -202,11 +202,19 @@ Cycle is one button for the whole range: up to the top, back down to off, and up
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
 
-### State toggles
+### Internal states
 
-A true or false the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ state toggle** above the device list adds one, with a name, a room and a value, and nothing for HomeKit.
+A value the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ internal state** above the device list adds one, with a name, a room, a type and a value, and nothing for HomeKit.
 
-A toggle is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition, be set to true or false or flipped by an action, and be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
+| Type | Holds | An action can | A rule can ask whether it |
+| --- | --- | --- | --- |
+| Boolean | true or false | set it, or flip it | becomes, is, is not, changes |
+| Text | up to 12 of a to z, 0 to 9, `-` and `_` | set it | becomes, matches, contains, changes |
+| Number | a whole number | set it, increase or decrease it | becomes, is, rises above, falls below, changes |
+
+Text is matched ignoring case, and anything it cannot hold is dropped as it is typed. Changing the type starts the value again from false, empty or 0.
+
+An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 
