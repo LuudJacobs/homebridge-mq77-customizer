@@ -41,7 +41,7 @@ describe('the page around it', () => {
     const ui = await openInterface({ state: { devices: [] } });
     // Next to the name rather than a pill of its own among the controls.
     expect(ui.document.querySelector('h1 #status')).not.toBeNull();
-    expect(ui.document.querySelector('.header-actions #status')).toBeNull();
+    expect(ui.document.querySelector('.tab-tools #status')).toBeNull();
   });
 
   it('signs out when the footer link is pressed', async () => {

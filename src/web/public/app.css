@@ -91,7 +91,7 @@ h1 {
   padding: 1rem;
 }
 
-header select {
+#sort {
   max-width: 9rem;
 }
 
@@ -209,11 +209,28 @@ header {
   padding: 0.5rem 0 1rem;
 }
 
-.header-actions {
+/*
+ * What sorts and filters the tab that is open, on the left of the line its
+ * buttons are on, and the buttons on the right, a thin line between them.
+ */
+.tab-tools {
   display: flex;
   gap: 0.5rem;
   align-items: center;
   flex-wrap: wrap;
+  margin-right: auto;
+}
+
+.tab-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tab-tools:not([hidden]) + .tab-buttons {
+  border-left: 1px solid var(--line);
+  margin-left: 0.25rem;
+  padding-left: 0.75rem;
 }
 
 /* A word beside the title rather than a pill of its own. */
@@ -539,6 +556,10 @@ header {
 }
 
 .rules-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
@@ -837,16 +858,6 @@ table.buttons td.free,
 table.buttons td.in-homekit {
   color: var(--muted);
   font-style: italic;
-}
-
-/*
- * Where the download and the clear sit: at the end of the line above what
- * they act on, rather than at the start of it where a rule is added.
- */
-#view-controllers .rules-actions,
-#view-activity .rules-actions {
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* A description with something to press at the end of it. */
@@ -1386,17 +1397,18 @@ table.buttons td.in-homekit {
    * below its content without it, so the pair would push past the edge and
    * the search would drop to a line of its own.
    */
-  .header-actions {
+  .tab-tools {
     flex-wrap: nowrap;
     width: 100%;
+    margin-right: 0;
   }
 
-  .header-actions > #sort {
+  .tab-tools > #sort {
     flex: 0 1 auto;
     min-width: 0;
   }
 
-  .header-actions > #filter {
+  .tab-tools > #filter {
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
@@ -1479,7 +1491,8 @@ table.buttons td.in-homekit {
     gap: 0.25rem;
   }
 
-  .rules-actions {
+  /* Adding, scanning, downloading and clearing are for a desk. */
+  .tab-buttons {
     display: none;
   }
 
@@ -1529,14 +1542,6 @@ table.buttons td.in-homekit {
     display: none;
   }
 
-  /*
-   * Saving a file to a phone leads nowhere useful, the same as the settings,
-   * and emptying the log is a thing to do at a desk rather than in passing.
-   */
-  #view-controllers .rules-actions,
-  #view-activity .rules-actions {
-    display: none;
-  }
 
   /* The names need what room there is, so the padding gives some of it up. */
   table.buttons td {
