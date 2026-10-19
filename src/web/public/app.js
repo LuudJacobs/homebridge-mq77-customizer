@@ -66,6 +66,7 @@ const el = {
   filter: document.getElementById('filter'),
   status: document.getElementById('status'),
   kindFilters: document.getElementById('kind-filters'),
+  tools: document.getElementById('tab-tools'),
   kindAutomation: document.getElementById('kind-automation'),
   kindMirror: document.getElementById('kind-mirror'),
   kindSlider: document.getElementById('kind-slider'),
@@ -869,6 +870,13 @@ function paintControls() {
   el.filter.hidden = view === 'map' || view === 'controllers';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
+
+  // On the open tab's own line, before its buttons, and gone where there is
+  // nothing to sort or filter, so no line is drawn in front of the buttons.
+  document.querySelector(`#view-${view} .rules-actions`)?.prepend(el.tools);
+  el.tools.hidden = [el.kindFilters, el.unusedFilter, el.homekitFilter, el.sort, el.filter].every(
+    (control) => control.hidden,
+  );
 }
 
 const currentFilter = () => (state.filters[state.view] ?? '').trim().toLowerCase();
