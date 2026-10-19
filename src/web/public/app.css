@@ -839,11 +839,6 @@ table.buttons tr.next-button td {
   border-top-width: 3px;
 }
 
-/*
- * As slim as the longest button name, and the same width in every table: the
- * column is read down the page across all of them, and a width per table
- * would step in and out on the way down.
- */
 /* A rule on a button goes to the rule, and looks like the rest of the table. */
 a.rule-link,
 a.rule-link:visited {
@@ -851,6 +846,11 @@ a.rule-link:visited {
   text-decoration: none;
 }
 
+/*
+ * As slim as the longest button name, and the same width in every table: the
+ * column is read down the page across all of them, and a width per table
+ * would step in and out on the way down.
+ */
 table.buttons td:first-child {
   width: var(--button-column, 8rem);
   white-space: nowrap;
