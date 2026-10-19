@@ -12,10 +12,12 @@ import { buttonsFrom, isPublishable, roleFor } from '../homekit/roles.js';
 import {
   DEVICE_ENDPOINT,
   DEVICE_TYPES,
+  STATE_TYPES,
   TILE_TYPES,
   type DeviceExposure,
   type DeviceType,
   type SensorType,
+  type StateType,
   type Store,
   type TileType,
 } from '../store.js';
@@ -23,7 +25,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { RulesEngine } from '../rules/engine.js';
 import { parseRule } from '../rules/validate.js';
-import { STATES_SOURCE, type StateToggles } from '../states.js';
+import { STATES_SOURCE, TEXT_PATTERN, type StateToggles } from '../states.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
@@ -326,11 +328,12 @@ export class WebServer {
 
   private async createToggle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!this.deps.states) {
-      return send(response, 501, { error: 'No state toggles here' });
+      return send(response, 501, { error: 'No internal states here' });
     }
     const body = await readJson(request);
-    const name = toggleName(body?.name) ?? 'New state toggle';
-    const toggle = this.deps.states.create(name);
+    const name = toggleName(body?.name) ?? 'New internal state';
+    const type = STATE_TYPES.includes(body?.type as StateType) ? (body?.type as StateType) : 'boolean';
+    const toggle = this.deps.states.create(name, type);
     return send(response, 200, { id: toggle.id });
   }
 
@@ -340,29 +343,43 @@ export class WebServer {
     response: ServerResponse,
   ): Promise<void> {
     const toggles = this.deps.states;
-    if (!toggles?.find(id)) {
-      return send(response, 404, { error: 'No such state toggle' });
+    const current = toggles?.find(id);
+    if (!toggles || !current) {
+      return send(response, 404, { error: 'No such internal state' });
     }
     const body = await readJson(request);
-    if (body?.name !== undefined) {
-      const name = toggleName(body.name);
-      if (!name) {
-        return send(response, 400, { error: 'A state toggle needs a name' });
+
+    // Everything is checked before anything is changed, so a refusal leaves
+    // the state as it was rather than renamed and not set.
+    const name = body?.name === undefined ? undefined : toggleName(body.name);
+    if (body?.name !== undefined && !name) {
+      return send(response, 400, { error: 'An internal state needs a name' });
+    }
+    if (body?.type !== undefined && !STATE_TYPES.includes(body.type as StateType)) {
+      return send(response, 400, { error: 'An internal state is a boolean, text or a number' });
+    }
+    const type = (body?.type as StateType | undefined) ?? current.type;
+    const value = body?.value;
+    if (value !== undefined) {
+      const problem = valueProblem(type, value);
+      if (problem) {
+        return send(response, 400, { error: problem });
       }
+    }
+
+    if (name) {
       toggles.rename(id, name);
     }
-    if (body?.value !== undefined) {
-      if (typeof body.value !== 'boolean') {
-        return send(response, 400, { error: 'A state toggle is true or false' });
-      }
-      toggles.set(id, body.value, true);
+    toggles.retype(id, type);
+    if (value !== undefined) {
+      toggles.set(id, typeof value === 'string' ? value.trim() : value, true);
     }
     return send(response, 200, { ok: true });
   }
 
   private deleteToggle(id: string, response: ServerResponse): void {
     if (!this.deps.states?.remove(id)) {
-      return send(response, 404, { error: 'No such state toggle' });
+      return send(response, 404, { error: 'No such internal state' });
     }
     return send(response, 200, { ok: true });
   }
@@ -601,6 +618,20 @@ function describeButtons(property: NormalisedProperty): unknown {
  */
 function toggleExposure(room: string | undefined): unknown {
   return { properties: [], ...(room ? { room } : {}), type: 'state' };
+}
+
+/** Why a value is not one an internal state of this type can hold, if it is not. */
+function valueProblem(type: StateType, value: unknown): string | undefined {
+  if (type === 'boolean' && typeof value !== 'boolean') {
+    return 'A boolean is true or false';
+  }
+  if (type === 'text' && (typeof value !== 'string' || !TEXT_PATTERN.test(value.trim()))) {
+    return 'Text is up to 12 of a to z, 0 to 9, - and _';
+  }
+  if (type === 'number' && !Number.isInteger(value)) {
+    return 'A number is a whole number';
+  }
+  return undefined;
 }
 
 function toggleName(raw: unknown): string | undefined {

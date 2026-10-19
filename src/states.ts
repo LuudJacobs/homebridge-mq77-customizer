@@ -5,7 +5,7 @@ import type { AdapterEvents, SourceAdapter } from './adapters/types.js';
 import type { Logger } from './logger.js';
 import { LOCAL_PREFIX, type MqttConnection, type MqttMessage } from './mqtt/client.js';
 import type { NormalisedDevice, NormalisedProperty } from './model/types.js';
-import type { StateToggle, Store } from './store.js';
+import type { StateToggle, StateType, Store } from './store.js';
 
 /** The source every state toggle belongs to. Not a source id anybody can configure. */
 export const STATES_SOURCE = 'states';
@@ -13,13 +13,28 @@ export const STATES_SOURCE = 'states';
 /** What an action sends to flip a toggle rather than set it. */
 export const TOGGLE_VALUE = 'toggle';
 
+/** A Text state's whole alphabet, and how much of it fits. */
+export const TEXT_PATTERN = /^[A-Za-z0-9_-]{0,12}$/;
+
+/** What a state starts at, and goes back to when its type changes. */
+const STARTS_AT: Record<StateType, boolean | string | number> = {
+  boolean: false,
+  text: '',
+  number: 0,
+};
+
+/** Text as a Text state can hold it: anything else dropped, and twelve at most. */
+export function cleanText(raw: string): string {
+  return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+}
+
 const TOPIC = `${LOCAL_PREFIX}${STATES_SOURCE}`;
 
 /**
- * The state toggles, as a source of devices.
+ * The internal states, as a source of devices.
  *
- * Each toggle is a device with one function, a true or false, that rules can
- * read and write and HomeKit never sees. Written the way any device is: a
+ * Each one is a device with one function, a truth, a word or a number, that
+ * rules can read and write and HomeKit never sees. Written the way any device is: a
  * rule publishes to its set topic, which is a local one, so the publish comes
  * straight back here instead of going to the broker. Nothing else in the
  * plugin needs to know a toggle is not a device.
@@ -54,7 +69,7 @@ export class StateToggles extends EventEmitter<AdapterEvents> implements SourceA
       sourceId: STATES_SOURCE,
       deviceId: toggle.id,
       name: toggle.name,
-      properties: [property(toggle.id)],
+      properties: [property(toggle)],
     }));
   }
 
@@ -67,14 +82,14 @@ export class StateToggles extends EventEmitter<AdapterEvents> implements SourceA
     return this.store.data.states.find((toggle) => toggle.id === id);
   }
 
-  /** A new toggle, false until something says otherwise. */
-  create(name: string): StateToggle {
+  /** A new one, at its type's starting value until something says otherwise. */
+  create(name: string, type: StateType = 'boolean'): StateToggle {
     let id: string;
     do {
       id = randomBytes(4).toString('hex');
     } while (this.find(id));
 
-    const toggle: StateToggle = { id, name, value: false };
+    const toggle: StateToggle = { id, name, type, value: STARTS_AT[type] };
     this.store.update((state) => {
       state.states.push(toggle);
     });
@@ -97,14 +112,40 @@ export class StateToggles extends EventEmitter<AdapterEvents> implements SourceA
   }
 
   /**
-   * Sets a toggle, and says so only when that changed it.
-   *
-   * A toggle has nobody to report back but itself, so true set to true is
-   * not news the way a lamp repeating that it is on would be.
+   * Makes it hold another kind of value, starting again from that kind's
+   * starting value: true has no meaning as a number.
    */
-  set(id: string, value: boolean, byHand = false): boolean {
+  retype(id: string, type: StateType): boolean {
     const toggle = this.find(id);
     if (!toggle) {
+      return false;
+    }
+    if (toggle.type === type) {
+      return true;
+    }
+    this.store.update(() => {
+      toggle.type = type;
+    });
+    this.emit('devices', this.getDevices());
+    this.set(id, STARTS_AT[type]);
+    return true;
+  }
+
+  /**
+   * Sets one, and says so only when that changed it.
+   *
+   * Read the way its type reads a value, so `"true"` sets a truth and `7.9`
+   * sets the number 7. Something it cannot hold changes nothing and answers
+   * false. A state has nobody to report back but itself, so true set to true
+   * is not news the way a lamp repeating that it is on would be.
+   */
+  set(id: string, raw: unknown, byHand = false): boolean {
+    const toggle = this.find(id);
+    if (!toggle) {
+      return false;
+    }
+    const value = readValue(toggle.type, raw, toggle.value);
+    if (value === undefined) {
       return false;
     }
     if (toggle.value === value) {
@@ -161,29 +202,36 @@ export class StateToggles extends EventEmitter<AdapterEvents> implements SourceA
       payload = undefined;
     }
     const raw = (payload as { state?: unknown } | undefined)?.state;
-    const value = readValue(raw, toggle.value);
-    if (value === undefined) {
-      this.log.warn(`${toggle.name} is true or false, not ${JSON.stringify(raw)}`);
-      return;
+    if (!this.set(id, raw)) {
+      const holds = toggle.type === 'boolean' ? 'true or false' : `a ${toggle.type}`;
+      this.log.warn(`${toggle.name} holds ${holds}, not ${JSON.stringify(raw)}`);
     }
-    this.set(id, value);
   }
 }
 
-function property(id: string): NormalisedProperty {
-  return {
+function property(toggle: StateToggle): NormalisedProperty {
+  const common = {
     key: 'state',
     label: 'State',
+    access: { readable: true, writable: true },
+    category: 'primary' as const,
+    stateTopic: `${TOPIC}/${toggle.id}`,
+    setTopic: `${TOPIC}/${toggle.id}/set`,
+    extract: ['state'],
+  };
+  if (toggle.type === 'text') {
+    return { ...common, type: 'text' };
+  }
+  if (toggle.type === 'number') {
+    return { ...common, type: 'numeric', step: 1 };
+  }
+  return {
+    ...common,
     semantic: 'state',
     type: 'binary',
-    access: { readable: true, writable: true },
-    category: 'primary',
     onValue: true,
     offValue: false,
     toggleValue: TOGGLE_VALUE,
-    stateTopic: `${TOPIC}/${id}`,
-    setTopic: `${TOPIC}/${id}/set`,
-    extract: ['state'],
   };
 }
 
@@ -191,9 +239,23 @@ function property(id: string): NormalisedProperty {
  * What a write asks for, however it was worded.
  *
  * A rule sends `true`, or `"true"` from a value typed in, or whatever a lamp
- * said when a mirror or a copied trigger restates it.
+ * said when a mirror or a copied trigger restates it. Text loses whatever it
+ * cannot hold, and a number its fraction.
  */
-function readValue(raw: unknown, current: boolean): boolean | undefined {
+function readValue(
+  type: StateType,
+  raw: unknown,
+  current: boolean | string | number,
+): boolean | string | number | undefined {
+  if (type === 'text') {
+    const plain = ['string', 'number', 'boolean'].includes(typeof raw);
+    return plain ? cleanText(String(raw)) : undefined;
+  }
+  if (type === 'number') {
+    const number =
+      typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN;
+    return Number.isFinite(number) ? Math.trunc(number) : undefined;
+  }
   if (typeof raw === 'boolean') {
     return raw;
   }

@@ -31,8 +31,8 @@ import type {
   Weekday,
 } from './types.js';
 
-const MATCH_KINDS = ['changed', 'equals', 'notEquals', 'changedTo', 'above', 'below'];
-const NEEDS_VALUE = ['equals', 'notEquals', 'changedTo', 'above', 'below'];
+const MATCH_KINDS = ['changed', 'equals', 'notEquals', 'changedTo', 'above', 'below', 'contains'];
+const NEEDS_VALUE = ['equals', 'notEquals', 'changedTo', 'above', 'below', 'contains'];
 const NEEDS_NUMBER = ['above', 'below'];
 
 /**
@@ -496,6 +496,9 @@ function parseMatch(raw: unknown): { match: Match } | { error: string } {
 
   if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
     return { error: `${kind} needs a value` };
+  }
+  if (kind === 'contains') {
+    return { match: { kind, value: String(value) } };
   }
   return { match: { kind, value } as Match };
 }
