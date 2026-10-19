@@ -1103,11 +1103,14 @@ function canonical(value) {
 }
 
 /** Whether a device's panel holds anything that differs from what is saved. */
-function isDeviceDirty(device) {
-  const draft = state.deviceDrafts.get(key(device));
+function isDeviceDirty(given) {
+  const draft = state.deviceDrafts.get(key(given));
   if (!draft) {
     return false;
   }
+  // Asked from inside a panel as well, where the device in hand is the one
+  // being edited, so what is saved is looked up rather than taken from it.
+  const device = state.devices.find((candidate) => key(candidate) === key(given)) ?? given;
   if (isToggle(device)) {
     return (
       draft.name.trim() !== device.name ||
