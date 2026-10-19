@@ -989,7 +989,7 @@ function drawDevices() {
 function renderDevice(device, inRoom) {
   const card = document.createElement('details');
   card.className = 'device';
-  card.dataset.link = key(device);
+  card.dataset.link = shortLink(key(device));
   card.open = state.open.has(key(device));
   card.addEventListener('toggle', () => {
     if (card.open) {
@@ -2872,7 +2872,7 @@ function renderRule(rule, occurrence, inRoom) {
   // One rule can be listed under several of its triggers, and opening it in
   // one place should not open it in the others.
   const key = occurrence ? `${rule.id}#${occurrence.index}` : rule.id;
-  card.dataset.link = rule.id;
+  card.dataset.link = shortLink(rule.id);
   card.open = state.openRules.has(key);
 
   /**
@@ -5199,14 +5199,14 @@ function ruleLink(rule, text) {
   const link = document.createElement('a');
   link.className = 'rule-link';
   link.textContent = text;
-  link.href = addressOf(viewOfRule(rule), rule.id);
+  link.href = addressOf(viewOfRule(rule), shortLink(rule.id));
   link.addEventListener('click', (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
     event.preventDefault();
     setAddress(link.getAttribute('href'), true);
-    follow(viewOfRule(rule), rule.id);
+    follow(viewOfRule(rule), shortLink(rule.id));
   });
   return link;
 }
@@ -5708,14 +5708,33 @@ function viewOfAddress() {
 
 /** What the address's # names, a device or a rule, if anything. */
 function linkOfAddress() {
-  try {
-    return decodeURIComponent(location.hash.slice(1)) || undefined;
-  } catch {
-    return undefined;
-  }
+  return location.hash.slice(1).toUpperCase() || undefined;
 }
 
-const addressOf = (view, id) => `/${view}${id ? `#${encodeURIComponent(id)}` : ''}`;
+const addressOf = (view, link) => `/${view}${link ? `#${link}` : ''}`;
+
+/**
+ * The # of a device or a rule: eight of A to Z and 0 to 9, worked out from
+ * its id.
+ *
+ * An id is a long UUID, or a topic full of slashes, which makes a poor
+ * address. The same id always gives the same eight, so nothing is stored for
+ * it, and there are close to three million million of them, so two things in
+ * one house will not share one. cyrb53, a quick hash of a string.
+ */
+function shortLink(id) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let index = 0; index < id.length; index++) {
+    const code = id.charCodeAt(index);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return (hash % 36 ** 8).toString(36).toUpperCase().padStart(8, '0');
+}
 
 /**
  * Writes the address without going anywhere.
@@ -5749,9 +5768,10 @@ function openTab(view) {
  * the address bar is a link to it. Not a step back and forward go through.
  */
 function markOpen(id, open) {
+  const link = shortLink(id);
   if (open) {
-    setAddress(addressOf(state.view, id), false);
-  } else if (linkOfAddress() === id) {
+    setAddress(addressOf(state.view, link), false);
+  } else if (linkOfAddress() === link) {
     setAddress(addressOf(state.view), false);
   }
 }
