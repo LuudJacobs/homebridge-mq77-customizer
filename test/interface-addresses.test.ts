@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { openInterface } from './helpers/interface.js';
 
@@ -75,8 +75,16 @@ const rules = [
 ];
 
 const open = (at: string) => openInterface({ state: { devices: devices() }, rules, at });
+
+/** The page's own code for an id, as it puts it in an address. */
+let codeOf: (id: string) => string;
+beforeAll(async () => {
+  const ui = await openInterface({ state: { devices: [] } });
+  codeOf = (id) => (ui.window as unknown as { shortLink: (id: string) => string }).shortLink(id);
+});
+
 const cardsOf = (ui: { document: Document }, id: string) =>
-  [...ui.document.querySelectorAll(`[data-link="${id}"]`)] as HTMLDetailsElement[];
+  [...ui.document.querySelectorAll(`[data-link="${codeOf(id)}"]`)] as HTMLDetailsElement[];
 const active = (ui: { document: Document }) =>
   ui.document.querySelector('button.tab.active')?.textContent;
 
@@ -93,7 +101,7 @@ describe('an address', () => {
   });
 
   it('opens the rule its # names, unfolding the section it is in', async () => {
-    const ui = await open('/automation#r2');
+    const ui = await open(`/automation#${codeOf('r2')}`);
     expect(active(ui)).toBe('Automation');
     const [card] = cardsOf(ui, 'r2');
     expect(card!.open).toBe(true);
@@ -102,7 +110,7 @@ describe('an address', () => {
   });
 
   it('opens a device the same way', async () => {
-    const ui = await open(`/devices#${encodeURIComponent('zigbee:0xb')}`);
+    const ui = await open(`/devices#${codeOf('zigbee:0xb')}`);
     expect(cardsOf(ui, 'zigbee:0xb')[0]!.open).toBe(true);
   });
 
@@ -116,7 +124,7 @@ describe('an address', () => {
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
-    ui.window.history.pushState(null, '', '/automation#r1');
+    ui.window.history.pushState(null, '', `/automation#${codeOf('r1')}`);
     ui.window.dispatchEvent(new ui.window.PopStateEvent('popstate'));
     await ui.settle();
 
@@ -134,7 +142,7 @@ describe('an address', () => {
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
-    ui.window.history.pushState(null, '', '/automation#r1');
+    ui.window.history.pushState(null, '', `/automation#${codeOf('r1')}`);
     ui.window.dispatchEvent(new ui.window.PopStateEvent('popstate'));
     await ui.settle();
 
@@ -159,7 +167,7 @@ describe('the address as things are opened', () => {
 
     summary.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(ui.window.location.hash).toBe('#r2');
+    expect(ui.window.location.hash).toBe(`#${codeOf('r2')}`);
 
     summary.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -172,11 +180,26 @@ describe('the address as things are opened', () => {
     const link = [...ui.document.querySelectorAll('#controllers a.rule-link')].find((node) =>
       node.textContent?.includes('Keuken aan'),
     ) as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('/automation#r1');
+    expect(link.getAttribute('href')).toBe(`/automation#${codeOf('r1')}`);
 
     await ui.click(link);
     expect(active(ui)).toBe('Automation');
     expect(ui.window.location.pathname).toBe('/automation');
     expect(cardsOf(ui, 'r1')[0]!.open).toBe(true);
+  });
+});
+
+describe('the # of a device or a rule', () => {
+  it('is eight of A to Z and 0 to 9, the same each time', () => {
+    for (const id of ['r1', 'zigbee:0x00158dfffe000006', '9b2f3c1e-7a4d-4c2b-9f0e-1a2b3c4d5e6f', 'tele/garage/sensor']) {
+      expect(codeOf(id)).toMatch(/^[A-Z0-9]{8}$/);
+      expect(codeOf(id)).toBe(codeOf(id));
+    }
+    expect(codeOf('r1')).not.toBe(codeOf('r2'));
+  });
+
+  it('is read in either case', async () => {
+    const ui = await open(`/automation#${codeOf('r2').toLowerCase()}`);
+    expect(cardsOf(ui, 'r2')[0]!.open).toBe(true);
   });
 });
