@@ -94,7 +94,7 @@ describe('picking a device by its room first', () => {
     await ui.settle();
 
     expect(texts(action.device)).toEqual(['spot']);
-    await ui.click(ui.byText('button.primary', 'Save'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
     const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
       branches: { actions: { deviceId: string }[] }[];
     };

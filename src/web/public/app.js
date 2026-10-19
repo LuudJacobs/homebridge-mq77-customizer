@@ -27,8 +27,24 @@ const state = {
    * somewhere down the page under the name it has not been given yet.
    */
   pinned: undefined,
-  /** A state toggle just added and not named yet, which can go without asking. */
+  /** An internal state just added and not saved yet, which can go without asking. */
   freshToggle: undefined,
+  /**
+   * Which sections of which lists are open, keyed `list|heading`.
+   *
+   * For as long as the page is open, so switching tabs or the sort finds
+   * them as they were left. Anything not in here is closed.
+   */
+  sections: new Map(),
+  /**
+   * What has been changed in a device's panel and not saved, by device.
+   *
+   * Kept here rather than on the device, so the list keeps reading what is
+   * saved, and so a redraw, a tab switch or a live update leaves it alone.
+   */
+  deviceDrafts: new Map(),
+  /** The same for rules, by id: the rule as edited, and as it was drawn first. */
+  ruleDrafts: new Map(),
   /** The last network scan, and whether one is running. */
   map: undefined,
   scanning: false,
@@ -102,11 +118,83 @@ const el = {
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
-/** Where the state toggles come from: the plugin itself, not a source on the broker. */
+/** Where the internal states come from: the plugin itself, not a source on the broker. */
 const STATES = 'states';
 
 /** A true or false the plugin keeps, rather than a device on the network. */
 const isToggle = (device) => device?.sourceId === STATES;
+
+/** What an internal state holds, read off its one function. */
+function stateTypeOf(device) {
+  const type = device?.properties[0]?.type;
+  return type === 'binary' ? 'boolean' : type === 'numeric' ? 'number' : 'text';
+}
+
+/** What a row points at holds, when it is an internal state, or nothing for a device. */
+const internalType = (ref) => {
+  const device = findDevice(ref);
+  return isToggle(device) ? stateTypeOf(device) : undefined;
+};
+
+const STATE_TYPE_NAMES = [
+  ['boolean', 'Boolean'],
+  ['text', 'Text'],
+  ['number', 'Number'],
+];
+
+/** What a state starts at, and goes back to when its type changes. */
+const STATE_STARTS_AT = { boolean: false, text: '', number: 0 };
+
+/** Text as a Text state can hold it: anything else dropped, and twelve at most. */
+const cleanText = (text) => String(text).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+
+/**
+ * A box for a value of one type, keeping to what that type can hold as it is
+ * typed in: a truth from a list, text that loses what it cannot hold, a
+ * whole number.
+ */
+function stateValueInput(type, value, onChange) {
+  if (type === 'boolean') {
+    const select = document.createElement('select');
+    for (const option of ['false', 'true']) {
+      const choice = document.createElement('option');
+      choice.value = option;
+      choice.textContent = option;
+      select.append(choice);
+    }
+    select.value = String(value === true);
+    select.addEventListener('change', () => onChange(select.value === 'true'));
+    return select;
+  }
+  const input = document.createElement('input');
+  if (type === 'number') {
+    input.type = 'number';
+    input.step = 1;
+    input.value = String(value ?? 0);
+    input.addEventListener('input', () => {
+      const number = Math.trunc(Number(input.value));
+      onChange(Number.isFinite(number) ? number : 0);
+    });
+    // Settled once typing stops, so a fraction cannot stay on screen.
+    input.addEventListener('change', () => {
+      const number = Math.trunc(Number(input.value));
+      input.value = String(Number.isFinite(number) ? number : 0);
+    });
+    return input;
+  }
+  input.type = 'text';
+  input.maxLength = 12;
+  input.placeholder = 'a-z 0-9 - _';
+  input.value = String(value ?? '');
+  input.addEventListener('input', () => {
+    const cleaned = cleanText(input.value);
+    if (cleaned !== input.value) {
+      input.value = cleaned;
+    }
+    onChange(cleaned);
+  });
+  return input;
+}
 
 /** What the device is called here: the given name, or the source's own. */
 /**
@@ -162,10 +250,10 @@ const DEVICE_TYPES = (() => {
 /**
  * Every kind there is, for naming and drawing one.
  *
- * A state toggle is a kind of its own that nothing else can be, so it is
- * here and never in the picker.
+ * An internal state is a kind of its own that nothing else can be, so it
+ * is here and never in the picker.
  */
-const KINDS = [...DEVICE_TYPES, ['state', 'State toggle']];
+const KINDS = [...DEVICE_TYPES, ['state', 'Internal state']];
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -480,10 +568,12 @@ function listen() {
       for (const propertyKey of Object.keys(payload.changes)) {
         updateValue(device, propertyKey);
       }
-      if (isToggle(device)) {
+      // Followed in its panel only while nothing there has been changed: a
+      // value somebody has picked and not saved yet is theirs.
+      if (isToggle(device) && !state.deviceDrafts.has(key(device))) {
         const choice = el.devices.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
         if (choice) {
-          choice.value = String(device.state.state === true);
+          choice.value = String(device.state.state);
         }
       }
       if (Object.keys(payload.changes).some((k) => k === BATTERY_LEFT || LOW_FLAGS.includes(k))) {
@@ -607,27 +697,6 @@ function formatValue(device, propertyKey) {
   return property?.unit ? `${text} ${property.unit}` : text;
 }
 
-const pending = new Map();
-
-/** Debounced per device, so ticking several boxes quickly is one write. */
-function save(device) {
-  clearTimeout(pending.get(key(device)));
-  pending.set(
-    key(device),
-    setTimeout(() => {
-      api('/api/exposure', {
-        method: 'PUT',
-        body: JSON.stringify({
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          exposure: device.exposure,
-        }),
-      })
-        .then(() => refreshBadge(device))
-        .catch((error) => setStatus(error.message, 'lost'));
-    }, 250),
-  );
-}
 
 /** How many of a device's functions actually reach HomeKit. */
 function exposedCount(device) {
@@ -649,13 +718,6 @@ function paintBadge(badge, device) {
   const count = exposedCount(device);
   badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
   badge.className = count === 0 ? 'badge none' : 'badge';
-}
-
-function refreshBadge(device) {
-  const badge = el.devices.querySelector(`[data-badge="${CSS.escape(key(device))}"]`);
-  if (badge) {
-    paintBadge(badge, device);
-  }
 }
 
 /** What each ordering compares, other than last seen which is a number. */
@@ -697,11 +759,48 @@ function intoGroups(items, headingOf) {
   );
 }
 
-function groupHeading(text) {
+/**
+ * A heading and what is under it, folded away until the heading is clicked.
+ *
+ * Closed to begin with, except Unknown Devices, which is there to be
+ * noticed. While a filter is typed, a section with anything in it shows
+ * open, and goes back to how it was once the filter is cleared.
+ */
+function appendSection(container, list, title, items) {
+  const key = `${list}|${title}`;
+  const open = Boolean(currentFilter()) || (state.sections.get(key) ?? title === UNKNOWN_DEVICES);
+
   const heading = document.createElement('h3');
-  heading.className = 'rule-group';
-  heading.textContent = text;
-  return heading;
+  heading.className = 'rule-group section-title';
+  heading.textContent = `${title} (${items.length})`;
+  heading.tabIndex = 0;
+  heading.setAttribute('role', 'button');
+
+  const body = document.createElement('div');
+  body.className = 'section-items';
+  body.append(...items);
+
+  const show = (shown) => {
+    body.hidden = !shown;
+    heading.classList.toggle('open', shown);
+    heading.setAttribute('aria-expanded', String(shown));
+  };
+  show(open);
+
+  const flip = () => {
+    const shown = body.hidden;
+    show(shown);
+    state.sections.set(key, shown);
+  };
+  heading.addEventListener('click', flip);
+  heading.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      flip();
+    }
+  });
+
+  container.append(heading, body);
 }
 
 /** What each tab offers, and what it says it is filtering. */
@@ -846,10 +945,7 @@ function render() {
   const unknown = visible.filter((device) => !device.exposure.type);
   const known = visible.filter((device) => device.exposure.type);
   if (unknown.length > 0) {
-    el.devices.append(groupHeading(UNKNOWN_DEVICES));
-    for (const device of unknown) {
-      el.devices.append(renderDevice(device));
-    }
+    appendSection(el.devices, 'devices', UNKNOWN_DEVICES, unknown.map((device) => renderDevice(device)));
   }
 
   const grouping = GROUP_KEYS[state.sorts.devices];
@@ -857,17 +953,20 @@ function render() {
     // Only a room heading has said the room. Grouping by kind has not.
     const byRoom = state.sorts.devices === 'room';
     for (const [heading, devices] of intoGroups(known, grouping)) {
-      el.devices.append(groupHeading(heading));
-      for (const device of devices) {
-        el.devices.append(renderDevice(device, byRoom ? heading : undefined));
-      }
+      appendSection(
+        el.devices,
+        'devices',
+        heading,
+        devices.map((device) => renderDevice(device, byRoom ? heading : undefined)),
+      );
     }
     return;
   }
 
   // A heading only to tell these from the ones above, so not without them.
   if (unknown.length > 0 && known.length > 0) {
-    el.devices.append(groupHeading(KNOWN_DEVICES));
+    appendSection(el.devices, 'devices', KNOWN_DEVICES, known.map((device) => renderDevice(device)));
+    return;
   }
   for (const device of known) {
     el.devices.append(renderDevice(device));
@@ -889,7 +988,10 @@ function renderDevice(device, inRoom) {
   const summary = document.createElement('summary');
   const name = document.createElement('span');
   name.className = 'device-name';
-  name.textContent = displayName(device, inRoom);
+  // What is saved, marked when the panel holds changes that are not.
+  name.dataset.name = key(device);
+  name.dataset.base = displayName(device, inRoom);
+  name.textContent = `${isDeviceDirty(device) ? '* ' : ''}${name.dataset.base}`;
   const seen = document.createElement('span');
   seen.className = 'device-seen';
   if (isToggle(device)) {
@@ -923,27 +1025,31 @@ function renderDevice(device, inRoom) {
   body.className = 'device-body';
 
   if (isToggle(device)) {
-    body.append(renderToggle(device, name));
+    body.append(renderToggle(device));
     card.append(body);
     paintBadge(badge, device);
     return card;
   }
 
-  body.append(deviceOrigin(device));
-  body.append(renderDeviceInfo(device, name));
+  // The panel works on a copy, so nothing reaches HomeKit or the list until
+  // Save, and Revert has the saved one to go back to.
+  const editing = editingOf(device);
 
-  const options = renderOptions(device);
+  body.append(deviceOrigin(device));
+  body.append(renderDeviceInfo(editing));
+
+  const options = renderOptions(editing);
   if (options.childElementCount > 0) {
     body.append(options);
   }
 
-  for (const [title, properties] of groupProperties(device)) {
+  for (const [title, properties] of groupProperties(editing)) {
     const heading = document.createElement('p');
     heading.className = 'group-title';
     heading.textContent = title;
     body.append(heading);
     for (const property of properties) {
-      body.append(renderProperty(device, property));
+      body.append(renderProperty(editing, property));
     }
     // Under the readings rather than over them, fenced off: these are said
     // about the device, where everything above is a function of it.
@@ -961,30 +1067,175 @@ function renderDevice(device, inRoom) {
   // After the diagnostics, and only where there is a battery to watch and
   // somewhere to send the warning.
   if (state.canNotify && hasBattery(device)) {
-    body.append(batteryWarning(device));
+    body.append(batteryWarning(editing));
   }
 
+  body.append(deviceFooter(device, editing));
   card.append(body);
   paintBadge(badge, device);
   return card;
 }
 
+/** A device as its panel shows it: what was changed there, or else what is saved. */
+function editingOf(device) {
+  const exposure = state.deviceDrafts.get(key(device)) ?? structuredClone(device.exposure);
+  return { ...device, exposure };
+}
+
 /**
- * A state toggle: what it is called, where it is, and whether it is true.
+ * Text that says the same whatever order it was built in.
+ *
+ * Ticking a box off and on again puts its key last, which is not a change,
+ * so keys are sorted and so are lists of plain values.
+ */
+function canonical(value) {
+  return JSON.stringify(value, (_, inner) => {
+    if (Array.isArray(inner)) {
+      return inner.every((item) => item === null || typeof item !== 'object')
+        ? [...inner].sort()
+        : inner;
+    }
+    if (inner && typeof inner === 'object') {
+      return Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)));
+    }
+    return inner;
+  });
+}
+
+/** Whether a device's panel holds anything that differs from what is saved. */
+function isDeviceDirty(device) {
+  const draft = state.deviceDrafts.get(key(device));
+  if (!draft) {
+    return false;
+  }
+  if (isToggle(device)) {
+    return (
+      draft.name.trim() !== device.name ||
+      draft.room.trim() !== (device.exposure.room ?? '') ||
+      draft.type !== draft.wasType ||
+      draft.value !== draft.was
+    );
+  }
+  return canonical(draft) !== canonical(device.exposure);
+}
+
+/** Puts the `*` and the Revert button right after something in a panel changed. */
+function paintDirty(device) {
+  const dirty = isDeviceDirty(device);
+  for (const name of el.devices.querySelectorAll(`[data-name="${CSS.escape(key(device))}"]`)) {
+    name.textContent = `${dirty ? '* ' : ''}${name.dataset.base}`;
+  }
+  for (const revert of el.devices.querySelectorAll(`[data-revert="${CSS.escape(key(device))}"]`)) {
+    revert.hidden = !dirty;
+  }
+}
+
+/** Something in a device's panel changed: kept, and said so in its header. */
+function touched(editing) {
+  state.deviceDrafts.set(key(editing), editing.exposure);
+  paintDirty(editing);
+}
+
+/**
+ * Save, Revert and Delete, the way a rule has them.
+ *
+ * Delete forgets what was set here. A source that lists what it has shows
+ * the device again at once, with nothing set; one that lists what it hears
+ * shows it again when it next says something.
+ */
+function deviceFooter(device, editing) {
+  const footer = document.createElement('div');
+  footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      const answer = await api('/api/exposure', {
+        method: 'PUT',
+        body: JSON.stringify({
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          exposure: editing.exposure,
+        }),
+      });
+      device.exposure = answer.exposure ?? editing.exposure;
+      state.deviceDrafts.delete(key(device));
+      // Saved, so it can take its place in the list and its kind in the header.
+      safeRender();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  footer.append(save, revertButton(device), error, deleteDevice(device));
+  return footer;
+}
+
+function revertButton(device) {
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  revert.dataset.revert = key(device);
+  revert.hidden = !isDeviceDirty(device);
+  revert.addEventListener('click', () => {
+    state.deviceDrafts.delete(key(device));
+    safeRender();
+  });
+  return revert;
+}
+
+function deleteDevice(device) {
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'danger';
+  remove.textContent = 'Delete';
+  armDelete(remove, async () => {
+    await api('/api/devices', {
+      method: 'DELETE',
+      body: JSON.stringify({ sourceId: device.sourceId, deviceId: device.deviceId }),
+    }).catch((problem) => setStatus(problem.message, 'lost'));
+    state.deviceDrafts.delete(key(device));
+    state.open.delete(key(device));
+    await load();
+  });
+  return remove;
+}
+
+/**
+ * An internal state: what it is called, where it is, what it holds and what
+ * it is now.
  *
  * Nothing about HomeKit, which never sees one, and nothing about where it
- * came from, since that is here.
+ * came from, since that is here. Like every panel, nothing in it is kept
+ * until Save, the value included.
  */
-function renderToggle(device, heading) {
+function renderToggle(device) {
   const wrap = document.createElement('div');
   wrap.className = 'toggle-body';
   const row = document.createElement('div');
   row.className = 'device-info';
   const path = `/api/states/${encodeURIComponent(device.deviceId)}`;
-  const change = (body) =>
-    api(path, { method: 'PUT', body: JSON.stringify(body) }).catch((problem) =>
-      setStatus(problem.message, 'lost'),
-    );
+
+  // `was` is the value when the panel was first changed, so a rule moving it
+  // in the meantime is not undone by saving a new name.
+  const draft = state.deviceDrafts.get(key(device)) ?? {
+    name: device.name,
+    room: device.exposure.room ?? '',
+    type: stateTypeOf(device),
+    wasType: stateTypeOf(device),
+    value: device.state.state,
+    was: device.state.state,
+  };
+  const keep = () => {
+    state.deviceDrafts.set(key(device), draft);
+    paintDirty(device);
+  };
 
   const field = (label, control) => {
     const holder = document.createElement('label');
@@ -996,64 +1247,114 @@ function renderToggle(device, heading) {
   const name = document.createElement('input');
   name.type = 'text';
   name.maxLength = 64;
-  name.value = device.name;
+  name.value = draft.name;
   name.dataset.toggleName = key(device);
-  name.addEventListener('change', () => {
-    const given = name.value.trim();
-    // A toggle is found by its name in every rule, so it keeps one.
-    if (!given) {
-      name.value = device.name;
-      return;
-    }
-    device.name = given;
-    state.freshToggle = undefined;
-    heading.textContent = displayName(device);
-    change({ name: given });
+  name.addEventListener('input', () => {
+    draft.name = name.value;
+    keep();
   });
 
   const room = document.createElement('input');
   room.type = 'text';
   room.maxLength = 64;
   room.placeholder = 'none';
-  room.value = device.exposure.room ?? '';
-  room.addEventListener('change', () => {
-    device.exposure.room = room.value.trim() || undefined;
-    heading.textContent = displayName(device);
-    save(device);
-    safeRender();
+  room.value = draft.room;
+  room.addEventListener('input', () => {
+    draft.room = room.value;
+    keep();
   });
 
-  const value = document.createElement('select');
-  value.dataset.toggle = key(device);
-  for (const option of ['false', 'true']) {
+  const type = document.createElement('select');
+  for (const [option, text] of STATE_TYPE_NAMES) {
     const choice = document.createElement('option');
     choice.value = option;
-    choice.textContent = option;
-    value.append(choice);
+    choice.textContent = text;
+    type.append(choice);
   }
-  value.value = String(device.state.state === true);
-  value.addEventListener('change', () => change({ value: value.value === 'true' }));
+  type.value = draft.type;
 
-  row.append(field('Name', name), field('Room', room), field('Value', value));
+  const valueField = document.createElement('label');
+  valueField.className = 'device-field';
+  const drawValue = () => {
+    const value = stateValueInput(draft.type, draft.value, (picked) => {
+      draft.value = picked;
+      keep();
+    });
+    value.dataset.toggle = key(device);
+    valueField.replaceChildren(document.createTextNode('Value'), value);
+  };
+  drawValue();
+
+  // A truth means nothing as a number, so the value starts again.
+  type.addEventListener('change', () => {
+    draft.type = type.value;
+    draft.value = STATE_STARTS_AT[draft.type];
+    drawValue();
+    keep();
+  });
+
+  row.append(field('Name', name), field('Room', room), field('Type', type), valueField);
 
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    // A toggle is found by its name in every rule, so it keeps one.
+    const given = draft.name.trim();
+    if (!given) {
+      error.textContent = 'It needs a name';
+      return;
+    }
+    try {
+      const retyped = draft.type !== draft.wasType;
+      await api(path, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: given,
+          ...(retyped ? { type: draft.type } : {}),
+          ...(retyped || draft.value !== draft.was ? { value: draft.value } : {}),
+        }),
+      });
+      await api('/api/exposure', {
+        method: 'PUT',
+        body: JSON.stringify({
+          sourceId: device.sourceId,
+          deviceId: device.deviceId,
+          exposure: { properties: [], room: draft.room.trim() || undefined },
+        }),
+      });
+      state.deviceDrafts.delete(key(device));
+      state.freshToggle = undefined;
+      await load();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'danger';
   remove.textContent = 'Delete';
   const erase = async () => {
     await api(path, { method: 'DELETE' }).catch((problem) => setStatus(problem.message, 'lost'));
+    state.deviceDrafts.delete(key(device));
     state.open.delete(key(device));
     await load();
   };
-  // One only just added, and not yet named, is nothing to ask twice about.
+  // One only just added, and not yet saved, is nothing to ask twice about.
   if (state.freshToggle === key(device)) {
     remove.addEventListener('click', erase);
   } else {
     armDelete(remove, erase);
   }
-  footer.append(remove);
+  footer.append(save, revertButton(device), error, remove);
 
   wrap.append(row, footer);
   return wrap;
@@ -1079,7 +1380,7 @@ function batteryWarning(device) {
     } else {
       device.exposure.batteryWarning = false;
     }
-    save(device);
+    touched(device);
   });
   label.append(box, document.createTextNode('Send notification when battery runs low'));
 
@@ -1128,16 +1429,12 @@ function deviceOrigin(device) {
  * accessory can set or read them. The name is the exception, and only where
  * the source names nothing itself.
  */
-function renderDeviceInfo(device, heading) {
+function renderDeviceInfo(device) {
   const row = document.createElement('div');
   row.className = 'device-info';
 
-  const repaint = () => {
-    heading.textContent = displayName(device);
-    save(device);
-    // The icon lives in the header, which is not redrawn on its own.
-    safeRender();
-  };
+  // The header keeps the saved name and kind until Save, with a `*` meanwhile.
+  const repaint = () => touched(device);
 
   const field = (label, value, placeholder, onChange) => {
     const wrap = document.createElement('label');
@@ -1148,7 +1445,7 @@ function renderDeviceInfo(device, heading) {
     input.value = value ?? '';
     input.placeholder = placeholder;
     input.maxLength = 64;
-    input.addEventListener('change', () => onChange(input.value.trim()));
+    input.addEventListener('input', () => onChange(input.value.trim()));
     wrap.append(input);
     return wrap;
   };
@@ -1220,7 +1517,7 @@ function renderOptions(device) {
     select.title = forced ? `Fixed to ${forced} by the functions selected` : '';
     select.addEventListener('change', () => {
       device.exposure.tileTypes = { ...device.exposure.tileTypes, [endpoint]: select.value };
-      save(device);
+      touched(device);
     });
     option.append(label, select);
     wrap.append(option);
@@ -1258,7 +1555,7 @@ function renderOptions(device) {
         delete types[property.key];
       }
       device.exposure.sensorTypes = types;
-      save(device);
+      touched(device);
       // The tag beside the reading says which it became.
       const tag = document.querySelector(
         `[data-role-tag="${CSS.escape(key(device))}|${CSS.escape(property.key)}"]`,
@@ -1291,7 +1588,7 @@ function renderOptions(device) {
     checkbox.disabled = device.rulesOnly;
     checkbox.addEventListener('change', () => {
       device.exposure.splitEndpoints = checkbox.checked;
-      save(device);
+      touched(device);
     });
     const label = document.createElement('label');
     label.htmlFor = checkbox.id;
@@ -1424,7 +1721,7 @@ function renderProperty(device, property) {
       selected.delete(property.key);
     }
     device.exposure.properties = [...selected];
-    save(device);
+    touched(device);
     // On/off decides whether the tile picker is shown at all, brightness,
     // speed and swing decide what it is locked to, and actions reveal their
     // per button gestures. All of them change what belongs on screen.
@@ -1518,7 +1815,7 @@ function renderButton(device, property, button) {
       perButton[button.name] = [...current];
       buttons[property.key] = perButton;
       device.exposure.buttons = buttons;
-      save(device);
+      touched(device);
     });
 
     const label = document.createElement('label');
@@ -1654,6 +1951,22 @@ el.kindState.addEventListener('change', () => {
   renderLog();
 });
 
+/** Whether any panel, of a device or a rule, holds something not saved. */
+function anythingUnsaved() {
+  return (
+    state.devices.some((device) => isDeviceDirty(device)) ||
+    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id))
+  );
+}
+
+// The browser's own question, and only with something to lose.
+window.addEventListener('beforeunload', (event) => {
+  if (anythingUnsaved()) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+
 async function start() {
   await load();
   listen();
@@ -1680,6 +1993,17 @@ const MATCH_KINDS = [
   { kind: 'above', label: 'rises above' },
   { kind: 'below', label: 'falls below' },
 ];
+
+/** What a Text state can be asked: the whole of it, or a piece, either case. */
+const TEXT_MATCH_KINDS = [
+  { kind: 'changedTo', label: 'becomes' },
+  { kind: 'equals', label: 'matches' },
+  { kind: 'contains', label: 'contains' },
+  { kind: 'changed', label: 'changes' },
+];
+
+/** The tests a row offers, for what it points at. */
+const matchKindsFor = (ref) => (internalType(ref) === 'text' ? TEXT_MATCH_KINDS : MATCH_KINDS);
 
 const OUTCOME_LABELS = {
   fired: 'ran',
@@ -2420,10 +2744,12 @@ function renderRuleList(kind, container, emptyText) {
     );
 
     for (const [heading, grouped] of ordered) {
-      container.append(groupHeading(heading));
-      for (const rule of grouped) {
-        container.append(renderRule(rule, undefined, heading === UNGROUPED ? '' : heading));
-      }
+      appendSection(
+        container,
+        kind,
+        heading,
+        grouped.map((rule) => renderRule(rule, undefined, heading === UNGROUPED ? '' : heading)),
+      );
     }
     return;
   }
@@ -2445,7 +2771,7 @@ function describeTrigger(trigger) {
   }
   const property = findProperty(trigger);
   const label = property?.label ?? trigger.propertyKey ?? 'something';
-  const verb = MATCH_KINDS.find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
+  const verb = matchKindsFor(trigger).find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
   const value = trigger.match?.value;
   const hasValue = value !== undefined && value !== '';
   const said =
@@ -2497,19 +2823,17 @@ function renderByTrigger(container, rules) {
   );
 
   for (const group of ordered) {
-    const heading = document.createElement('h3');
-    heading.className = 'rule-group';
-    heading.textContent = group.name;
-    container.append(heading);
-
     group.entries.sort(
       (a, b) =>
         compareNames(describeTrigger(a.trigger), describeTrigger(b.trigger)) ||
         compareNames(a.rule.name, b.rule.name),
     );
-    for (const entry of group.entries) {
-      container.append(renderRule(entry.rule, entry));
-    }
+    appendSection(
+      container,
+      'trigger',
+      group.name,
+      group.entries.map((entry) => renderRule(entry.rule, entry)),
+    );
   }
 }
 
@@ -2548,8 +2872,11 @@ function renderRule(rule, occurrence, inRoom) {
   const name = document.createElement('span');
   name.className = 'device-name';
   // Only a room heading has said the room. A heading naming the device that
-  // sets a rule off has said nothing about where the rule acts.
-  name.textContent = ruleTitle(rule, inRoom !== undefined);
+  // sets a rule off has said nothing about where the rule acts. Marked while
+  // its panel holds changes that are not saved.
+  name.dataset.ruleName = rule.id;
+  name.dataset.base = ruleTitle(rule, inRoom !== undefined);
+  name.textContent = `${isRuleDirty(rule.id) ? '* ' : ''}${name.dataset.base}`;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
   // Under a trigger heading the rule is named first and what sets it off
@@ -2781,7 +3108,10 @@ function enabledToggle(rule) {
 function renderRuleBody(rule) {
   const body = document.createElement('div');
   body.className = 'device-body';
-  const draft = structuredClone(rule);
+  // Picked up again where one was being edited, so redrawing the list for a
+  // live update or a tab switch loses nothing.
+  const kept = state.ruleDrafts.get(rule.id);
+  const draft = kept?.draft ?? structuredClone(rule);
 
   const nameRow = document.createElement('div');
   nameRow.className = 'option';
@@ -2808,8 +3138,41 @@ function renderRuleBody(rule) {
   }
 
   body.append(shape);
+
+  // Taken once the form has been drawn, since drawing settles a few things
+  // in it, and comparing with the stored rule would call that a change.
+  if (!kept) {
+    state.ruleDrafts.set(rule.id, { draft, baseline: JSON.stringify(draft) });
+  }
+  // Anything at all in the panel might have moved the draft on, and the
+  // handlers that do run before this does.
+  for (const kind of ['input', 'change', 'click']) {
+    body.addEventListener(kind, () => setTimeout(() => paintRuleDirty(rule.id), 0));
+  }
+
   body.append(ruleFooter(rule, draft, body));
   return body;
+}
+
+/** Whether a rule's panel holds anything that differs from what is saved. */
+function isRuleDirty(id) {
+  const kept = state.ruleDrafts.get(id);
+  return Boolean(kept) && JSON.stringify(kept.draft) !== kept.baseline;
+}
+
+/** The `*`, Revert and Trigger of every place a rule is listed, after a change. */
+function paintRuleDirty(id) {
+  const dirty = isRuleDirty(id);
+  const scope = document.getElementById('app') ?? document;
+  for (const name of scope.querySelectorAll(`[data-rule-name="${CSS.escape(id)}"]`)) {
+    name.textContent = `${dirty ? '* ' : ''}${name.dataset.base}`;
+  }
+  for (const revert of scope.querySelectorAll(`[data-rule-revert="${CSS.escape(id)}"]`)) {
+    revert.hidden = !dirty;
+  }
+  for (const trigger of scope.querySelectorAll(`[data-rule-trigger="${CSS.escape(id)}"]`)) {
+    trigger.hidden = id === state.pinned || dirty;
+  }
 }
 
 function ruleFooter(rule, draft, body) {
@@ -2824,8 +3187,15 @@ function ruleFooter(rule, draft, body) {
   save.textContent = 'Save';
   save.addEventListener('click', async () => {
     error.textContent = '';
+    // On or off is the switch in the header's business, saved as it is
+    // clicked, so what the draft remembers of it is out of date.
+    const stored = state.rules.find((candidate) => candidate.id === rule.id) ?? rule;
     try {
-      await api('/api/rules', { method: 'PUT', body: JSON.stringify(draft) });
+      await api('/api/rules', {
+        method: 'PUT',
+        body: JSON.stringify({ ...draft, enabled: stored.enabled }),
+      });
+      state.ruleDrafts.delete(rule.id);
       // Saved, so it has a name worth sorting by and can take its place.
       if (state.pinned === rule.id) {
         state.pinned = undefined;
@@ -2836,6 +3206,16 @@ function ruleFooter(rule, draft, body) {
     }
   });
 
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  revert.dataset.ruleRevert = rule.id;
+  revert.hidden = !isRuleDirty(rule.id);
+  revert.addEventListener('click', () => {
+    state.ruleDrafts.delete(rule.id);
+    renderRules();
+  });
+
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'danger';
@@ -2843,6 +3223,7 @@ function ruleFooter(rule, draft, body) {
 
   const erase = async () => {
     await api(`/api/rules/${encodeURIComponent(rule.id)}`, { method: 'DELETE' }).catch(() => {});
+    state.ruleDrafts.delete(rule.id);
     state.openRules.delete(rule.id);
     await loadRules();
   };
@@ -2855,12 +3236,12 @@ function ruleFooter(rule, draft, body) {
     armDelete(remove, erase);
   }
 
-  footer.append(save);
+  footer.append(save, revert);
 
   // Mirrors and sliders have no single thing to set off: every member of a
   // mirror is a trigger, and a slider has four buttons doing four things.
   if (rule.kind !== 'mirror' && rule.kind !== 'slider') {
-    footer.append(triggerButton(rule, draft, body, error));
+    footer.append(triggerButton(rule, error));
   }
 
   footer.append(error, remove);
@@ -2897,24 +3278,15 @@ function armDelete(button, erase) {
  * two agree again: a button that has gone is unmistakable, where a greyed
  * one is a shade nobody notices.
  */
-function triggerButton(rule, draft, body, error) {
+function triggerButton(rule, error) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'trigger';
   button.textContent = 'Trigger';
   button.title = 'Run this rule now, whether or not it is switched on';
 
-  const saved = JSON.stringify(draft);
-  const check = () => {
-    button.hidden = rule.id === state.pinned || JSON.stringify(draft) !== saved;
-  };
-  check();
-
-  // Anything at all in the panel might have moved the draft on, and the
-  // handlers that do run before this does.
-  for (const kind of ['input', 'change', 'click']) {
-    body.addEventListener(kind, () => setTimeout(check, 0));
-  }
+  button.dataset.ruleTrigger = rule.id;
+  button.hidden = rule.id === state.pinned || isRuleDirty(rule.id);
 
   button.addEventListener('click', async () => {
     error.textContent = '';
@@ -3338,7 +3710,9 @@ function drawSlider(body, draft) {
         const last = index === triggers.length - 1;
         buttons.append(
           refRow(trigger, {
-            pick: watchable,
+            // Text and Number states are for automations.
+            pick: (device) =>
+              isToggle(device) && stateTypeOf(device) !== 'boolean' ? [] : watchable(device),
             withMatch: true,
             starts: true,
             ruleId: draft.id,
@@ -3370,7 +3744,13 @@ function drawMirror(body, draft) {
   const devices = document.createElement('div');
   devices.className = 'mirror-devices';
 
-  const candidates = byName(state.devices.filter((device) => writable(device).length > 0));
+  // Text and Number states are for automations; a truth mirrors like any switch.
+  const candidates = byName(
+    state.devices.filter(
+      (device) =>
+        writable(device).length > 0 && (!isToggle(device) || stateTypeOf(device) === 'boolean'),
+    ),
+  );
   for (const device of candidates) {
     const id = `${device.sourceId}|${device.deviceId}`;
     const label = document.createElement('label');
@@ -4403,11 +4783,16 @@ function refRow(ref, options) {
 
     if (pointed && options.withMatch) {
       const kinds = document.createElement('select');
-      for (const entry of MATCH_KINDS) {
+      const offered = matchKindsFor(ref);
+      for (const entry of offered) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = entry.label;
         kinds.append(choice);
+      }
+      // A state whose type changed since may hold a test it no longer has.
+      if (!offered.some((entry) => entry.kind === ref.match.kind)) {
+        ref.match = { kind: offered[0].kind, value: '' };
       }
       kinds.value = ref.match.kind;
       kinds.addEventListener('change', () => {
@@ -4430,7 +4815,10 @@ function refRow(ref, options) {
             },
             // Only where this row is what sets a rule off. A condition asks
             // what a device is doing, which any number of rules may ask.
-            options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {},
+            {
+              ...(options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {}),
+              clean: internalType(ref) === 'text',
+            },
           ),
         );
       }
@@ -4439,18 +4827,31 @@ function refRow(ref, options) {
     if (pointed && options.withValue) {
       const moving = MOVES.has(ref.valueFrom?.kind);
       const mode = document.createElement('select');
-      for (const entry of [
-        { kind: 'literal', label: 'set to' },
-        { kind: 'trigger', label: 'match the trigger' },
-        // Only where there is a number to move. One already set stays listed
-        // whatever the device says now, so opening a rule cannot rewrite it.
-        ...(property?.type === 'numeric' || moving
-          ? [
-              { kind: 'add', label: 'increase by' },
-              { kind: 'subtract', label: 'decrease by' },
-            ]
-          : []),
-      ]) {
+      const internal = internalType(ref);
+      const set = { kind: 'literal', label: 'set to' };
+      const moves = [
+        { kind: 'add', label: 'increase by' },
+        { kind: 'subtract', label: 'decrease by' },
+      ];
+      // A Text state is only ever set, and a Number set or counted; neither
+      // copies what set the rule off. A truth is as any device's on or off.
+      const modes =
+        internal === 'text'
+          ? [set]
+          : internal === 'number'
+            ? [set, ...moves]
+            : [
+                set,
+                { kind: 'trigger', label: 'match the trigger' },
+                // Only where there is a number to move. One already set stays
+                // listed whatever the device says now, so opening a rule
+                // cannot rewrite it.
+                ...(property?.type === 'numeric' || moving ? moves : []),
+              ];
+      if (!modes.some((entry) => entry.kind === (ref.valueFrom?.kind ?? 'literal'))) {
+        delete ref.valueFrom;
+      }
+      for (const entry of modes) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = entry.label;
@@ -4501,7 +4902,7 @@ function refRow(ref, options) {
               ref.value = value;
               changed();
             },
-            { withToggle: true },
+            { withToggle: true, clean: internal === 'text' },
           ),
         );
       }
@@ -4606,8 +5007,22 @@ function valueInput(property, current, onChange, options = {}) {
   if (property?.max !== undefined) {
     input.max = property.max;
   }
+  if (property?.step !== undefined) {
+    input.step = property.step;
+  }
+  // What a Text state can hold, and nothing it cannot, as it is typed.
+  if (options.clean) {
+    input.maxLength = 12;
+    input.placeholder = 'a-z 0-9 - _';
+  }
   input.value = current ?? '';
   input.addEventListener('input', () => {
+    if (options.clean) {
+      const cleaned = cleanText(input.value);
+      if (cleaned !== input.value) {
+        input.value = cleaned;
+      }
+    }
     onChange(input.type === 'number' ? Number(input.value) : input.value);
   });
   return input;
@@ -4618,7 +5033,7 @@ const KIND_LABELS = {
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
-  state: 'state toggle',
+  state: 'internal state',
 };
 
 function renderLog() {
@@ -5356,7 +5771,7 @@ el.addState.addEventListener('click', async () => {
     state.open.add(added);
     state.freshToggle = added;
     await load();
-    // Named first, since `New state toggle` is nobody's name for anything.
+    // Named first, since `New internal state` is nobody's name for anything.
     const name = el.devices.querySelector(`[data-toggle-name="${CSS.escape(added)}"]`);
     name?.focus();
     name?.select();

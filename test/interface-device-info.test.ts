@@ -101,10 +101,12 @@ describe('the fields on a device', () => {
 
     const room = ui.document.querySelectorAll('.device-field input')[1] as HTMLInputElement;
     room.value = 'Kitchen';
-    room.dispatchEvent(new ui.window.Event('change'));
-    // Saving is held back a moment, so typing does not send a request a letter.
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    room.dispatchEvent(new ui.window.Event('input'));
+    await ui.settle();
+    // Nothing is sent until Save.
+    expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
 
+    await ui.click(card.querySelector('.rule-footer button.primary'));
     const saved = ui.requests.findLast((request) => request.path === '/api/exposure')?.body as {
       exposure: { room: string };
     };
@@ -142,7 +144,7 @@ describe('grouping the device list', () => {
   it('groups by room, with the unset ones last, after the devices with no kind', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'room');
-    expect(headings(ui)).toEqual(['Unknown Devices', 'Hall', 'Kitchen', 'Unknown']);
+    expect(headings(ui)).toEqual(['Unknown Devices (1)', 'Hall (1)', 'Kitchen (1)', 'Unknown (1)']);
   });
 
   it('offers every kind, including the ones added later', async () => {
@@ -208,13 +210,13 @@ describe('grouping the device list', () => {
   it('groups by type, naming the kinds rather than their values', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'type');
-    expect(headings(ui)).toEqual(['Unknown Devices', 'Light', 'Sensor']);
+    expect(headings(ui)).toEqual(['Unknown Devices (1)', 'Light (2)', 'Sensor (1)']);
   });
 
   it('splits a list sorted by name into the devices with no kind and the rest', async () => {
     const ui = await openDevices(devices);
     await sortBy(ui, 'name');
-    expect(headings(ui)).toEqual(['Unknown Devices', 'Known Devices']);
+    expect(headings(ui)).toEqual(['Unknown Devices (1)', 'Known Devices (3)']);
     expect(names(ui)).toEqual(['c_lamp', 'a_lamp', 'b_lamp', 'd_lamp']);
   });
 
@@ -231,7 +233,7 @@ describe('grouping the device list', () => {
       device('0xe', 'e_lamp', { room: 'Kitchen', label: 'Spot' }),
     ]);
     await sortBy(ui, 'room');
-    expect(headings(ui)).toEqual(['Unknown Devices', 'Kitchen']);
+    expect(headings(ui)).toEqual(['Unknown Devices (1)', 'Kitchen (1)']);
     // Not under its room's heading, so the room is still said.
     expect(names(ui)).toEqual(['Kitchen Spot', 'a_lamp']);
   });

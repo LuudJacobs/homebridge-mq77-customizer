@@ -32,9 +32,22 @@ export function matches(match: Match, value: unknown, previous?: unknown): boole
       return number !== undefined && number < match.value;
     }
 
+    case 'contains':
+      // Asked as a condition there is nothing before, and it is whether the
+      // value has the text in it. Setting a rule off, it is the value
+      // changing to one that has.
+      return contains(value, match.value) && !same(value, previous);
+
     default:
       return false;
   }
+}
+
+function contains(value: unknown, part: string): boolean {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return String(value).toLowerCase().includes(part.toLowerCase());
 }
 
 /** Describes a match in words, for the run log and the interface. */
@@ -58,6 +71,8 @@ export function holds(match: Match, value: unknown, startedWith: unknown): boole
       return same(value, match.value);
     case 'notEquals':
       return !same(value, match.value);
+    case 'contains':
+      return contains(value, match.value);
     case 'above':
       return Number(value) > Number(match.value);
     case 'below':
@@ -81,6 +96,8 @@ export function describeMatch(match: Match): string {
       return `rises above ${match.value}`;
     case 'below':
       return `falls below ${match.value}`;
+    case 'contains':
+      return `contains ${format(match.value)}`;
     default:
       return 'matches';
   }

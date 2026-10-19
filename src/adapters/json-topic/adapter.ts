@@ -156,6 +156,13 @@ export class JsonTopicAdapter extends EventEmitter<AdapterEvents> implements Sou
     return this.tracked.get(deviceId)?.state;
   }
 
+  /** Back as new the next time its topic says anything. */
+  forget(deviceId: string): void {
+    if (this.tracked.delete(deviceId)) {
+      this.emit('devices', this.getDevices());
+    }
+  }
+
   private handle(topic: string, payload: Buffer, retained: boolean): void {
     const relative = topic.startsWith(`${this.base}/`)
       ? topic.slice(this.base.length + 1)

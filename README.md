@@ -57,7 +57,9 @@ Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign i
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
-Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit. Changes take effect immediately, with no Homebridge restart.
+Every device found on the broker is listed with all of its functions, grouped into functions, settings and diagnostics and listed by name within each. Tick a function to publish it to HomeKit and press Save. It takes effect at once, with no Homebridge restart.
+
+Every panel, a device's or a rule's, keeps what is changed in it until Save. Until then its name is marked with `*` and Revert puts back what is saved, and the list keeps sorting and grouping by what is saved. Reloading or leaving the page with anything unsaved asks first. Delete on a device forgets everything set for it: a Zigbee2MQTT device shows again at once with nothing set, a JSON topic when it next publishes.
 
 Per device you can also:
 
@@ -94,7 +96,7 @@ Button names and gestures are worked out from the action names the device publis
 
 Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
 
-Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by.
+Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by. Every heading in a list says how many are under it and folds them away when clicked. Headings start closed, except Unknown Devices, and open while a filter finds something under them.
 
 Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
@@ -200,11 +202,19 @@ Cycle is one button for the whole range: up to the top, back down to off, and up
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
 
-### State toggles
+### Internal states
 
-A true or false the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ state toggle** above the device list adds one, with a name, a room and a value, and nothing for HomeKit.
+A value the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ internal state** above the device list adds one, with a name, a room, a type and a value, and nothing for HomeKit.
 
-A toggle is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition, be set to true or false or flipped by an action, and be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
+| Type | Holds | An action can | A rule can ask whether it |
+| --- | --- | --- | --- |
+| Boolean | true or false | set it, or flip it | becomes, is, is not, changes |
+| Text | up to 12 of a to z, 0 to 9, `-` and `_` | set it | becomes, matches, contains, changes |
+| Number | a whole number | set it, increase or decrease it | becomes, is, rises above, falls below, changes |
+
+Text is matched ignoring case, and anything it cannot hold is dropped as it is typed. Changing the type starts the value again from false, empty or 0.
+
+An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 
