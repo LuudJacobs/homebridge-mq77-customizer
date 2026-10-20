@@ -235,7 +235,7 @@ describe('the sliders tab', () => {
 
   it('offers sliders in the activity filter', async () => {
     const ui = await openInterface({ state: { devices }, rules: [slider()] });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
     expect(ui.document.querySelector('#kind-slider')).not.toBeNull();
   });
 });

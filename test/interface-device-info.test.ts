@@ -99,9 +99,9 @@ describe('the fields on a device', () => {
     const card = ui.document.querySelector('#devices .device') as HTMLDetailsElement;
     await ui.openCard(card);
 
-    const room = ui.document.querySelectorAll('.device-field input')[1] as HTMLInputElement;
+    const room = ui.document.querySelector('.device-field select.room-select') as HTMLSelectElement;
     room.value = 'Kitchen';
-    room.dispatchEvent(new ui.window.Event('input'));
+    room.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
     // Nothing is sent until Save.
     expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
@@ -153,7 +153,7 @@ describe('grouping the device list', () => {
     await ui.openCard(card);
 
     // Every card builds its panel, open or not, so ask this one only.
-    const kinds = [...card.querySelectorAll('.device-field select option')].map(
+    const kinds = [...card.querySelectorAll('.device-field select:not(.room-select) option')].map(
       (node) => node.textContent,
     );
     // Not set first and Other last, with everything between by name.

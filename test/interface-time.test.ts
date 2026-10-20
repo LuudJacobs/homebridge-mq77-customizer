@@ -47,7 +47,7 @@ const automation = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function openRule(rule: unknown, tab = 'Automation') {
+async function openRule(rule: unknown, tab = 'Rules') {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
   await ui.click(ui.byText('button.tab', tab));
   const card = ui.document.querySelector('.rule') as HTMLDetailsElement;
@@ -134,7 +134,7 @@ describe('a time in the lists', () => {
       state: { devices },
       rules: [automation({ triggers: [{ kind: 'time', at: '22:00' }] })],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
 
     const summary = ui.document.querySelector('#automation .device-meta') as HTMLElement;
     expect(summary.querySelector('svg.type-icon.clock')).not.toBeNull();
@@ -157,7 +157,7 @@ describe('a time in the lists', () => {
         },
       ],
     });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
 
     const line = ui.document.querySelector('#activity-log .log-line') as HTMLElement;
     expect(line.querySelector('svg.type-icon.clock')).not.toBeNull();
@@ -175,7 +175,7 @@ describe('the times the sun decides', () => {
 
   async function openWith(rule: unknown, hasLocation: boolean) {
     const ui = await openInterface({ state: { devices, hasLocation }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
     return ui;
   }
@@ -221,7 +221,7 @@ describe('the times the sun decides', () => {
       state: { devices, hasLocation: true },
       rules: [automation({ triggers: [{ kind: 'time', at: 'sunset', offset: -30 }] })],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
 
     const summary = ui.document.querySelector('#automation .device-meta') as HTMLElement;
     expect(summary.textContent).toContain('Sunset -00:30');
@@ -245,7 +245,7 @@ describe('a sun time in the activity log', () => {
         },
       ],
     });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
 
     const line = ui.document.querySelector('#activity-log .log-line') as HTMLElement;
     expect(line.textContent).toContain('Sunset -00:30');
@@ -267,7 +267,7 @@ describe('a time as a condition', () => {
 
   async function openWith(rule: unknown, hasLocation = true) {
     const ui = await openInterface({ state: { devices, hasLocation }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
     return ui;
   }

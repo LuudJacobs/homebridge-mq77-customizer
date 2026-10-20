@@ -40,8 +40,22 @@ export async function openInterface(options: {
   });
   const { window } = dom;
 
+  // The rooms the server would list: the usual few, and every room the
+  // devices given are in, as on a house that has set them.
+  const rooms = [
+    ...new Set([
+      'Bathroom',
+      'Bedroom',
+      'Kitchen',
+      'Living room',
+      ...(options.state.devices as { exposure?: { room?: string } }[])
+        .map((device) => device.exposure?.room)
+        .filter((room): room is string => Boolean(room)),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+
   const responses: Record<string, unknown> = {
-    '/api/state': { tileTypes: ['Switch', 'Outlet', 'Lightbulb', 'Fan'], ...options.state },
+    '/api/state': { tileTypes: ['Switch', 'Outlet', 'Lightbulb', 'Fan'], rooms, ...options.state },
     '/api/rules': { rules: options.rules ?? [] },
     '/api/log': { entries: options.log ?? [] },
   };

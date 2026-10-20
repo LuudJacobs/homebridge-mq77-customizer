@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A Home tab with Rooms and the Zigbee map; a device's room is picked from the list
+- Rooms start as Living room, Kitchen, Bedroom and Bathroom, and every device's room is emptied once
+- The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide, with addresses to match
+- Unused buttons are hidden in Controllers to begin with
+- The log filter finds lines by what they say and the devices in them
+
 ## [2.5.0] - 2026-10-19
 
 ### Added

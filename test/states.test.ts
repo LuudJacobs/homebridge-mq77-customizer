@@ -361,7 +361,10 @@ describe('the web interface', () => {
   });
 
   it('lists one as the state toggle kind, with its room and nothing for HomeKit', async () => {
-    const { call, toggles } = await serve();
+    const { call, toggles, store } = await serve();
+    store.update((state) => {
+      state.rooms = ['Gang'];
+    });
     const away = toggles.create('Away');
 
     await call('/api/exposure', {

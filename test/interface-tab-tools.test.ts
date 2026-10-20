@@ -20,19 +20,19 @@ describe('the controls of a tab', () => {
 
   it('go along to the tab that is opened, checkboxes and all', async () => {
     const ui = await open();
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
     const tools = ui.document.getElementById('tab-tools')!;
     expect(tools.parentElement).toBe(line(ui, 'activity'));
     expect((ui.document.getElementById('kind-filters') as HTMLElement).hidden).toBe(false);
 
-    await ui.click(ui.byText('button.tab', 'Controllers'));
+    await ui.click(ui.byText('button.tab', 'Guide'));
     expect(tools.parentElement).toBe(line(ui, 'controllers'));
     expect((ui.document.getElementById('unused-buttons-filter') as HTMLElement).hidden).toBe(false);
   });
 
   it('leave nothing in front of the buttons where there is nothing to sort or filter', async () => {
     const ui = await open();
-    await ui.click(ui.byText('button.tab', 'Map'));
+    await ui.click(ui.byText('button.tab', 'Home'));
     expect((ui.document.getElementById('tab-tools') as HTMLElement).hidden).toBe(true);
   });
 

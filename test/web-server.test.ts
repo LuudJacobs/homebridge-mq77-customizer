@@ -685,12 +685,58 @@ describe('the address of a tab', () => {
   it('is answered with the page, signed in or not', async () => {
     const context = await harness();
     try {
-      for (const path of ['/devices', '/automation', '/mirror/', '/map']) {
+      // Every tab's, and one it does not know, which shows Devices.
+      for (const path of ['/devices', '/rules', '/mirrors/', '/home/zigbee-map', '/nothing-here']) {
         const response = await fetch(`${context.base}${path}`);
         expect(response.status, path).toBe(200);
         expect(await response.text(), path).toContain('MQ77 Customizer');
       }
-      expect((await fetch(`${context.base}/nothing-here`)).status).toBe(404);
+      // A file that is not there is missing.
+      expect((await fetch(`${context.base}/nothing-here.css`)).status).toBe(404);
+    } finally {
+      await context.server.stop();
+    }
+  });
+});
+
+describe('rooms', () => {
+  it('are added, renamed and removed, and what is in them goes along', async () => {
+    const context = await harness();
+    try {
+      const session = await signIn(context.base);
+      const call = (method: string, body: unknown) =>
+        session.fetch('/api/rooms', { method, body: JSON.stringify(body) });
+      const exposure = (room: string) =>
+        session.fetch('/api/exposure', {
+          method: 'PUT',
+          body: JSON.stringify({ sourceId: 'zigbee', deviceId: '0x00158dfffe000006', exposure: { properties: [], room } }),
+        });
+      const roomOf = () => context.store.getExposure('zigbee:0x00158dfffe000006')?.room;
+
+      expect(((await (await call('POST', { name: ' Zolder ' })).json()) as { rooms: string[] }).rooms).toEqual([
+        'Bathroom',
+        'Bedroom',
+        'Kitchen',
+        'Living room',
+        'Zolder',
+      ]);
+      expect((await call('POST', { name: 'zolder' })).status).toBe(400);
+
+      // Only a room from the list, written as the list has it.
+      await exposure('zolder');
+      expect(roomOf()).toBe('Zolder');
+      await exposure('Kelder');
+      expect(roomOf()).toBeUndefined();
+
+      await exposure('Zolder');
+      expect((await call('PUT', { name: 'Zolder', to: 'Kitchen' })).status).toBe(400);
+      expect((await call('PUT', { name: 'Zolder', to: 'Vliering' })).status).toBe(200);
+      expect(roomOf()).toBe('Vliering');
+
+      expect((await call('DELETE', { name: 'Vliering' })).status).toBe(200);
+      expect(roomOf()).toBeUndefined();
+      expect(context.store.data.rooms).not.toContain('Vliering');
+      expect((await call('DELETE', { name: 'Vliering' })).status).toBe(404);
     } finally {
       await context.server.stop();
     }

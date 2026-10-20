@@ -46,7 +46,7 @@ const rule = (actions: unknown[]) => ({
 
 async function openRule(actions: unknown[], canNotify = true) {
   const ui = await openInterface({ state: { devices: devices(), canNotify }, rules: [rule(actions)] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
   return ui;
 }
@@ -114,7 +114,7 @@ describe('ignoring as an action', () => {
       state: { devices: devices() },
       rules: [rule([{ kind: 'ignore' }])],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     const meta = ui.document.querySelector('#automation .device-meta')!;
     meta.querySelectorAll('title').forEach((title) => title.remove());
     expect(meta.textContent).toBe('lamp_a → ignore');

@@ -89,7 +89,7 @@ describe('a section of a list', () => {
     await ui.click(heading(ui, 'Keuken'));
     await ui.click(heading(ui, 'Unknown Devices'));
 
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.click(ui.byText('button.tab', 'Devices'));
     const sort = ui.document.querySelector('#sort') as HTMLSelectElement;
     sort.value = 'type';
@@ -128,7 +128,7 @@ describe('a section of a list', () => {
       branches: [{ actions: [{ sourceId: 'zigbee', deviceId: '0xa', propertyKey: 'state', value: 'ON' }] }],
     };
     const ui = await openInterface({ state: { devices: devices() }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     const sort = ui.document.querySelector('#sort') as HTMLSelectElement;
     sort.value = 'room';
     sort.dispatchEvent(new ui.window.Event('change'));

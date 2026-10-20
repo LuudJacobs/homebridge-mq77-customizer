@@ -112,18 +112,34 @@ export interface StateToggle {
   value: boolean | string | number;
 }
 
+/** The rooms a house starts with, before anybody has said which it has. */
+export const DEFAULT_ROOMS = ['Living room', 'Kitchen', 'Bedroom', 'Bathroom'];
+
+/** Rooms by name, A to Z, whatever case they were typed in. */
+export function sortRooms(rooms: string[]): string[] {
+  return [...rooms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
   rules: AnyRule[];
   states: StateToggle[];
+  /** The rooms a device can be put in, A to Z. */
+  rooms: string[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
 
 function emptyState(): PersistedState {
-  return { version: STORE_VERSION, exposures: {}, rules: [], states: [] };
+  return {
+    version: STORE_VERSION,
+    exposures: {},
+    rules: [],
+    states: [],
+    rooms: sortRooms(DEFAULT_ROOMS),
+  };
 }
 
 /**
@@ -380,9 +396,29 @@ function migrate(parsed: unknown): PersistedState {
     return emptyState();
   }
   const state = parsed as Partial<PersistedState>;
+  const exposures = state.exposures ?? {};
+
+  // Rooms became a list of their own. Settings from before it start from the
+  // usual few, and every device's room is emptied to be set again from them,
+  // rather than carrying over whatever was typed into a free text box.
+  let rooms: string[];
+  if (Array.isArray(state.rooms)) {
+    rooms = sortRooms(
+      [...new Set(state.rooms.filter((room): room is string => typeof room === 'string'))]
+        .map((room) => room.trim())
+        .filter(Boolean),
+    );
+  } else {
+    rooms = sortRooms(DEFAULT_ROOMS);
+    for (const exposure of Object.values(exposures)) {
+      delete exposure.room;
+    }
+  }
+
   return {
     version: STORE_VERSION,
-    exposures: state.exposures ?? {},
+    exposures,
+    rooms,
     // Timers were folded into automations, which can wait. One stored by an
     // older version is dropped rather than carried: nothing runs it, nothing
     // draws it, and leaving it would only be a rule that never fires.
