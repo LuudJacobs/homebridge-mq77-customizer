@@ -55,8 +55,11 @@ const state = {
   homePage: 'rooms',
   /** The rooms a device can be put in, A to Z, as the server keeps them. */
   rooms: [],
-  /** Whether a row for a new room is open on the Rooms page. */
-  addingRoom: false,
+  /**
+   * The rooms as they are being edited, or nothing while they are only read.
+   * Each says what it was called when editing began, unless it is new.
+   */
+  roomsDraft: undefined,
   rules: [],
   openRules: new Set(),
   log: [],
@@ -110,7 +113,7 @@ const el = {
   homePageRooms: document.getElementById('home-page-rooms'),
   homePageMap: document.getElementById('home-page-map'),
   rooms: document.getElementById('rooms'),
-  addRoom: document.getElementById('add-room'),
+  roomsButtons: document.getElementById('rooms-buttons'),
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
   scanMap: document.getElementById('scan-map'),
@@ -2009,7 +2012,8 @@ el.kindState.addEventListener('change', () => {
 function anythingUnsaved() {
   return (
     state.devices.some((device) => isDeviceDirty(device)) ||
-    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id))
+    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id)) ||
+    roomsDirty()
   );
 }
 
@@ -5941,7 +5945,7 @@ function showView(view) {
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabControllers.classList.toggle('active', view === 'controllers');
   el.tabHome.classList.toggle('active', view === 'home');
-  el.tabSelect.value = view;
+  el.tabSelect.value = pickedOption();
   paintControls();
   if (view === 'devices') {
     safeRender();
@@ -5955,6 +5959,7 @@ function showView(view) {
 /** Home: its menu on the left, and the page picked in it. */
 function drawHome() {
   const onMap = state.homePage === 'map';
+  el.tabSelect.value = pickedOption();
   el.homeRooms.classList.toggle('active', !onMap);
   el.homeMap.classList.toggle('active', onMap);
   el.homePageRooms.hidden = onMap;
@@ -5978,118 +5983,137 @@ el.homeRooms.addEventListener('click', () => openHomePage('rooms'));
 el.homeMap.addEventListener('click', () => openHomePage('map'));
 
 /**
- * The rooms, A to Z, each one renamed or removed where it is listed.
+ * The rooms: a list to read, A to Z with what is in each, until Edit rooms
+ * turns it into a form.
  *
- * Saved one at a time with its own Save, like any other panel: a rename
- * takes everything in the room along, a removal leaves it in none.
+ * The form is saved whole, with one Save: renames, removals and new rooms
+ * all wait for it, and saving it goes back to the list.
  */
 function renderRooms() {
   el.rooms.replaceChildren();
-  if (state.addingRoom) {
-    el.rooms.append(roomRow(undefined));
-  }
-  for (const room of state.rooms) {
-    el.rooms.append(roomRow(room));
-  }
-  if (state.rooms.length === 0 && !state.addingRoom) {
-    const empty = document.createElement('p');
-    empty.className = 'empty';
-    empty.textContent = 'No rooms yet.';
-    el.rooms.append(empty);
-  }
-  el.rooms.querySelector('.room-row.new input')?.focus();
-}
+  el.roomsButtons.replaceChildren();
+  const editing = state.roomsDraft !== undefined;
+  el.rooms.classList.toggle('editing', editing);
 
-function roomRow(room) {
-  const row = document.createElement('div');
-  row.className = `room-row${room === undefined ? ' new' : ''}`;
-  row.dataset.room = room ?? '';
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.maxLength = 64;
-  input.placeholder = 'Room name';
-  input.value = room ?? '';
-
-  const count = document.createElement('span');
-  count.className = 'device-meta';
-  if (room !== undefined) {
-    const inIt = state.devices.filter((device) => device.exposure.room === room).length;
-    count.textContent = `${inIt} device${inIt === 1 ? '' : 's'}`;
+  if (!editing) {
+    for (const room of state.rooms) {
+      const row = document.createElement('div');
+      row.className = 'room-row';
+      const name = document.createElement('span');
+      name.className = 'room-name';
+      name.textContent = room;
+      const count = document.createElement('span');
+      count.className = 'device-meta';
+      const inIt = state.devices.filter((device) => device.exposure.room === room).length;
+      count.textContent = `${inIt} device${inIt === 1 ? '' : 's'}`;
+      row.append(name, count);
+      el.rooms.append(row);
+    }
+    if (state.rooms.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'No rooms yet.';
+      el.rooms.append(empty);
+    }
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Edit rooms';
+    edit.addEventListener('click', () => {
+      state.roomsDraft = state.rooms.map((room) => ({ was: room, name: room }));
+      renderRooms();
+    });
+    el.roomsButtons.append(edit);
+    return;
   }
 
+  const draft = state.roomsDraft;
   const error = document.createElement('span');
   error.className = 'error';
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  const paint = () => {
+    revert.hidden = !roomsDirty();
+  };
+
+  for (const entry of draft) {
+    const row = document.createElement('div');
+    row.className = 'room-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 64;
+    input.placeholder = 'Room name';
+    input.value = entry.name;
+    input.addEventListener('input', () => {
+      entry.name = input.value;
+      paint();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Delete';
+    // Gone from the form, and from nowhere else until Save.
+    armDelete(remove, () => {
+      draft.splice(draft.indexOf(entry), 1);
+      renderRooms();
+    });
+    row.append(input, remove);
+    el.rooms.append(row);
+  }
+
+  el.rooms.append(
+    addButton('+ room', () => {
+      draft.push({ name: '' });
+      renderRooms();
+      [...el.rooms.querySelectorAll('input')].at(-1)?.focus();
+    }),
+  );
+
+  revert.addEventListener('click', () => {
+    state.roomsDraft = state.rooms.map((room) => ({ was: room, name: room }));
+    renderRooms();
+  });
 
   const save = document.createElement('button');
   save.type = 'button';
   save.className = 'primary';
-  save.textContent = room === undefined ? 'Add' : 'Save';
-  // Only with something to save: a name that is there and not the old one.
-  const check = () => {
-    save.hidden = !input.value.trim() || input.value.trim() === room;
-  };
-  check();
-  input.addEventListener('input', check);
-
-  const commit = async () => {
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
     error.textContent = '';
     try {
       await api('/api/rooms', {
-        method: room === undefined ? 'POST' : 'PUT',
-        body: JSON.stringify(
-          room === undefined ? { name: input.value } : { name: room, to: input.value },
-        ),
+        method: 'PUT',
+        body: JSON.stringify({
+          rooms: draft.map((entry) => ({
+            ...(entry.was === undefined ? {} : { was: entry.was }),
+            name: entry.name,
+          })),
+        }),
       });
-      state.addingRoom = false;
-      await load();
-      renderRooms();
-    } catch (problem) {
-      error.textContent = problem.message;
-    }
-  };
-  save.addEventListener('click', commit);
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !save.hidden) {
-      commit();
-    }
-  });
-
-  row.append(input, save, count, error);
-
-  if (room === undefined) {
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => {
-      state.addingRoom = false;
-      renderRooms();
-    });
-    row.append(cancel);
-    return row;
-  }
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'danger';
-  remove.textContent = 'Delete';
-  armDelete(remove, async () => {
-    try {
-      await api('/api/rooms', { method: 'DELETE', body: JSON.stringify({ name: room }) });
+      state.roomsDraft = undefined;
       await load();
       renderRooms();
     } catch (problem) {
       error.textContent = problem.message;
     }
   });
-  row.append(remove);
-  return row;
+
+  // Revert on the left of Save, as in every other footer.
+  el.roomsButtons.append(error, revert, save);
+  paint();
 }
 
-el.addRoom.addEventListener('click', () => {
-  state.addingRoom = true;
-  renderRooms();
-});
+/** Whether the rooms being edited differ from the saved ones. */
+function roomsDirty() {
+  const draft = state.roomsDraft;
+  if (!draft) {
+    return false;
+  }
+  return (
+    draft.length !== state.rooms.length ||
+    draft.some((entry) => entry.was === undefined || entry.name.trim() !== entry.was)
+  );
+}
 
 const showsRules = () =>
   state.view === 'controllers' ||
@@ -6111,7 +6135,9 @@ const TAB_OPTIONS = [
   ['automation', 'Rules'],
   ['mirror', 'Mirrors'],
   ['sliders', 'Sliders'],
-  ['home', 'Home'],
+  // Home's pages, since the menu that picks them has no room here.
+  ['home:rooms', 'Home / Rooms'],
+  ['home:map', 'Home / Zigbee map'],
   ['activity', 'Log'],
   ['controllers', 'Guide'],
 ];
@@ -6121,17 +6147,36 @@ const narrow = window.matchMedia('(max-width: 40rem)');
 function drawTabOptions() {
   el.tabSelect.replaceChildren();
   for (const [view, label] of TAB_OPTIONS) {
+    // Too narrow to draw a network on, so the map is not offered.
+    if (view === 'home:map' && narrow.matches) {
+      continue;
+    }
     const option = document.createElement('option');
     option.value = view;
     option.textContent = label;
     el.tabSelect.append(option);
   }
-  el.tabSelect.value = state.view;
+  el.tabSelect.value = pickedOption();
+}
+
+/** The dropdown's choice for what is open: the tab, or Home and its page. */
+function pickedOption() {
+  return state.view === 'home' ? `home:${state.homePage}` : state.view;
 }
 
 drawTabOptions();
 
-el.tabSelect.addEventListener('change', () => openTab(el.tabSelect.value));
+el.tabSelect.addEventListener('change', () => {
+  const [view, page] = el.tabSelect.value.split(':');
+  if (page && view === state.view) {
+    openHomePage(page);
+    return;
+  }
+  if (page) {
+    state.homePage = page;
+  }
+  openTab(view);
+});
 
 // Narrowing the window while the map is open would otherwise leave a page
 // with nothing on it, since the map is hidden and the dropdown cannot say so.

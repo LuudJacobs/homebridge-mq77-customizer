@@ -251,7 +251,18 @@ describe('the Zigbee map', () => {
     const options = [...ui.document.querySelectorAll('#tab-select option')].map(
       (option) => option.textContent,
     );
-    expect(options).toEqual(['Devices', 'Rules', 'Mirrors', 'Sliders', 'Home', 'Log', 'Guide']);
+    // Home's pages in it as well, since its menu has no room where this is.
+    expect(options).toEqual([
+      'Devices',
+      'Rules',
+      'Mirrors',
+      'Sliders',
+      'Home / Rooms',
+      'Home / Zigbee map',
+      'Log',
+      'Guide',
+    ]);
+    expect((ui.document.querySelector('#tab-select') as HTMLSelectElement).value).toBe('home:map');
   });
 
   it('has an address of its own on Home, as Rooms does', async () => {

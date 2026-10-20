@@ -96,7 +96,7 @@ Button names and gestures are worked out from the action names the device publis
 
 ### Naming and grouping
 
-Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them. A room is picked from the list under Home, Rooms, where rooms are added, renamed and removed: a rename takes everything in the room along, a removal leaves it in no room. The list starts as Living room, Kitchen, Bedroom and Bathroom.
+Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them. A room is picked from the list under Home, Rooms. Edit rooms turns the list into a form to rename, remove and add them, saved all at once: a rename takes everything in the room along, a removal leaves it in no room. The list starts as Living room, Kitchen, Bedroom and Bathroom.
 
 Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by. Every heading in a list says how many are under it and folds them away when clicked. Headings start closed, except Unknown Devices, and open while a filter finds something under them.
 
