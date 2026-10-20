@@ -5129,8 +5129,8 @@ function renderLog() {
 
 /**
  * One line of the log, and what the filter finds it by: everything the line
- * says, and the names and topics of every device it involves, which is more
- * than the line says of them.
+ * says, and the names, topics and rooms of every device it involves, which is
+ * more than the line says of them.
  */
 function logLine(entry) {
   const line = document.createElement('div');
@@ -5156,7 +5156,7 @@ function logLine(entry) {
   for (const ref of logRefs(entry)) {
     const device = findDevice(ref);
     if (device) {
-      words.push(displayName(device), device.name, device.topic ?? '');
+      words.push(displayName(device), device.name, device.topic ?? '', device.exposure.room ?? '');
     }
   }
   return { node: line, search: words.join(' ').toLowerCase() };
