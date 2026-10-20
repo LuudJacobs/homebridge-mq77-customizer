@@ -294,22 +294,30 @@ header {
   color: var(--text);
 }
 
-/* A room a line, its name to edit in place, and what it holds beside it. */
+/* A room a line: its name and what it holds, or its name to edit. */
 .room-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
+  gap: 0.75rem;
+  min-height: 2.6rem;
+  padding: 0.3rem 0;
   border-bottom: 1px solid var(--line);
 }
 
-.room-row input {
-  width: 14rem;
+.room-name {
+  color: var(--text);
+  min-width: 10rem;
 }
 
-/* Away from the rest, at the far end. */
-.room-row .danger {
-  margin-left: auto;
+/* As wide as there is room for, up to a sensible name's worth. */
+.room-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 20rem;
+}
+
+.rooms .add-row {
+  margin-top: 0.6rem;
 }
 
 /* Devices */
@@ -1555,6 +1563,11 @@ table.buttons td.in-homekit {
   /* Adding, scanning, downloading and clearing are for a desk. */
   .tab-buttons {
     display: none;
+  }
+
+  /* Rooms are worth editing from anywhere, so theirs stay. */
+  #home-page-rooms .tab-buttons {
+    display: flex;
   }
 
   /* Nothing in a panel but the button that runs the rule by hand. */
