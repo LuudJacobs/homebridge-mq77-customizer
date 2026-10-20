@@ -606,6 +606,15 @@ header {
     display: block;
     margin: 0.35rem 0;
   }
+
+  /* The dropdown that stands in for the tabs has Home's pages in it. */
+  .home {
+    grid-template-columns: 1fr;
+  }
+
+  .home-menu {
+    display: none;
+  }
 }
 
 .rules-actions {
@@ -1445,14 +1454,6 @@ table.buttons td.in-homekit {
     display: none;
   }
 
-  /* With only Rooms to pick, there is no menu to show. */
-  .home {
-    grid-template-columns: 1fr;
-  }
-
-  .home-menu {
-    display: none;
-  }
 
   header {
     flex-direction: column;
