@@ -320,6 +320,22 @@ header {
   margin-top: 0.6rem;
 }
 
+/* A route's sensors, numbered in the order they are passed. */
+.route-step {
+  width: 1.2rem;
+  text-align: right;
+}
+
+/* A route's name is a sentence, `Bedroom to living room`. */
+.route .device-field input[type='text'] {
+  width: 16rem;
+}
+
+.rule-row select.route-sensor {
+  width: 16rem;
+  max-width: 100%;
+}
+
 /* Devices */
 
 .device {
