@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 - Unused buttons are hidden in Controllers to begin with
+- The log filter finds lines by what they say and the devices in them
 
 ## [2.5.0] - 2026-10-19
 
