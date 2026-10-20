@@ -30,8 +30,18 @@ async function openRooms() {
 
 const rows = (ui: { document: Document }) =>
   [...ui.document.querySelectorAll('#rooms .room-row')] as HTMLElement[];
-const buttonIn = (row: Element, text: string) =>
-  [...row.querySelectorAll('button')].find((button) => button.textContent === text) as HTMLButtonElement;
+const button = (ui: { document: Document }, text: string) =>
+  [...ui.document.querySelectorAll('#home-page-rooms button')].find(
+    (node) => node.textContent === text,
+  ) as HTMLButtonElement | undefined;
+const inputs = (ui: { document: Document }) =>
+  [...ui.document.querySelectorAll('#rooms input')] as HTMLInputElement[];
+const saved = (ui: { requests: { path: string; body: unknown }[] }) =>
+  ui.requests.findLast((request) => request.path === '/api/rooms')?.body;
+
+async function edit(ui: Awaited<ReturnType<typeof openRooms>>) {
+  await ui.click(button(ui, 'Edit rooms')!);
+}
 
 describe('Home', () => {
   it('opens on Rooms, at an address of its own', async () => {
@@ -41,56 +51,90 @@ describe('Home', () => {
     expect(ui.byText('button.home-link', 'Rooms')?.classList.contains('active')).toBe(true);
   });
 
-  it('lists the rooms A to Z, with what is in each', async () => {
+  it('lists the rooms A to Z, with what is in each, and nothing to type in', async () => {
     const ui = await openRooms();
-    expect(rows(ui).map((row) => (row.querySelector('input') as HTMLInputElement).value)).toEqual([
+    expect(rows(ui).map((row) => row.querySelector('.room-name')?.textContent)).toEqual([
       'Bathroom',
       'Kitchen',
       'Zolder',
     ]);
     expect(rows(ui)[1]!.querySelector('.device-meta')?.textContent).toBe('2 devices');
+    expect(inputs(ui)).toHaveLength(0);
+    expect(button(ui, 'Edit rooms')).toBeDefined();
+    expect(button(ui, 'Save')).toBeUndefined();
   });
 
-  it('adds a room', async () => {
+  it('turns into a form on Edit rooms, with Save and, once changed, Revert', async () => {
     const ui = await openRooms();
-    await ui.click(ui.document.getElementById('add-room'));
-    const fresh = rows(ui)[0]!;
-    expect(fresh.classList.contains('new')).toBe(true);
-    const input = fresh.querySelector('input') as HTMLInputElement;
-    input.value = 'Kelder';
-    input.dispatchEvent(new ui.window.Event('input'));
-    await ui.click(buttonIn(fresh, 'Add'));
-    expect(ui.requests.findLast((request) => request.path === '/api/rooms')?.body).toEqual({
-      name: 'Kelder',
-    });
+    await edit(ui);
+    expect(inputs(ui).map((input) => input.value)).toEqual(['Bathroom', 'Kitchen', 'Zolder']);
+    expect(ui.document.querySelectorAll('#rooms .device-meta')).toHaveLength(0);
+    expect(button(ui, 'Edit rooms')).toBeUndefined();
+    expect(button(ui, 'Revert')!.hidden).toBe(true);
+
+    inputs(ui)[2]!.value = 'Vliering';
+    inputs(ui)[2]!.dispatchEvent(new ui.window.Event('input'));
+    expect(button(ui, 'Revert')!.hidden).toBe(false);
+
+    // Revert on the left of Save.
+    const order = [...ui.document.querySelectorAll('#rooms-buttons button')].map((node) => node.textContent);
+    expect(order).toEqual(['Revert', 'Save']);
+
+    await ui.click(button(ui, 'Revert')!);
+    expect(inputs(ui)[2]!.value).toBe('Zolder');
   });
 
-  it('renames a room once there is a new name to save', async () => {
+  it('saves the whole form at once, and goes back to the list', async () => {
     const ui = await openRooms();
-    const row = rows(ui)[2]!;
-    const save = buttonIn(row, 'Save');
-    expect(save.hidden).toBe(true);
+    await edit(ui);
 
-    const input = row.querySelector('input') as HTMLInputElement;
-    input.value = 'Vliering';
-    input.dispatchEvent(new ui.window.Event('input'));
-    expect(save.hidden).toBe(false);
-    await ui.click(save);
-    expect(ui.requests.findLast((request) => request.path === '/api/rooms')?.body).toEqual({
-      name: 'Zolder',
-      to: 'Vliering',
-    });
-  });
-
-  it('removes a room, asked twice', async () => {
-    const ui = await openRooms();
-    const remove = buttonIn(rows(ui)[0]!, 'Delete');
+    inputs(ui)[1]!.value = 'Keuken';
+    inputs(ui)[1]!.dispatchEvent(new ui.window.Event('input'));
+    // Removed from the form only, asked twice.
+    const remove = rows(ui)[0]!.querySelector('button.danger') as HTMLButtonElement;
     await ui.click(remove);
+    expect(inputs(ui)).toHaveLength(3);
+    await ui.click(remove);
+    expect(inputs(ui)).toHaveLength(2);
     expect(ui.requests.some((request) => request.path === '/api/rooms')).toBe(false);
-    await ui.click(remove);
-    expect(ui.requests.findLast((request) => request.path === '/api/rooms')?.body).toEqual({
-      name: 'Bathroom',
+
+    await ui.click(ui.byText('#rooms button.add-row', '+ room'));
+    inputs(ui)[2]!.value = 'Kelder';
+    inputs(ui)[2]!.dispatchEvent(new ui.window.Event('input'));
+
+    await ui.click(button(ui, 'Save')!);
+    expect(saved(ui)).toEqual({
+      rooms: [{ was: 'Kitchen', name: 'Keuken' }, { was: 'Zolder', name: 'Zolder' }, { name: 'Kelder' }],
     });
+    expect(button(ui, 'Edit rooms')).toBeDefined();
+    expect(inputs(ui)).toHaveLength(0);
+  });
+
+  it('asks before the page is left with the form unsaved', async () => {
+    const ui = await openRooms();
+    await edit(ui);
+    inputs(ui)[0]!.value = 'Badkamer';
+    inputs(ui)[0]!.dispatchEvent(new ui.window.Event('input'));
+    const event = new ui.window.Event('beforeunload', { cancelable: true });
+    ui.window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+describe('the dropdown that stands in for the tabs', () => {
+  it('goes to a page of Home', async () => {
+    const ui = await openInterface({ state: { devices: devices() } });
+    const select = ui.document.querySelector('#tab-select') as HTMLSelectElement;
+    select.value = 'home:map';
+    select.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    expect(ui.window.location.pathname).toBe('/home/zigbee-map');
+    expect((ui.document.getElementById('home-page-map') as HTMLElement).hidden).toBe(false);
+
+    select.value = 'home:rooms';
+    select.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    expect(ui.window.location.pathname).toBe('/home/rooms');
   });
 });
 

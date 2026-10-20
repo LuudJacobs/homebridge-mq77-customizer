@@ -700,43 +700,48 @@ describe('the address of a tab', () => {
 });
 
 describe('rooms', () => {
-  it('are added, renamed and removed, and what is in them goes along', async () => {
+  it('are saved all at once: added, renamed and removed, and what is in them goes along', async () => {
     const context = await harness();
     try {
       const session = await signIn(context.base);
-      const call = (method: string, body: unknown) =>
-        session.fetch('/api/rooms', { method, body: JSON.stringify(body) });
-      const exposure = (room: string) =>
+      const save = (rooms: unknown) =>
+        session.fetch('/api/rooms', { method: 'PUT', body: JSON.stringify({ rooms }) });
+      const put = (deviceId: string, room: string) =>
         session.fetch('/api/exposure', {
           method: 'PUT',
-          body: JSON.stringify({ sourceId: 'zigbee', deviceId: '0x00158dfffe000006', exposure: { properties: [], room } }),
+          body: JSON.stringify({ sourceId: 'zigbee', deviceId, exposure: { properties: [], room } }),
         });
-      const roomOf = () => context.store.getExposure('zigbee:0x00158dfffe000006')?.room;
+      const roomOf = (deviceId: string) => context.store.getExposure(`zigbee:${deviceId}`)?.room;
+      const SOCKET = '0x00158dfffe000006';
+      const LAMP = '0x00158dfffe000003';
 
-      expect(((await (await call('POST', { name: ' Zolder ' })).json()) as { rooms: string[] }).rooms).toEqual([
-        'Bathroom',
-        'Bedroom',
-        'Kitchen',
+      // Only a room from the list, written as the list has it.
+      await put(SOCKET, 'kitchen');
+      expect(roomOf(SOCKET)).toBe('Kitchen');
+      await put(SOCKET, 'Kelder');
+      expect(roomOf(SOCKET)).toBeUndefined();
+
+      await put(SOCKET, 'Kitchen');
+      await put(LAMP, 'Bedroom');
+      const answer = await save([
+        { was: 'Kitchen', name: ' Keuken ' },
+        { was: 'Living room', name: 'Living room' },
+        { name: 'Zolder' },
+      ]);
+      expect(((await answer.json()) as { rooms: string[] }).rooms).toEqual([
+        'Keuken',
         'Living room',
         'Zolder',
       ]);
-      expect((await call('POST', { name: 'zolder' })).status).toBe(400);
+      // Renamed with its room, and out of one that went.
+      expect(roomOf(SOCKET)).toBe('Keuken');
+      expect(roomOf(LAMP)).toBeUndefined();
 
-      // Only a room from the list, written as the list has it.
-      await exposure('zolder');
-      expect(roomOf()).toBe('Zolder');
-      await exposure('Kelder');
-      expect(roomOf()).toBeUndefined();
-
-      await exposure('Zolder');
-      expect((await call('PUT', { name: 'Zolder', to: 'Kitchen' })).status).toBe(400);
-      expect((await call('PUT', { name: 'Zolder', to: 'Vliering' })).status).toBe(200);
-      expect(roomOf()).toBe('Vliering');
-
-      expect((await call('DELETE', { name: 'Vliering' })).status).toBe(200);
-      expect(roomOf()).toBeUndefined();
-      expect(context.store.data.rooms).not.toContain('Vliering');
-      expect((await call('DELETE', { name: 'Vliering' })).status).toBe(404);
+      // Refused whole, and nothing changed.
+      expect((await save([{ name: 'Hal' }, { name: 'hal' }])).status).toBe(400);
+      expect((await save([{ name: '  ' }])).status).toBe(400);
+      expect((await save([{ was: 'Schuur', name: 'Schuur' }])).status).toBe(400);
+      expect(context.store.data.rooms).toEqual(['Keuken', 'Living room', 'Zolder']);
     } finally {
       await context.server.stop();
     }

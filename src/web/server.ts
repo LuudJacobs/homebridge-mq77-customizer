@@ -170,8 +170,8 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
-      if (path === '/api/rooms' && ['POST', 'PUT', 'DELETE'].includes(request.method ?? '')) {
-        return this.changeRooms(request, response);
+      if (path === '/api/rooms' && request.method === 'PUT') {
+        return this.saveRooms(request, response);
       }
       if (path === '/api/devices' && request.method === 'DELETE') {
         return this.forgetDevice(request, response);
@@ -311,57 +311,49 @@ export class WebServer {
   }
 
   /**
-   * Adds, renames or removes a room.
+   * Saves the rooms as they were edited, all at once.
    *
-   * Everything in a room goes with it: renamed, it is in the room of the new
-   * name; removed, it is in no room at all.
+   * Each room says what it was called before, if it is not new. One left out
+   * is removed. Everything in a room goes with it: renamed, it is in the room
+   * of the new name; removed, it is in no room at all.
    */
-  private async changeRooms(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  private async saveRooms(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const body = await readJson(request);
-    const name = (raw: unknown) => (typeof raw === 'string' ? raw.trim().slice(0, 64) : '');
-    const rooms = this.deps.store.data.rooms;
-    const find = (wanted: string) =>
-      rooms.find((room) => room.toLowerCase() === wanted.toLowerCase());
-
-    if (request.method === 'POST') {
-      const added = name(body?.name);
-      if (!added) {
-        return send(response, 400, { error: 'A room needs a name' });
-      }
-      if (find(added)) {
-        return send(response, 400, { error: `There is a room called ${find(added)} already` });
-      }
-      this.deps.store.update((state) => {
-        state.rooms = sortRooms([...state.rooms, added]);
-      });
-    } else {
-      const old = find(name(body?.name));
-      if (!old) {
-        return send(response, 404, { error: 'No such room' });
-      }
-      const renamed = request.method === 'PUT' ? name(body?.to) : undefined;
-      if (request.method === 'PUT' && !renamed) {
-        return send(response, 400, { error: 'A room needs a name' });
-      }
-      const taken = renamed ? find(renamed) : undefined;
-      if (taken && taken !== old) {
-        return send(response, 400, { error: `There is a room called ${taken} already` });
-      }
-      this.deps.store.update((state) => {
-        const others = state.rooms.filter((room) => room !== old);
-        state.rooms = sortRooms(renamed ? [...others, renamed] : others);
-        for (const exposure of Object.values(state.exposures)) {
-          if (exposure.room !== old) {
-            continue;
-          }
-          if (renamed) {
-            exposure.room = renamed;
-          } else {
-            delete exposure.room;
-          }
-        }
-      });
+    if (!Array.isArray(body?.rooms)) {
+      return send(response, 400, { error: 'The rooms are a list' });
     }
+    const current = this.deps.store.data.rooms;
+    const rooms: { was?: string; name: string }[] = [];
+    for (const entry of body.rooms as { was?: unknown; name?: unknown }[]) {
+      const name = typeof entry?.name === 'string' ? entry.name.trim().slice(0, 64) : '';
+      if (!name) {
+        return send(response, 400, { error: 'A room needs a name' });
+      }
+      const was = current.find((room) => room === entry?.was);
+      if (entry?.was !== undefined && !was) {
+        return send(response, 400, { error: `There is no room called ${String(entry.was)}` });
+      }
+      if (rooms.some((other) => other.name.toLowerCase() === name.toLowerCase())) {
+        return send(response, 400, { error: `There are two rooms called ${name}` });
+      }
+      rooms.push({ ...(was ? { was } : {}), name });
+    }
+
+    const renamed = new Map(rooms.flatMap((room) => (room.was ? [[room.was, room.name]] : [])));
+    this.deps.store.update((state) => {
+      for (const exposure of Object.values(state.exposures)) {
+        if (!exposure.room) {
+          continue;
+        }
+        const to = renamed.get(exposure.room);
+        if (to) {
+          exposure.room = to;
+        } else {
+          delete exposure.room;
+        }
+      }
+      state.rooms = sortRooms(rooms.map((room) => room.name));
+    });
 
     this.broadcast({ type: 'devices' });
     return send(response, 200, { rooms: this.deps.store.data.rooms });
