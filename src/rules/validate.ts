@@ -23,6 +23,7 @@ import type {
   Match,
   MirrorRule,
   PropertyRef,
+  RouteCondition,
   Rule,
   SliderRule,
   TimeCondition,
@@ -437,6 +438,28 @@ function parseCondition(raw: unknown): { node?: ConditionNode } | { error: strin
     }
     // Nothing to negate is nothing at all, rather than everything.
     return { node: parsed.node ? { kind: 'not', node: parsed.node } : undefined };
+  }
+
+  if (raw.kind === 'route') {
+    const routeId = typeof raw.routeId === 'string' ? raw.routeId : '';
+    const test = ['on', 'off', 'at', 'towards'].includes(raw.test as string)
+      ? (raw.test as RouteCondition['test'])
+      : undefined;
+    if (!routeId || !test) {
+      return { error: 'A route condition needs a route and what to ask of it' };
+    }
+    if (test === 'at') {
+      const { sourceId, deviceId } = isObject(raw.sensor) ? raw.sensor : {};
+      if (typeof sourceId !== 'string' || typeof deviceId !== 'string') {
+        return { error: 'A route condition at a sensor needs the sensor' };
+      }
+      return { node: { kind: 'route', routeId, test, sensor: { sourceId, deviceId } } };
+    }
+    if (test === 'towards') {
+      const direction = raw.direction === 'back' ? 'back' : 'forward';
+      return { node: { kind: 'route', routeId, test, direction } };
+    }
+    return { node: { kind: 'route', routeId, test } };
   }
 
   if (raw.kind === 'time') {

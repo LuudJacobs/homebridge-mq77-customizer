@@ -1,9 +1,17 @@
 import type { Catalog } from '../catalog.js';
+import type { RoutePosition } from '../routes.js';
+import type { Route } from '../store.js';
 import type { NormalisedProperty } from '../model/types.js';
 import type { Place } from './clock.js';
 import { describeTime, onSide } from './clock.js';
 import { describeMatch, matches } from './match.js';
-import type { Condition, ConditionNode, PropertyRef, TimeCondition } from './types.js';
+import type {
+  Condition,
+  ConditionNode,
+  PropertyRef,
+  RouteCondition,
+  TimeCondition,
+} from './types.js';
 import { isSunTime } from './types.js';
 
 export interface Reason {
@@ -24,6 +32,8 @@ interface Lookup {
   now?(): Date;
   /** Where the house is, for a window whose ends the sun decides. */
   place?: Place;
+  /** A route, and where somebody is on it, for a condition that asks. */
+  route?(id: string): { route: Route; position?: RoutePosition } | undefined;
 }
 
 /**
@@ -44,6 +54,9 @@ export function evaluate(node: ConditionNode | undefined, lookup: Lookup): Reaso
 
     case 'time':
       return timeOfDay(node, lookup);
+
+    case 'route':
+      return onRoute(node, lookup);
 
     case 'all': {
       for (const child of node.nodes) {
@@ -117,6 +130,44 @@ function test(node: { kind: 'test' } & Condition, lookup: Lookup): Reason | unde
     ? undefined
     : { detail: `${property.label} ${describeMatch(node.match)} did not hold` };
 }
+/**
+ * Where somebody is on a route, against where the condition asks them to be.
+ *
+ * A route that has been deleted is not one nobody is on: there is no route
+ * to ask about, and the log says so.
+ */
+function onRoute(node: RouteCondition, lookup: Lookup): Reason | undefined {
+  const found = lookup.route?.(node.routeId);
+  if (!found) {
+    return { detail: 'that route is not there any more', unanswerable: true };
+  }
+  const { route, position } = found;
+  const held =
+    node.test === 'on'
+      ? Boolean(position)
+      : node.test === 'off'
+        ? !position
+        : node.test === 'at'
+          ? position !== undefined &&
+            position.at.sourceId === node.sensor?.sourceId &&
+            position.at.deviceId === node.sensor.deviceId
+          : position?.direction === node.direction;
+  return held ? undefined : { detail: `${describeRoute(node, route)} did not hold` };
+}
+
+function describeRoute(node: RouteCondition, route?: Route): string {
+  const name = route?.name ?? 'a route';
+  switch (node.test) {
+    case 'on':
+      return `somebody on ${name}`;
+    case 'off':
+      return `nobody on ${name}`;
+    case 'at':
+      return `somebody at a sensor on ${name}`;
+    default:
+      return `somebody heading ${node.direction === 'back' ? 'back' : 'along'} ${name}`;
+  }
+}
 
 /** Describes an expression in words, for a reason or for the interface. */
 export function describe(node: ConditionNode, lookup?: Lookup): string {
@@ -133,6 +184,8 @@ export function describe(node: ConditionNode, lookup?: Lookup): string {
       return `not (${describe(node.node, lookup)})`;
     case 'time':
       return `${node.side} ${describeTime(node.at, node.offset)}`;
+    case 'route':
+      return describeRoute(node, lookup?.route?.(node.routeId)?.route);
     default:
       return 'an unknown condition';
   }
@@ -147,8 +200,14 @@ export function fromConditions(conditions: Condition[] | undefined): ConditionNo
 }
 
 /** Builds the lookup the evaluator needs from the catalog. */
-export function catalogLookup(catalog: Catalog, now?: () => Date, place?: Place): Lookup {
+export function catalogLookup(
+  catalog: Catalog,
+  now?: () => Date,
+  place?: Place,
+  route?: Lookup['route'],
+): Lookup {
   return {
+    route,
     property: (ref) =>
       catalog
         .getDevice(ref.sourceId, ref.deviceId)
