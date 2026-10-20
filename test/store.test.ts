@@ -22,6 +22,7 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+      routes: [],
     });
   });
 
@@ -75,6 +76,7 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+      routes: [],
     });
   });
 
