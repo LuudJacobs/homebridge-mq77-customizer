@@ -141,8 +141,8 @@ describe('an internal state in the device list', () => {
     value.value = 'true';
     value.dispatchEvent(new ui.window.Event('change'));
     const room = fieldOf(card, 'Room');
-    room.value = 'Hal';
-    room.dispatchEvent(new ui.window.Event('input'));
+    room.value = 'Kitchen';
+    room.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
     expect(ui.requests.some((request) => request.path.startsWith('/api/states/'))).toBe(false);
     expect(ui.requests.some((request) => request.path === '/api/exposure')).toBe(false);
@@ -155,7 +155,7 @@ describe('an internal state in the device list', () => {
       deviceId: string;
       exposure: { room?: string };
     };
-    expect(saved).toMatchObject({ deviceId: 't1', exposure: { room: 'Hal' } });
+    expect(saved).toMatchObject({ deviceId: 't1', exposure: { room: 'Kitchen' } });
   });
 
   it('will not save without a name', async () => {
@@ -238,7 +238,7 @@ describe('an internal state in rules', () => {
 
   async function openRule() {
     const ui = await openInterface({ state: { devices: devices() }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
     return ui;
   }
@@ -283,7 +283,7 @@ describe('an internal state in the activity log', () => {
 
   it('reads as the toggle and where it stands, with who did it', async () => {
     const ui = await openInterface({ state: { devices: devices() }, log });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
 
     const line = ui.document.querySelector('#activity-log .log-line')!;
     expect(line.querySelector('.tag')?.textContent).toBe('internal state');
@@ -296,7 +296,7 @@ describe('an internal state in the activity log', () => {
 
   it('has a filter of its own, on to begin with', async () => {
     const ui = await openInterface({ state: { devices: devices() }, log });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
     const box = ui.document.getElementById('kind-state') as HTMLInputElement;
     expect(box.checked).toBe(true);
 
@@ -356,7 +356,7 @@ describe('Text and Number states in rules', () => {
 
   async function openRule(rule: unknown) {
     const ui = await openInterface({ state: { devices: states() }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
     return ui;
   }
@@ -406,7 +406,7 @@ describe('Text and Number states in rules', () => {
       state: { devices: states() },
       rules: [{ id: 'm1', kind: 'mirror', name: 'Samen', enabled: true, groups: [] }],
     });
-    await ui.click(ui.byText('button.tab', 'Mirror devices'));
+    await ui.click(ui.byText('button.tab', 'Mirrors'));
     await ui.openCard(ui.document.querySelector('#mirror .rule') as HTMLDetailsElement);
     const offered = [...ui.document.querySelectorAll('#mirror .mirror-devices label')].map(
       (label) => label.textContent,

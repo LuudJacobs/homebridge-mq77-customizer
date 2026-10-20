@@ -71,7 +71,7 @@ const automation = (id: string, name: string, value: string) => ({
 
 async function openAutomation(rules: unknown[], which = 0) {
   const ui = await openInterface({ state: { devices }, rules });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelectorAll('#automation .rule')[which]!);
   return ui;
 }
@@ -101,7 +101,7 @@ describe('saying an action properly', () => {
       state: { devices: remote(values) },
       rules: [automation('r1', 'First', values[0]!)],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('#automation .rule'));
     return onTrigger(ui);
   }
@@ -149,7 +149,7 @@ describe('saying an action properly', () => {
       state: { devices },
       rules: [automation('r1', 'First', '1_single')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('#automation .rule'));
 
     const selects = ui.document.querySelectorAll('#automation .triggers .rule-row select');

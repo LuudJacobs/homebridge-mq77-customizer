@@ -80,19 +80,20 @@ describe('a device panel', () => {
 
   it('is marked as soon as its name or room is typed, without being redrawn', async () => {
     const { ui, card } = await open();
-    const [name, room] = [...card.querySelectorAll('.device-field input')] as HTMLInputElement[];
+    const name = card.querySelector('.device-field input') as HTMLInputElement;
+    const room = card.querySelector('.device-field select.room-select') as HTMLSelectElement;
 
-    name!.value = 'Lamp';
-    name!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    name.value = 'Lamp';
+    name.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
     expect(nameOf(card)).toBe('* a_lamp');
     expect(revertOf(card).hidden).toBe(false);
 
-    name!.value = '';
-    name!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    name.value = '';
+    name.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
     expect(nameOf(card)).toBe('a_lamp');
 
-    room!.value = 'Hal';
-    room!.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    room.value = 'Kitchen';
+    room.dispatchEvent(new ui.window.Event('change', { bubbles: true }));
     expect(nameOf(card)).toBe('* a_lamp');
   });
 
@@ -117,7 +118,7 @@ describe('a device panel', () => {
     const { ui, card } = await open();
     await change(ui, tick(card));
 
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.click(ui.byText('button.tab', 'Devices'));
     await ui.live({ type: 'devices' });
 
@@ -132,9 +133,9 @@ describe('a device panel', () => {
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
-    const room = cardOf(ui, '0xa').querySelectorAll('.device-field input')[1] as HTMLInputElement;
+    const room = cardOf(ui, '0xa').querySelector('.device-field select.room-select') as HTMLSelectElement;
     room.value = 'Keuken';
-    room.dispatchEvent(new ui.window.Event('input', { bubbles: true }));
+    room.dispatchEvent(new ui.window.Event('change', { bubbles: true }));
     await ui.settle();
     const section = (id: string) =>
       cardOf(ui, id).closest('.section-items')!.previousElementSibling!.textContent;
@@ -169,7 +170,7 @@ describe('a rule panel', () => {
 
   async function openRule() {
     const ui = await openInterface({ state: { devices: devices() }, rules: [rule] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await ui.openCard(ui.document.querySelector('#automation .rule') as HTMLDetailsElement);
     return ui;
   }

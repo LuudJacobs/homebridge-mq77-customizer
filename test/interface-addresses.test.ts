@@ -101,8 +101,8 @@ describe('an address', () => {
   });
 
   it('opens the rule its # names, unfolding the section it is in', async () => {
-    const ui = await open(`/automation#${codeOf('r2')}`);
-    expect(active(ui)).toBe('Automation');
+    const ui = await open(`/rules#${codeOf('r2')}`);
+    expect(active(ui)).toBe('Rules');
     const [card] = cardsOf(ui, 'r2');
     expect(card!.open).toBe(true);
     // Not the other one.
@@ -115,7 +115,7 @@ describe('an address', () => {
   });
 
   it('empties a filter that hides what it names, and keeps the sort', async () => {
-    const ui = await open('/automation');
+    const ui = await open('/rules');
     const filter = ui.document.querySelector('#filter') as HTMLInputElement;
     filter.value = 'zolder';
     filter.dispatchEvent(new ui.window.Event('input'));
@@ -124,7 +124,7 @@ describe('an address', () => {
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
-    ui.window.history.pushState(null, '', `/automation#${codeOf('r1')}`);
+    ui.window.history.pushState(null, '', `/rules#${codeOf('r1')}`);
     ui.window.dispatchEvent(new ui.window.PopStateEvent('popstate'));
     await ui.settle();
 
@@ -136,13 +136,13 @@ describe('an address', () => {
   });
 
   it('opens every listing of a rule listed under several triggers', async () => {
-    const ui = await open('/automation');
+    const ui = await open('/rules');
     const sort = ui.document.querySelector('#sort') as HTMLSelectElement;
     sort.value = 'trigger';
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
-    ui.window.history.pushState(null, '', `/automation#${codeOf('r1')}`);
+    ui.window.history.pushState(null, '', `/rules#${codeOf('r1')}`);
     ui.window.dispatchEvent(new ui.window.PopStateEvent('popstate'));
     await ui.settle();
 
@@ -156,13 +156,13 @@ describe('the address as things are opened', () => {
   it('follows the tabs, as a step back and forward go through', async () => {
     const ui = await open('/devices');
     const before = ui.window.history.length;
-    await ui.click(ui.byText('button.tab', 'Mirror devices'));
-    expect(ui.window.location.pathname).toBe('/mirror');
+    await ui.click(ui.byText('button.tab', 'Mirrors'));
+    expect(ui.window.location.pathname).toBe('/mirrors');
     expect(ui.window.history.length).toBe(before + 1);
   });
 
   it('carries the # of an opened card, and loses it when the card is closed', async () => {
-    const ui = await open('/automation');
+    const ui = await open('/rules');
     const summary = cardsOf(ui, 'r2')[0]!.querySelector('summary') as HTMLElement;
 
     summary.click();
@@ -172,19 +172,19 @@ describe('the address as things are opened', () => {
     summary.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(ui.window.location.hash).toBe('');
-    expect(ui.window.location.pathname).toBe('/automation');
+    expect(ui.window.location.pathname).toBe('/rules');
   });
 
-  it('goes to a rule from the button it is on in Controllers', async () => {
-    const ui = await open('/controllers');
+  it('goes to a rule from the button it is on in Guide', async () => {
+    const ui = await open('/guide');
     const link = [...ui.document.querySelectorAll('#controllers a.rule-link')].find((node) =>
       node.textContent?.includes('Keuken aan'),
     ) as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe(`/automation#${codeOf('r1')}`);
+    expect(link.getAttribute('href')).toBe(`/rules#${codeOf('r1')}`);
 
     await ui.click(link);
-    expect(active(ui)).toBe('Automation');
-    expect(ui.window.location.pathname).toBe('/automation');
+    expect(active(ui)).toBe('Rules');
+    expect(ui.window.location.pathname).toBe('/rules');
     expect(cardsOf(ui, 'r1')[0]!.open).toBe(true);
   });
 });
@@ -199,7 +199,7 @@ describe('the # of a device or a rule', () => {
   });
 
   it('is read in either case', async () => {
-    const ui = await open(`/automation#${codeOf('r2').toLowerCase()}`);
+    const ui = await open(`/rules#${codeOf('r2').toLowerCase()}`);
     expect(cardsOf(ui, 'r2')[0]!.open).toBe(true);
   });
 });

@@ -105,13 +105,13 @@ describe('filtering the automation list', () => {
   ];
 
   it('matches on the name of the rule', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     await filterFor(ui, 'zebra');
     expect(named(ui, '#automation')).toEqual(['Zebra']);
   });
 
   it('matches on a device the rule acts on', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     // Walking the devices is where reading the wrong shape used to throw,
     // and a throw here emptied the tab rather than showing anything.
     await filterFor(ui, 'shed_lamp');
@@ -119,7 +119,7 @@ describe('filtering the automation list', () => {
   });
 
   it('matches on the model of a device it acts on', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     await filterFor(ui, 's31zb');
     expect(named(ui, '#automation')).toEqual(['Apple']);
   });
@@ -131,7 +131,7 @@ describe('filtering the automation list', () => {
         { actions: [{ ...ref('0xc'), value: 'ON' }] },
       ],
     });
-    const ui = await openTab('Automation', [late]);
+    const ui = await openTab('Rules', [late]);
     await filterFor(ui, 'shed_lamp');
     expect(named(ui, '#automation')).toEqual(['Later']);
   });
@@ -144,13 +144,13 @@ describe('filtering the automation list', () => {
       trigger: { ...ref('0xa'), match: { kind: 'changedTo', value: 'ON' } },
       actions: [{ ...ref('0xc'), value: 'ON' }],
     };
-    const ui = await openTab('Automation', [old]);
+    const ui = await openTab('Rules', [old]);
     await filterFor(ui, 'shed_lamp');
     expect(named(ui, '#automation')).toEqual(['Old shape']);
   });
 
   it('says so when nothing matches, rather than showing an empty tab', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     await filterFor(ui, 'nothing called this');
     expect(ui.document.querySelector('#automation')!.textContent).toContain('Nothing matches');
   });
@@ -163,12 +163,12 @@ describe('sorting the automation list', () => {
   ];
 
   it('sorts by name', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     expect(named(ui, '#automation')).toEqual(['Apple', 'Zebra']);
   });
 
   it('offers name and trigger, and nothing about the target', async () => {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     const options = [...ui.document.querySelectorAll('#sort option')].map(
       (node) => (node as HTMLOptionElement).value,
     );
@@ -192,13 +192,13 @@ describe('listing automations under their trigger', () => {
   });
 
   it('puts a heading per trigger device, in name order', async () => {
-    const ui = await openTab('Automation', [aqara, shelly, shellyToo]);
+    const ui = await openTab('Rules', [aqara, shelly, shellyToo]);
     await sortBy(ui, 'trigger');
     expect(headings(ui)).toEqual(['hall_lamp (2)', 'porch_lamp (1)']);
   });
 
   it('names the automation, then what sets it off', async () => {
-    const ui = await openTab('Automation', [shelly, shellyToo]);
+    const ui = await openTab('Rules', [shelly, shellyToo]);
     await sortBy(ui, 'trigger');
 
     // The heading has said which device, so the line is about the automation.
@@ -217,7 +217,7 @@ describe('listing automations under their trigger', () => {
       triggers: [{ kind: 'time', at: 'sunset', offset: -30 }],
     });
 
-    const ui = await openTab('Automation', [shelly, evening, dusk]);
+    const ui = await openTab('Rules', [shelly, evening, dusk]);
     await sortBy(ui, 'trigger');
 
     expect(headings(ui)).toContain('Current time (2)');
@@ -237,7 +237,7 @@ describe('listing automations under their trigger', () => {
     const slow = automation('r7', 'After a while', '0xa', '0xc', { waitMs: 90_000 });
     const quick = automation('r8', 'At once', '0xa', '0xc');
 
-    const ui = await openTab('Automation', [slow, quick]);
+    const ui = await openTab('Rules', [slow, quick]);
     const meta = [...ui.document.querySelectorAll('#automation .device-meta')].map(
       (node) => node.textContent,
     );
@@ -254,7 +254,7 @@ describe('listing automations under their trigger', () => {
         { ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } },
       ],
     });
-    const ui = await openTab('Automation', [both]);
+    const ui = await openTab('Rules', [both]);
     await sortBy(ui, 'trigger');
 
     // The list answers what a button does, so one rule can answer twice.
@@ -269,7 +269,7 @@ describe('listing automations under their trigger', () => {
         { ...ref('0xb'), match: { kind: 'changedTo', value: 'ON' } },
       ],
     });
-    const ui = await openTab('Automation', [both]);
+    const ui = await openTab('Rules', [both]);
     await sortBy(ui, 'trigger');
 
     const cards = [...ui.document.querySelectorAll('#automation .rule')] as HTMLDetailsElement[];
@@ -284,7 +284,7 @@ describe('listing automations under their trigger', () => {
     const orphan = automation('r5', 'Gone', '0xz', '0xc', {
       triggers: [{ ...ref('0xz'), match: { kind: 'changedTo', value: 'ON' } }],
     });
-    const ui = await openTab('Automation', [orphan, shelly]);
+    const ui = await openTab('Rules', [orphan, shelly]);
     await sortBy(ui, 'trigger');
     expect(headings(ui)).toEqual(['hall_lamp (1)', 'No device (1)']);
   });
@@ -307,7 +307,7 @@ describe('naming a rule by where it acts', () => {
       state: { devices: placed('Study') },
       rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     expect(titles(ui)).toEqual(['Study: Nightlight toggle']);
   });
 
@@ -332,7 +332,7 @@ describe('naming a rule by where it acts', () => {
     }));
 
     const ui = await openInterface({ state: { devices: spread }, rules: [two] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     expect(titles(ui)).toEqual(['Kitchen / Study: Evening']);
   });
 
@@ -341,7 +341,7 @@ describe('naming a rule by where it acts', () => {
       state: { devices: placed(undefined) },
       rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     expect(titles(ui)).toEqual(['Nightlight toggle']);
   });
 
@@ -354,7 +354,7 @@ describe('naming a rule by where it acts', () => {
       state: { devices: placed },
       rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'trigger');
 
     // The heading names the remote, which says nothing about where it acts.
@@ -366,7 +366,7 @@ describe('naming a rule by where it acts', () => {
       state: { devices: placed('Study') },
       rules: [automation('r1', 'Nightlight toggle', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'room');
 
     // The heading has said it already.
@@ -394,7 +394,7 @@ describe('naming a rule by where it acts', () => {
     }));
 
     const ui = await openInterface({ state: { devices: spread }, rules: [two] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'room');
 
     const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
@@ -414,7 +414,7 @@ describe('naming a rule by where it acts', () => {
 
 describe('keeping a description on one line', () => {
   it('wraps each device and its count in one piece', async () => {
-    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const ui = await openTab('Rules', [automation('r1', 'Hall on', '0xa', '0xb')]);
     const chunks = [...ui.document.querySelectorAll('#automation .device-meta .chunk')].map(
       (node) => node.textContent,
     );
@@ -425,7 +425,7 @@ describe('keeping a description on one line', () => {
   });
 
   it('breaks after an arrow rather than inside what follows it', async () => {
-    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const ui = await openTab('Rules', [automation('r1', 'Hall on', '0xa', '0xb')]);
     const sides = [...ui.document.querySelectorAll('#automation .device-meta .phrase')].map(
       (node) => node.textContent,
     );
@@ -436,7 +436,7 @@ describe('keeping a description on one line', () => {
   });
 
   it('keeps the switch out of the words, so it can sit in the corner', async () => {
-    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const ui = await openTab('Rules', [automation('r1', 'Hall on', '0xa', '0xb')]);
     const summary = ui.document.querySelector('#automation .rule > summary') as HTMLElement;
 
     // The name and the description in one piece, the switch beside it: what
@@ -455,7 +455,7 @@ describe('keeping a description on one line', () => {
   it('keeps a wait whole', async () => {
     const slow = automation('r9', 'Light out', '0xa', '0xb', { waitMs: 90_000 });
     const ui = await openInterface({ state: { devices }, rules: [slow] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
 
     const chunks = [...ui.document.querySelectorAll('#automation .device-meta .chunk')].map(
       (node) => node.textContent,
@@ -470,7 +470,7 @@ describe('what the line under a rule says', () => {
     ui.document.querySelector('#automation .device-meta')?.textContent;
 
   it('names the devices and nothing about their functions', async () => {
-    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const ui = await openTab('Rules', [automation('r1', 'Hall on', '0xa', '0xb')]);
     // Which function it writes is in the rule. Saying "state" here said
     // nothing anybody was reading for.
     expect(meta(ui)).toBe('hall_lamp → porch_lamp');
@@ -492,12 +492,12 @@ describe('what the line under a rule says', () => {
         { actions: [{ sourceId: 'zigbee', deviceId: '0xb', propertyKey: 'state', value: 'OFF' }] },
       ],
     });
-    const ui = await openTab('Automation', [many]);
+    const ui = await openTab('Rules', [many]);
     expect(meta(ui)).toBe('hall_lamp (+1) → porch_lamp (+1) - 2 outcomes');
   });
 
   it('says nothing about outcomes when there is only one', async () => {
-    const ui = await openTab('Automation', [automation('r1', 'Hall on', '0xa', '0xb')]);
+    const ui = await openTab('Rules', [automation('r1', 'Hall on', '0xa', '0xb')]);
     expect(meta(ui)).not.toContain('outcome');
   });
 
@@ -516,7 +516,7 @@ describe('what the line under a rule says', () => {
       state: { devices: placed },
       rules: [automation('r1', 'Kitchen light', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'room');
 
     expect(meta(ui)).toBe('Living room Remote → Light');
@@ -531,7 +531,7 @@ describe('what the line under a rule says', () => {
       state: { devices: placed },
       rules: [automation('r1', 'Nightlight', '0xa', '0xb')],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
 
     expect(meta(ui)).toContain('Study Lamp');
     await sortBy(ui, 'room');
@@ -544,13 +544,13 @@ describe('what the line under a rule says', () => {
 describe('a rule just added', () => {
   it('sits at the top until it is saved, whatever it is called', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
 
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
 
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     // By name it would be second and easy to miss on a long list.
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
@@ -558,14 +558,14 @@ describe('a rule just added', () => {
 
   it('shows through a filter that would otherwise hide it', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     await filterFor(ui, 'apple');
     expect(named(ui, '#automation')).toEqual(['Apple']);
 
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     // Adding something that then vanishes is worse than a filter being ignored.
     expect(named(ui, '#automation')).toEqual(['New automation', 'Apple']);
@@ -573,12 +573,12 @@ describe('a rule just added', () => {
 
   it('has no switch until there is something saved to switch', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = {
       rules: [apple, { ...automation('r2', 'New automation', '0xa', '0xb'), enabled: false }],
     };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     const cards = [...ui.document.querySelectorAll('#automation .rule')];
     expect(cards[0]!.querySelector('.rule-enabled')).toBeNull();
@@ -593,13 +593,13 @@ describe('a rule just added', () => {
     }));
     const apple = automation('r1', 'Apple', '0xa', '0xb');
     const ui = await openInterface({ state: { devices: placed }, rules: [apple] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'room');
 
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     // Under a heading it would be buried, which is the same as hidden.
     const first = ui.document.querySelector('#automation > *');
@@ -611,12 +611,12 @@ describe('a rule just added', () => {
 
   it('takes its place in the order once saved', async () => {
     const apple = automation('r1', 'Apple', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
 
     const added = automation('r2', 'New automation', '0xa', '0xb');
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     await ui.click(ui.byText('button.primary', 'Save', '#automation'));
@@ -630,7 +630,7 @@ describe('switching a rule on and off', () => {
   const apple = automation('r1', 'Apple', '0xa', '0xb');
 
   it('sits in the header and says which it is', async () => {
-    const ui = await openTab('Automation', [{ ...apple, enabled: false }]);
+    const ui = await openTab('Rules', [{ ...apple, enabled: false }]);
     const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
 
     expect(toggle.textContent).toContain('disabled');
@@ -638,7 +638,7 @@ describe('switching a rule on and off', () => {
   });
 
   it('saves as it is clicked, without touching the panel', async () => {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
 
     box.checked = false;
@@ -654,7 +654,7 @@ describe('switching a rule on and off', () => {
   });
 
   it('changes its word when it is switched', async () => {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
     expect(
       (ui.document.querySelector('#automation .rule-enabled') as HTMLElement).textContent,
@@ -672,7 +672,7 @@ describe('switching a rule on and off', () => {
   });
 
   it('puts the word back if the save is refused', async () => {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     const box = ui.document.querySelector('#automation .rule-enabled input') as HTMLInputElement;
 
     ui.failures['PUT /api/rules'] = { status: 500, body: { error: 'no' } };
@@ -687,7 +687,7 @@ describe('switching a rule on and off', () => {
   });
 
   it('does not open the panel when clicked', async () => {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     const toggle = ui.document.querySelector('#automation .rule-enabled') as HTMLElement;
 
@@ -702,7 +702,7 @@ describe('running a rule by hand', () => {
   const apple = automation('r1', 'Apple', '0xa', '0xb');
 
   async function openSaved(rules: unknown[] = [apple]) {
-    const ui = await openTab('Automation', rules);
+    const ui = await openTab('Rules', rules);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     await ui.openCard(card);
     return ui;
@@ -738,10 +738,10 @@ describe('running a rule by hand', () => {
 
   it('is absent on a rule that has only just been added', async () => {
     const added = automation('r2', 'New automation', '0xa', '0xb');
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, added] };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     await ui.openCard(card);
@@ -762,7 +762,7 @@ describe('running a rule by hand', () => {
         },
       ],
     });
-    await ui.click(ui.byText('button.tab', 'Mirror devices'));
+    await ui.click(ui.byText('button.tab', 'Mirrors'));
     const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
     await ui.openCard(card);
 
@@ -778,7 +778,7 @@ describe('deleting a rule', () => {
   const apple = automation('r1', 'Apple', '0xa', '0xb');
 
   async function openSaved() {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     const card = ui.document.querySelector('#automation .rule') as HTMLDetailsElement;
     await ui.openCard(card);
     return ui;
@@ -817,10 +817,10 @@ describe('deleting a rule', () => {
   }, 6000);
 
   it('deletes a rule just added on the first click', async () => {
-    const ui = await openTab('Automation', [apple]);
+    const ui = await openTab('Rules', [apple]);
     ui.responses['PUT /api/rules'] = { rule: { id: 'r2' } };
     ui.responses['/api/rules'] = { rules: [apple, automation('r2', 'New automation', '0xa', '0xb')] };
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     // Nothing has been written into it yet, so asking twice is in the way.
     const button = ui.document.querySelector(
@@ -852,7 +852,7 @@ describe('grouping automations by the device they act on', () => {
       },
       rules: [lamp, shed],
     });
-    await ui.click(ui.byText('button.tab', 'Automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
     await sortBy(ui, 'room');
 
     const headings = [...ui.document.querySelectorAll('#automation .rule-group')].map(
@@ -867,13 +867,13 @@ describe('the mirror list', () => {
   const rules = [mirror('m1', 'Zebra', '0xa', '0xc'), mirror('m2', 'Apple', '0xb', '0xb')];
 
   it('filters by a device in the group', async () => {
-    const ui = await openTab('Mirror devices', rules);
+    const ui = await openTab('Mirrors', rules);
     await filterFor(ui, 'shed_lamp');
     expect(named(ui, '#mirror')).toEqual(['Zebra']);
   });
 
   it('offers name and room only, since its two sides are the same thing', async () => {
-    const ui = await openTab('Mirror devices', rules);
+    const ui = await openTab('Mirrors', rules);
     const options = [...ui.document.querySelectorAll('#sort option')].map(
       (node) => (node as HTMLOptionElement).value,
     );
@@ -884,7 +884,7 @@ describe('the mirror list', () => {
 describe('a rule this build cannot read', () => {
   it('costs its own list and no more', async () => {
     const broken = { id: 'bad', name: 'Broken', enabled: true, branches: 'not a list' };
-    const ui = await openTab('Mirror devices', [broken, mirror('m1', 'Fine', '0xa', '0xb')]);
+    const ui = await openTab('Mirrors', [broken, mirror('m1', 'Fine', '0xa', '0xb')]);
     await filterFor(ui, 'lamp');
 
     // The mirror list is unaffected by the automation list falling over...
