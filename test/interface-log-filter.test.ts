@@ -36,6 +36,8 @@ const device = (deviceId: string, name: string, exposure: Record<string, unknown
 const devices = () => [
   device('0xa', 'hall_motion', { room: 'Gang', label: 'Beweging', type: 'sensor' }),
   device('0xb', 'study_lamp', { room: 'Kantoor', label: 'Lamp', type: 'light' }),
+  // No name of its own, so the line says its Zigbee2MQTT name and not its room.
+  device('0xc', 'attic_switch', { room: 'Zolder', type: 'controller' }),
 ];
 const ref = (deviceId: string) => ({ sourceId: 'zigbee', deviceId, propertyKey: 'state' });
 
@@ -60,6 +62,15 @@ const log = [
     changed: { ...ref('0xa'), value: 'ON' },
   },
   {
+    at: Date.now() - 1500,
+    ruleId: 'zigbee:0xc',
+    ruleName: 'attic_switch',
+    ruleKind: 'action',
+    outcome: 'fired',
+    detail: 'State ON',
+    press: { ...ref('0xc'), value: 'ON' },
+  },
+  {
     at: Date.now() - 2000,
     ruleId: 'r9',
     ruleName: 'Iets anders',
@@ -72,6 +83,10 @@ const log = [
 async function filtered(term: string) {
   const ui = await openInterface({ state: { devices: devices() }, rules, log });
   await ui.click(ui.byText('button.tab', 'Log'));
+  // Presses on a line of their own are hidden to begin with.
+  const presses = ui.document.getElementById('kind-action') as HTMLInputElement;
+  presses.checked = true;
+  presses.dispatchEvent(new ui.window.Event('change'));
   const filter = ui.document.querySelector('#filter') as HTMLInputElement;
   filter.value = term;
   filter.dispatchEvent(new ui.window.Event('input'));
@@ -92,7 +107,12 @@ describe('filtering the log', () => {
     expect(await filtered('zigbee2mqtt/study_lamp')).toBe(1);
   });
 
+  it('finds a line by the room of a device in it, said or not', async () => {
+    // The switch is in Zolder, which its line does not say.
+    expect(await filtered('zolder')).toBe(1);
+  });
+
   it('finds nothing for what no line has', async () => {
-    expect(await filtered('zolder')).toBe(0);
+    expect(await filtered('kelder')).toBe(0);
   });
 });
