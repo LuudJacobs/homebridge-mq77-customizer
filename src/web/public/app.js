@@ -5072,11 +5072,13 @@ function renderLog() {
   container.replaceChildren();
   const term = (state.filters.activity ?? '').trim().toLowerCase();
 
-  const entries = state.log
+  // Drawn first and matched after, so the filter reads what is on screen.
+  const lines = state.log
     .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
-    .filter((entry) => !term || entry.ruleName.toLowerCase().includes(term));
+    .map(logLine)
+    .filter((line) => !term || line.search.includes(term));
 
-  if (entries.length === 0) {
+  if (lines.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = state.log.length === 0 ? 'Nothing has run yet.' : 'Nothing matches.';
@@ -5084,24 +5086,56 @@ function renderLog() {
     return;
   }
 
-  for (const entry of entries.slice(0, 100)) {
-    const line = document.createElement('div');
-    line.className = `log-line ${entry.outcome}`;
-    const when = document.createElement('span');
-    when.className = 'log-time';
-    when.textContent = new Date(entry.at).toLocaleTimeString();
-    // Both kinds share this list now, and two rules can share a name, so each
-    // entry says which it came from.
-    const kind = document.createElement('span');
-    kind.className = 'tag';
-    kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+  container.append(...lines.slice(0, 100).map((line) => line.node));
+}
 
-    const what = document.createElement('span');
-    what.className = 'log-what';
-    what.replaceChildren(...logParts(entry));
-    line.append(when, kind, what);
-    container.append(line);
+/**
+ * One line of the log, and what the filter finds it by: everything the line
+ * says, and the names and topics of every device it involves, which is more
+ * than the line says of them.
+ */
+function logLine(entry) {
+  const line = document.createElement('div');
+  line.className = `log-line ${entry.outcome}`;
+  const when = document.createElement('span');
+  when.className = 'log-time';
+  when.textContent = new Date(entry.at).toLocaleTimeString();
+  // Both kinds share this list now, and two rules can share a name, so each
+  // entry says which it came from.
+  const kind = document.createElement('span');
+  kind.className = 'tag';
+  kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+
+  const what = document.createElement('span');
+  what.className = 'log-what';
+  what.replaceChildren(...logParts(entry));
+  line.append(when, kind, what);
+
+  // The drawings carry titles, which are not words on the line.
+  const said = line.cloneNode(true);
+  said.querySelectorAll('title').forEach((title) => title.remove());
+  const words = [said.textContent];
+  for (const ref of logRefs(entry)) {
+    const device = findDevice(ref);
+    if (device) {
+      words.push(displayName(device), device.name, device.topic ?? '');
+    }
   }
+  return { node: line, search: words.join(' ').toLowerCase() };
+}
+
+/** Every device a log line is about: what set it off, and what it acted on. */
+function logRefs(entry) {
+  const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
+  return [
+    entry.press,
+    entry.changed,
+    entry.copy?.from,
+    ...(entry.copy?.to ?? []),
+    ...(rule ? ruleRefs(rule) : []),
+    // A press or an internal state on a line of its own is named by its key.
+    ...(entry.ruleKind === 'action' || entry.ruleKind === 'state' ? [refOf(entry.ruleId)] : []),
+  ].filter(Boolean);
 }
 
 /**
