@@ -94,9 +94,18 @@ const rules = [
   },
 ];
 
+/** Shows the buttons nothing is bound to as well, which starts off unticked. */
+async function showUnused(ui: Awaited<ReturnType<typeof openInterface>>) {
+  const box = ui.document.getElementById('unused-buttons') as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new ui.window.Event('change'));
+  await ui.settle();
+}
+
 async function openControllers(over: { rules?: unknown[] } = {}) {
   const ui = await openInterface({ state: { devices }, rules: over.rules ?? rules });
   await ui.click(ui.byText('button.tab', 'Controllers'));
+  await showUnused(ui);
   return ui;
 }
 
@@ -140,6 +149,16 @@ describe('what every controller sets off', () => {
     const spanning = ui.document.querySelector('#controllers td[rowspan]') as HTMLTableCellElement;
     expect(spanning.textContent).toBe('1 Single');
     expect(spanning.rowSpan).toBe(2);
+  });
+
+  it('leaves the free buttons out to begin with', async () => {
+    const ui = await openInterface({ state: { devices }, rules });
+    await ui.click(ui.byText('button.tab', 'Controllers'));
+    expect((ui.document.getElementById('unused-buttons') as HTMLInputElement).checked).toBe(false);
+    expect(table(ui)[1]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+    ]);
   });
 
   it('leaves the free buttons out when they are not wanted', async () => {
@@ -256,6 +275,7 @@ const published = (over: Record<string, unknown> = {}) => [
 async function openPublished(over: Record<string, unknown> = {}) {
   const ui = await openInterface({ state: { devices: published(over) }, rules });
   await ui.click(ui.byText('button.tab', 'Controllers'));
+  await showUnused(ui);
   return ui;
 }
 

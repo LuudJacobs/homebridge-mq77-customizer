@@ -10,7 +10,7 @@ const state = {
   /** Which kinds the activity list shows. */
   activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
   /** Whether the controller overview lists buttons nothing is bound to. */
-  unusedButtons: true,
+  unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
   homekitButtons: true,
   /** Whether a location is set, which is what lets a rule follow the sun. */
