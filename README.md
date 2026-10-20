@@ -116,6 +116,14 @@ Whether messages are retained is read from Zigbee2MQTT's own configuration, wher
 
 The Guide tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks say which of those lines are wanted, Unused buttons off to begin with, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
+### Routes
+
+Under Home, Routes are ways through the house, as the sensors along them notice somebody: bedroom to living room, past four of them. Each has a name, its sensors in the order they are passed, a gap, ten seconds to begin with, and Both ways, on to begin with. A sensor is anything that notices somebody: motion, presence, or a door opening.
+
+Somebody is on a route from the second sensor in order, since one on its own is only somebody in that room, and moves along it with each sensor after that. Longer than the gap without the next one and they are off it, at the last sensor too. Nobody is told apart: it is a good guess, not a tracker, and a restart forgets it.
+
+A rule's conditions can ask about a route, from Routes above Current time: whether somebody is on it, not on it, at one of its sensors, or heading towards the room at one end of it.
+
 ### Zigbee map
 
 Under Home, Zigbee map draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
