@@ -38,7 +38,7 @@ const ref = (deviceId: string) => ({ sourceId: 'zigbee', deviceId, propertyKey: 
 
 async function openRule(rule: unknown, canNotify = false) {
   const ui = await openInterface({ state: { devices: devices(), canNotify }, rules: [rule] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
   return ui;
 }

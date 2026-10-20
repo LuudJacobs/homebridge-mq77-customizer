@@ -38,12 +38,12 @@
 
         <nav class="tabs">
           <button id="tab-devices" type="button" class="tab active">Devices</button>
-          <button id="tab-automation" type="button" class="tab">Automation</button>
-          <button id="tab-mirror" type="button" class="tab">Mirror devices</button>
+          <button id="tab-automation" type="button" class="tab">Rules</button>
+          <button id="tab-mirror" type="button" class="tab">Mirrors</button>
           <button id="tab-sliders" type="button" class="tab">Sliders</button>
-          <button id="tab-activity" type="button" class="tab">Activity</button>
-          <button id="tab-controllers" type="button" class="tab">Controllers</button>
-          <button id="tab-map" type="button" class="tab">Map</button>
+          <button id="tab-home" type="button" class="tab">Home</button>
+          <button id="tab-activity" type="button" class="tab">Log</button>
+          <button id="tab-controllers" type="button" class="tab">Guide</button>
         </nav>
 
         <a id="zigbee2mqtt-link" class="tab tab-link" target="_blank" rel="noreferrer noopener" hidden>
@@ -65,7 +65,7 @@
         <span id="kind-filters" class="kind-filters" hidden>
           <label class="toggle" for="kind-automation">
             <input id="kind-automation" type="checkbox" checked />
-            Automation
+            Rule
           </label>
           <label class="toggle" for="kind-mirror">
             <input id="kind-mirror" type="checkbox" checked />
@@ -108,7 +108,7 @@
       <section id="view-automation" hidden>
         <div class="rules-actions">
           <span class="tab-buttons">
-            <button id="add-automation" type="button">+ automation</button>
+            <button id="add-automation" type="button">+ rule</button>
           </span>
         </div>
         <main id="automation"></main>
@@ -133,14 +133,32 @@
       </section>
 
 
-      <section id="view-map" hidden>
-        <div class="rules-actions">
-          <span class="tab-buttons">
-            <span id="map-status" class="device-meta"></span>
-            <button id="scan-map" type="button">Scan the network</button>
-          </span>
+      <section id="view-home" hidden>
+        <div class="home">
+          <nav class="home-menu">
+            <button id="home-rooms" type="button" class="home-link">Rooms</button>
+            <button id="home-map" type="button" class="home-link">Zigbee map</button>
+          </nav>
+          <div class="home-pages">
+            <div id="home-page-rooms" class="home-page">
+              <div class="rules-actions">
+                <span class="tab-buttons">
+                  <button id="add-room" type="button">+ room</button>
+                </span>
+              </div>
+              <div id="rooms" class="rooms"></div>
+            </div>
+            <div id="home-page-map" class="home-page" hidden>
+              <div class="rules-actions">
+                <span class="tab-buttons">
+                  <span id="map-status" class="device-meta"></span>
+                  <button id="scan-map" type="button">Scan the network</button>
+                </span>
+              </div>
+              <div id="map" class="map"><div id="map-tip" class="map-tip" hidden></div></div>
+            </div>
+          </div>
         </div>
-        <div id="map" class="map"><div id="map-tip" class="map-tip" hidden></div></div>
       </section>
 
       <section id="view-controllers" hidden>

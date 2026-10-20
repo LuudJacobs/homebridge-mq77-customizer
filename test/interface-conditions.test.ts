@@ -51,7 +51,7 @@ const legacyRule = {
 
 async function openRule(rule: unknown) {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   const card = ui.document.querySelector('.rule') as HTMLDetailsElement;
   await ui.openCard(card);
   return ui;

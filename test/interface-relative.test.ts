@@ -70,7 +70,7 @@ const rule = (action: Record<string, unknown>) => ({
 
 async function openRule(action: Record<string, unknown>) {
   const ui = await openInterface({ state: { devices }, rules: [rule(action)] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
   return ui;
 }

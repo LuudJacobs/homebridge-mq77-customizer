@@ -71,7 +71,7 @@ const log = [
 
 async function filtered(term: string) {
   const ui = await openInterface({ state: { devices: devices() }, rules, log });
-  await ui.click(ui.byText('button.tab', 'Activity'));
+  await ui.click(ui.byText('button.tab', 'Log'));
   const filter = ui.document.querySelector('#filter') as HTMLInputElement;
   filter.value = term;
   filter.dispatchEvent(new ui.window.Event('input'));

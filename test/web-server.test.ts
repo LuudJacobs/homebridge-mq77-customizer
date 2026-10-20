@@ -685,12 +685,14 @@ describe('the address of a tab', () => {
   it('is answered with the page, signed in or not', async () => {
     const context = await harness();
     try {
-      for (const path of ['/devices', '/automation', '/mirror/', '/map']) {
+      // Every tab's, and one it does not know, which shows Devices.
+      for (const path of ['/devices', '/rules', '/mirrors/', '/home/zigbee-map', '/nothing-here']) {
         const response = await fetch(`${context.base}${path}`);
         expect(response.status, path).toBe(200);
         expect(await response.text(), path).toContain('MQ77 Customizer');
       }
-      expect((await fetch(`${context.base}/nothing-here`)).status).toBe(404);
+      // A file that is not there is missing.
+      expect((await fetch(`${context.base}/nothing-here.css`)).status).toBe(404);
     } finally {
       await context.server.stop();
     }

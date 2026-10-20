@@ -122,7 +122,7 @@ const entry = (over: Record<string, unknown>) => ({
 
 async function lines(log: unknown[]) {
   const ui = await openInterface({ state: { devices }, rules, log });
-  await ui.click(ui.byText('button.tab', 'Activity'));
+  await ui.click(ui.byText('button.tab', 'Log'));
 
   // Presses of their own are left out by default, and here the list itself is
   // what is under test.
@@ -301,7 +301,7 @@ describe('what a log line says', () => {
         }),
       ],
     });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
     const icon = ui.document.querySelector('#activity-log .type-icon');
     expect(icon?.getAttribute('class')).toContain('sensor');
   });
@@ -339,7 +339,7 @@ describe('what a log line says', () => {
         entry({ press }),
       ],
     });
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
 
     // A press that set a rule off is on that rule line, so the list opens
     // without a column of presses beside it.

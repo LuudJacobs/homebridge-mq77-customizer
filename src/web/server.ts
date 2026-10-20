@@ -40,20 +40,6 @@ const CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
 };
 
-/**
- * The tabs, each with an address of its own. The page answers every one of
- * them and works out from the address which tab to show.
- */
-const TAB_PATHS = new Set([
-  '/devices',
-  '/automation',
-  '/mirror',
-  '/sliders',
-  '/activity',
-  '/controllers',
-  '/map',
-]);
-
 /** Slows down password guessing without needing any state. */
 const FAILED_LOGIN_DELAY_MS = 500;
 
@@ -651,7 +637,10 @@ export class WebServer {
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {
-    const page = path === '/' || TAB_PATHS.has(path.replace(/\/+$/, ''));
+    // Every tab has an address of its own, /rules or /home/rooms, and the page
+    // works out from it which to show; one it does not know shows Devices.
+    // Anything with an extension is a file, and missing if it is not there.
+    const page = extname(path) === '';
     const relative = page ? 'index.html' : path.replace(/^\/+/, '');
     // normalize collapses any `..` before it can escape the public directory.
     const file = join(PUBLIC_DIR, normalize(relative));

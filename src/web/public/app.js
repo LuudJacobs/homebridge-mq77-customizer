@@ -51,6 +51,12 @@ const state = {
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
+  /** Which page of Home is open: `rooms` or `map`. */
+  homePage: 'rooms',
+  /** The rooms a device can be put in, A to Z, as the server keeps them. */
+  rooms: [],
+  /** Whether a row for a new room is open on the Rooms page. */
+  addingRoom: false,
   rules: [],
   openRules: new Set(),
   log: [],
@@ -84,7 +90,7 @@ const el = {
   tabSliders: document.getElementById('tab-sliders'),
   tabActivity: document.getElementById('tab-activity'),
   tabControllers: document.getElementById('tab-controllers'),
-  tabMap: document.getElementById('tab-map'),
+  tabHome: document.getElementById('tab-home'),
   tabSelect: document.getElementById('tab-select'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
@@ -98,7 +104,13 @@ const el = {
   homekitButtons: document.getElementById('homekit-buttons'),
   homekitFilter: document.getElementById('homekit-buttons-filter'),
   downloadControllers: document.getElementById('download-controllers'),
-  viewMap: document.getElementById('view-map'),
+  viewHome: document.getElementById('view-home'),
+  homeRooms: document.getElementById('home-rooms'),
+  homeMap: document.getElementById('home-map'),
+  homePageRooms: document.getElementById('home-page-rooms'),
+  homePageMap: document.getElementById('home-page-map'),
+  rooms: document.getElementById('rooms'),
+  addRoom: document.getElementById('add-room'),
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
   scanMap: document.getElementById('scan-map'),
@@ -491,6 +503,7 @@ function showApp() {
 async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
+  state.rooms = snapshot.rooms ?? [];
   state.tileTypes = snapshot.tileTypes;
   state.hasLocation = snapshot.hasLocation === true;
   state.canNotify = snapshot.canNotify === true;
@@ -841,7 +854,7 @@ const TAB_CONTROLS = {
   },
   activity: { sorts: [], placeholder: 'Filter...' },
   controllers: { sorts: [], placeholder: 'Filter...' },
-  map: { sorts: [], placeholder: 'Filter...' },
+  home: { sorts: [], placeholder: '' },
 };
 
 /** Points the header controls at whatever the current tab is about. */
@@ -867,7 +880,7 @@ function paintControls() {
 
   // Nothing on the map or the controller overview is filtered or sorted from
   // up here: one is a drawing and the other is every controller there is.
-  el.filter.hidden = view === 'map' || view === 'controllers';
+  el.filter.hidden = view === 'home' || view === 'controllers';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
 
@@ -1272,13 +1285,8 @@ function renderToggle(device) {
     keep();
   });
 
-  const room = document.createElement('input');
-  room.type = 'text';
-  room.maxLength = 64;
-  room.placeholder = 'none';
-  room.value = draft.room;
-  room.addEventListener('input', () => {
-    draft.room = room.value;
+  const room = roomSelect(draft.room, (picked) => {
+    draft.room = picked;
     keep();
   });
 
@@ -1375,6 +1383,34 @@ function renderToggle(device) {
   footer.append(save, revertButton(device), error, remove);
 
   wrap.append(row, footer);
+  return wrap;
+}
+
+/**
+ * A dropdown of the rooms, A to Z, with none at the top.
+ *
+ * A room that has since gone from the list is still offered while it is the
+ * one picked, so opening a panel never quietly moves anything.
+ */
+function roomSelect(current, onChange) {
+  const select = document.createElement('select');
+  select.className = 'room-select';
+  const rooms = state.rooms.includes(current) || !current ? state.rooms : [...state.rooms, current];
+  for (const [value, text] of [['', 'none'], ...rooms.map((room) => [room, room])]) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = text;
+    select.append(choice);
+  }
+  select.value = current ?? '';
+  select.addEventListener('change', () => onChange(select.value));
+  return select;
+}
+
+function roomField(current, onChange) {
+  const wrap = document.createElement('label');
+  wrap.className = 'device-field';
+  wrap.append(document.createTextNode('Room'), roomSelect(current, onChange));
   return wrap;
 }
 
@@ -1475,8 +1511,8 @@ function renderDeviceInfo(device) {
     }),
   );
   row.append(
-    field('Room', device.exposure.room, 'none', (value) => {
-      device.exposure.room = value || undefined;
+    roomField(device.exposure.room, (picked) => {
+      device.exposure.room = picked || undefined;
       repaint();
     }),
   );
@@ -1988,10 +2024,12 @@ window.addEventListener('beforeunload', (event) => {
 async function start() {
   await load();
   listen();
-  // The plain address is Devices, said as such so it can be copied.
+  // Said in full, so what is copied is what is open: the plain address is
+  // Devices, /home is Rooms, and one nothing knows is Devices too.
   const view = viewOfAddress();
-  if (location.pathname === '/') {
-    setAddress(addressOf(view, linkOfAddress()), false);
+  const full = addressOf(view, linkOfAddress());
+  if (`${location.pathname}${location.hash}` !== full) {
+    setAddress(full, false);
   }
   follow(view, linkOfAddress());
 }
@@ -2467,8 +2505,8 @@ const kindOf = (rule) => {
 };
 
 function renderRules() {
-  safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
-  safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
+  safely(() => renderRuleList('standard', el.automation, 'No rules yet.'));
+  safely(() => renderRuleList('mirror', el.mirror, 'No mirrors yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
   const lists = { automation: el.automation, mirror: el.mirror, sliders: el.sliders };
   if (lists[state.view]) {
@@ -5060,7 +5098,7 @@ function valueInput(property, current, onChange, options = {}) {
 }
 
 const KIND_LABELS = {
-  standard: 'automation',
+  standard: 'rule',
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
@@ -5727,17 +5765,36 @@ async function scanNetwork() {
   }
 }
 
-/** The tabs, each with an address of its own: `/automation`. */
-const VIEWS = ['devices', 'automation', 'mirror', 'sliders', 'activity', 'controllers', 'map'];
+/** The address of each tab, by the name the page knows it by inside. */
+const SLUGS = {
+  devices: 'devices',
+  automation: 'rules',
+  mirror: 'mirrors',
+  sliders: 'sliders',
+  home: 'home',
+  activity: 'log',
+  controllers: 'guide',
+};
+
+/** And of each page of Home. */
+const HOME_SLUGS = { rooms: 'rooms', map: 'zigbee-map' };
 
 /** The tab a rule is kept on. */
 const viewOfRule = (rule) =>
   rule.kind === 'mirror' ? 'mirror' : rule.kind === 'slider' ? 'sliders' : 'automation';
 
-/** Which tab the address is for, Devices for anything it does not name. */
+/**
+ * Which tab the address is for, Devices for anything it does not name, and
+ * for Home which of its pages: Rooms unless it names the map, which a phone
+ * has no room for.
+ */
 function viewOfAddress() {
-  const slug = location.pathname.replace(/^\/+|\/+$/g, '');
-  return VIEWS.includes(slug) ? slug : 'devices';
+  const [slug, page] = location.pathname.replace(/^\/+|\/+$/g, '').split('/');
+  const view = Object.keys(SLUGS).find((candidate) => SLUGS[candidate] === slug) ?? 'devices';
+  if (view === 'home') {
+    state.homePage = page === HOME_SLUGS.map && !narrow.matches ? 'map' : 'rooms';
+  }
+  return view;
 }
 
 /** What the address's # names, a device or a rule, if anything. */
@@ -5745,7 +5802,8 @@ function linkOfAddress() {
   return location.hash.slice(1).toUpperCase() || undefined;
 }
 
-const addressOf = (view, link) => `/${view}${link ? `#${link}` : ''}`;
+const addressOf = (view, link) =>
+  `/${SLUGS[view]}${view === 'home' ? `/${HOME_SLUGS[state.homePage]}` : ''}${link ? `#${link}` : ''}`;
 
 /**
  * The # of a device or a rule: eight of A to Z and 0 to 9, worked out from
@@ -5875,25 +5933,163 @@ function showView(view) {
   el.viewSliders.hidden = view !== 'sliders';
   el.viewActivity.hidden = view !== 'activity';
   el.viewControllers.hidden = view !== 'controllers';
-  el.viewMap.hidden = view !== 'map';
+  el.viewHome.hidden = view !== 'home';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
   el.tabSliders.classList.toggle('active', view === 'sliders');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabControllers.classList.toggle('active', view === 'controllers');
-  el.tabMap.classList.toggle('active', view === 'map');
+  el.tabHome.classList.toggle('active', view === 'home');
   el.tabSelect.value = view;
   paintControls();
   if (view === 'devices') {
     safeRender();
-  } else if (view === 'map') {
-    // Nothing to fetch: a scan is slow enough that it only happens on asking.
-    drawMap();
+  } else if (view === 'home') {
+    drawHome();
   } else {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
 }
+
+/** Home: its menu on the left, and the page picked in it. */
+function drawHome() {
+  const onMap = state.homePage === 'map';
+  el.homeRooms.classList.toggle('active', !onMap);
+  el.homeMap.classList.toggle('active', onMap);
+  el.homePageRooms.hidden = onMap;
+  el.homePageMap.hidden = !onMap;
+  if (onMap) {
+    // Nothing to fetch: a scan is slow enough that it only happens on asking.
+    drawMap();
+  } else {
+    renderRooms();
+  }
+}
+
+/** A page of Home picked from its menu, a step back and forward go through. */
+function openHomePage(page) {
+  state.homePage = page;
+  setAddress(addressOf('home'), true);
+  drawHome();
+}
+
+el.homeRooms.addEventListener('click', () => openHomePage('rooms'));
+el.homeMap.addEventListener('click', () => openHomePage('map'));
+
+/**
+ * The rooms, A to Z, each one renamed or removed where it is listed.
+ *
+ * Saved one at a time with its own Save, like any other panel: a rename
+ * takes everything in the room along, a removal leaves it in none.
+ */
+function renderRooms() {
+  el.rooms.replaceChildren();
+  if (state.addingRoom) {
+    el.rooms.append(roomRow(undefined));
+  }
+  for (const room of state.rooms) {
+    el.rooms.append(roomRow(room));
+  }
+  if (state.rooms.length === 0 && !state.addingRoom) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'No rooms yet.';
+    el.rooms.append(empty);
+  }
+  el.rooms.querySelector('.room-row.new input')?.focus();
+}
+
+function roomRow(room) {
+  const row = document.createElement('div');
+  row.className = `room-row${room === undefined ? ' new' : ''}`;
+  row.dataset.room = room ?? '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 64;
+  input.placeholder = 'Room name';
+  input.value = room ?? '';
+
+  const count = document.createElement('span');
+  count.className = 'device-meta';
+  if (room !== undefined) {
+    const inIt = state.devices.filter((device) => device.exposure.room === room).length;
+    count.textContent = `${inIt} device${inIt === 1 ? '' : 's'}`;
+  }
+
+  const error = document.createElement('span');
+  error.className = 'error';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = room === undefined ? 'Add' : 'Save';
+  // Only with something to save: a name that is there and not the old one.
+  const check = () => {
+    save.hidden = !input.value.trim() || input.value.trim() === room;
+  };
+  check();
+  input.addEventListener('input', check);
+
+  const commit = async () => {
+    error.textContent = '';
+    try {
+      await api('/api/rooms', {
+        method: room === undefined ? 'POST' : 'PUT',
+        body: JSON.stringify(
+          room === undefined ? { name: input.value } : { name: room, to: input.value },
+        ),
+      });
+      state.addingRoom = false;
+      await load();
+      renderRooms();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  };
+  save.addEventListener('click', commit);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !save.hidden) {
+      commit();
+    }
+  });
+
+  row.append(input, save, count, error);
+
+  if (room === undefined) {
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => {
+      state.addingRoom = false;
+      renderRooms();
+    });
+    row.append(cancel);
+    return row;
+  }
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'danger';
+  remove.textContent = 'Delete';
+  armDelete(remove, async () => {
+    try {
+      await api('/api/rooms', { method: 'DELETE', body: JSON.stringify({ name: room }) });
+      await load();
+      renderRooms();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+  row.append(remove);
+  return row;
+}
+
+el.addRoom.addEventListener('click', () => {
+  state.addingRoom = true;
+  renderRooms();
+});
 
 const showsRules = () =>
   state.view === 'controllers' ||
@@ -5912,12 +6108,12 @@ const showsRules = () =>
  */
 const TAB_OPTIONS = [
   ['devices', 'Devices'],
-  ['automation', 'Automation'],
-  ['mirror', 'Mirror devices'],
+  ['automation', 'Rules'],
+  ['mirror', 'Mirrors'],
   ['sliders', 'Sliders'],
-  ['controllers', 'Controllers'],
-  ['activity', 'Activity'],
-  ['map', 'Map'],
+  ['home', 'Home'],
+  ['activity', 'Log'],
+  ['controllers', 'Guide'],
 ];
 
 const narrow = window.matchMedia('(max-width: 40rem)');
@@ -5925,9 +6121,6 @@ const narrow = window.matchMedia('(max-width: 40rem)');
 function drawTabOptions() {
   el.tabSelect.replaceChildren();
   for (const [view, label] of TAB_OPTIONS) {
-    if (view === 'map' && narrow.matches) {
-      continue;
-    }
     const option = document.createElement('option');
     option.value = view;
     option.textContent = label;
@@ -5943,9 +6136,10 @@ el.tabSelect.addEventListener('change', () => openTab(el.tabSelect.value));
 // Narrowing the window while the map is open would otherwise leave a page
 // with nothing on it, since the map is hidden and the dropdown cannot say so.
 narrow.addEventListener('change', () => {
-  if (narrow.matches && state.view === 'map') {
-    setAddress(addressOf('devices'), false);
-    showView('devices');
+  if (narrow.matches && state.view === 'home' && state.homePage === 'map') {
+    state.homePage = 'rooms';
+    setAddress(addressOf('home'), false);
+    drawHome();
   }
   drawTabOptions();
 });
@@ -5967,7 +6161,7 @@ el.clearLog.addEventListener('click', async () => {
 });
 
 el.tabActivity.addEventListener('click', () => openTab('activity'));
-el.tabMap.addEventListener('click', () => openTab('map'));
+el.tabHome.addEventListener('click', () => openTab('home'));
 el.scanMap.addEventListener('click', () => scanNetwork());
 
 // One device panel at a time, and anywhere else closes it.
@@ -5986,7 +6180,7 @@ async function addRule(draft) {
 
 el.addAutomation.addEventListener('click', () =>
   addRule({
-    name: 'New automation',
+    name: 'New rule',
     // Off to begin with, so a half built rule cannot fire while it is being
     // filled in.
     enabled: false,

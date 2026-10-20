@@ -18,10 +18,16 @@ const SCAN = {
   at: 1_700_000_000_000,
 };
 
+/** The map, on Home, picked from its menu. */
+async function toMap(ui: Awaited<ReturnType<typeof openInterface>>) {
+  await ui.click(ui.byText('button.tab', 'Home'));
+  await ui.click(ui.byText('button.home-link', 'Zigbee map'));
+}
+
 async function openMap(map: unknown = SCAN) {
   const ui = await openInterface({ state: { devices: [] } });
   ui.responses['POST /api/map'] = map;
-  await ui.click(ui.byText('button.tab', 'Map'));
+  await toMap(ui);
   return ui;
 }
 
@@ -60,7 +66,7 @@ describe('the page around it', () => {
   });
 });
 
-describe('the map tab', () => {
+describe('the Zigbee map', () => {
   it('scans nothing until it is asked to', async () => {
     const ui = await openMap();
     // A scan questions every device in turn, so it is never automatic.
@@ -206,7 +212,7 @@ describe('the map tab', () => {
 
   it('says what went wrong instead of drawing nothing', async () => {
     const ui = await openInterface({ state: { devices: [] } });
-    await ui.click(ui.byText('button.tab', 'Map'));
+    await toMap(ui);
     ui.failures['POST /api/map'] = { status: 502, body: { error: 'coordinator is busy' } };
 
     await ui.click(ui.byText('button', 'Scan the network'));
@@ -232,7 +238,7 @@ describe('the map tab', () => {
         },
       ],
     };
-    await ui.click(ui.byText('button.tab', 'Activity'));
+    await ui.click(ui.byText('button.tab', 'Log'));
     expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
 
     await ui.click(ui.document.querySelector('#clear-log'));
@@ -240,23 +246,19 @@ describe('the map tab', () => {
     expect(ui.document.querySelector('#activity-log')!.textContent).toContain('Nothing has run');
   });
 
-  it('is in the dropdown that stands in for the tabs, since it is drawable', async () => {
+  it('lists every tab in the dropdown that stands in for the tabs, Home among them', async () => {
     const ui = await openMap();
     const options = [...ui.document.querySelectorAll('#tab-select option')].map(
       (option) => option.textContent,
     );
+    expect(options).toEqual(['Devices', 'Rules', 'Mirrors', 'Sliders', 'Home', 'Log', 'Guide']);
+  });
 
-    // A window too narrow for the whole row of tabs is still wide enough for
-    // a network.
-    // Only a phone drops it, which the tab itself is hidden on as well.
-    expect(options).toEqual([
-      'Devices',
-      'Automation',
-      'Mirror devices',
-      'Sliders',
-      'Controllers',
-      'Activity',
-      'Map',
-    ]);
+  it('has an address of its own on Home, as Rooms does', async () => {
+    const ui = await openMap();
+    expect(ui.window.location.pathname).toBe('/home/zigbee-map');
+    await ui.click(ui.byText('button.home-link', 'Rooms'));
+    expect(ui.window.location.pathname).toBe('/home/rooms');
+    expect((ui.document.getElementById('home-page-map') as HTMLElement).hidden).toBe(true);
   });
 });
