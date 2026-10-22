@@ -6,15 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A number rising above or falling below a value sets a rule off once, when it crosses it
-- Conditions say is above and is below
-- Illuminance in lux can be published to HomeKit as a light sensor
-- A condition switched from a time back to a device saves again
+## [2.6.0] - 2026-10-22
+
+### Added
+
 - A Home tab with Rooms and the Zigbee map; a device's room is picked from the list
-- Rooms start as Living room, Kitchen, Bedroom and Bathroom, and every device's room is emptied once
+- Illuminance in lux can be published to HomeKit as a light sensor
+
+### Changed
+
 - The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide, with addresses to match
+- Rooms start as Living room, Kitchen, Bedroom and Bathroom, and every device's room is emptied once
+- Conditions say is above and is below
 - Unused buttons are hidden in Guide to begin with
+
+### Fixed
+
+- A number rising above or falling below a value sets a rule off once, when it crosses it
 - The log filter finds lines by what they say and the devices in them
+- A condition switched from a time back to a device saves again
 
 ## [2.5.0] - 2026-10-19
 
