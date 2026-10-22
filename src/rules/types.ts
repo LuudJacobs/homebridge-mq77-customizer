@@ -89,22 +89,7 @@ export type ConditionNode =
   | { kind: 'any'; nodes: ConditionNode[] }
   | { kind: 'not'; node: ConditionNode }
   | ({ kind: 'test' } & Condition)
-  | TimeCondition
-  | RouteCondition;
-
-/**
- * Where somebody is on a route: on it at all, at one of its sensors, or
- * heading one way along it.
- */
-export interface RouteCondition {
-  kind: 'route';
-  routeId: string;
-  test: 'on' | 'off' | 'at' | 'towards';
-  /** For `at`: which of its sensors. */
-  sensor?: { sourceId: string; deviceId: string };
-  /** For `towards`: along its sensors in the order listed, or back. */
-  direction?: 'forward' | 'back';
-}
+  | TimeCondition;
 
 /**
  * Which side of a time of day it is.

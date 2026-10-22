@@ -747,38 +747,3 @@ describe('rooms', () => {
     }
   });
 });
-
-describe('routes', () => {
-  it('are saved with what they need, and deleted', async () => {
-    const context = await harness();
-    try {
-      const session = await signIn(context.base);
-      const save = (route: unknown) =>
-        session.fetch('/api/routes', { method: 'PUT', body: JSON.stringify({ route }) });
-      const sensors = [
-        { sourceId: 'zigbee', deviceId: '0xa' },
-        { sourceId: 'zigbee', deviceId: '0xb' },
-      ];
-
-      expect((await save({ name: 'Kort', sensors: sensors.slice(0, 1) })).status).toBe(400);
-      expect((await save({ name: ' ', sensors })).status).toBe(400);
-      expect((await save({ name: 'Dubbel', sensors: [sensors[0], sensors[0]] })).status).toBe(400);
-
-      const made = (await (await save({ name: ' Gang ', sensors })).json()) as {
-        route: { id: string; name: string; gapMs: number; bothWays: boolean };
-      };
-      // Ten seconds and both ways, unless said otherwise.
-      expect(made.route).toMatchObject({ name: 'Gang', gapMs: 10_000, bothWays: true });
-
-      await save({ ...made.route, gapMs: 50, bothWays: false });
-      expect(context.store.data.routes).toEqual([
-        { id: made.route.id, name: 'Gang', sensors, gapMs: 1_000, bothWays: false },
-      ]);
-
-      expect((await session.fetch(`/api/routes/${made.route.id}`, { method: 'DELETE' })).status).toBe(200);
-      expect(context.store.data.routes).toEqual([]);
-    } finally {
-      await context.server.stop();
-    }
-  });
-});
