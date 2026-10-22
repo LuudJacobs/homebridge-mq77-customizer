@@ -80,6 +80,7 @@ Accessory names are corrected to what HomeKit accepts, which must start and end 
 | on/off | Switch, Outlet, Lightbulb or Fan, your choice |
 | brightness | Brightness on a Lightbulb |
 | temperature, humidity | their sensor services |
+| illuminance, in lux | Light Sensor; a raw reading with no unit is not offered |
 | contact | a Contact sensor, closed while the two halves touch |
 | smoke | a Smoke sensor. Heat alarms report `smoke` too, so they become one as well |
 | occupancy | a Motion sensor by default, or an Occupancy sensor if you pick that under HomeKit sensor. A PIR and an mmWave sensor both report `occupancy`, so which one a device is has to be picked by hand |

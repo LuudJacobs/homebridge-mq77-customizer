@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Illuminance in lux can be published to HomeKit as a light sensor
 - Routes: the sensors along a way through the house, asked about in a rule's conditions
 - A condition switched from a time back to a device saves again
 - A Home tab with Rooms and the Zigbee map; a device's room is picked from the list

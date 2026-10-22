@@ -459,6 +459,7 @@ const ROLE_LABELS = {
   childLock: 'child lock',
   temperature: 'temperature sensor',
   humidity: 'humidity sensor',
+  illuminance: 'light sensor',
   battery: 'battery',
   lowBattery: 'low battery',
   contact: 'contact sensor',
