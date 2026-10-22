@@ -2070,8 +2070,9 @@ const MATCH_KINDS = [
   { kind: 'equals', label: 'is' },
   { kind: 'notEquals', label: 'is not' },
   { kind: 'changed', label: 'changes' },
-  { kind: 'above', label: 'rises above' },
-  { kind: 'below', label: 'falls below' },
+  // A condition asks where the value stands, so it is not rising anywhere.
+  { kind: 'above', label: 'rises above', conditionLabel: 'is above' },
+  { kind: 'below', label: 'falls below', conditionLabel: 'is below' },
 ];
 
 /** What a Text state can be asked: the whole of it, or a piece, either case. */
@@ -5043,7 +5044,7 @@ function refRow(ref, options) {
       for (const entry of offered) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
-        choice.textContent = entry.label;
+        choice.textContent = (options.asCondition && entry.conditionLabel) || entry.label;
         kinds.append(choice);
       }
       // A state whose type changed since may hold a test it no longer has.
