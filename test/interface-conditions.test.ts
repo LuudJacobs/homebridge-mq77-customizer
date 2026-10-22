@@ -407,6 +407,7 @@ describe('branches', () => {
 describe('a number', () => {
   const sensor = {
     ...device('0xd', 'hall_sensor'),
+    exposure: { properties: [], room: 'Hal' },
     properties: [
       {
         key: 'illuminance',
@@ -452,5 +453,26 @@ describe('a number', () => {
     expect(offered(condition)).not.toContain('falls below');
     const kinds = condition.querySelector('.rule-tail select') as HTMLSelectElement;
     expect(kinds.selectedOptions[0]?.textContent).toBe('is below');
+  });
+
+  it('stays a test when a condition goes from a time back to a device', async () => {
+    const atNight = {
+      ...dark,
+      branches: [{ ...dark.branches[0], when: { kind: 'time', at: '22:00', side: 'after' } }],
+    };
+    const ui = await openInterface({ state: { devices: [...devices, sensor] }, rules: [atNight] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+
+    const room = ui.document.querySelector('.condition-group .rule-row select') as HTMLSelectElement;
+    room.value = 'Hal';
+    room.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when: unknown }[];
+    };
+    expect(saved.branches[0]?.when).toMatchObject({ kind: 'test', deviceId: '0xd' });
   });
 });
