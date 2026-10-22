@@ -37,10 +37,27 @@ describe('matches', () => {
     expect(matches({ kind: 'below', value: 20 }, 'warm')).toBe(false);
   });
 
+  it('rises above or falls below a value once, when it crosses it', () => {
+    expect(matches({ kind: 'above', value: 20 }, 21, 19)).toBe(true);
+    expect(matches({ kind: 'above', value: 20 }, 22, 21)).toBe(false);
+    expect(matches({ kind: 'above', value: 20 }, 21, 20)).toBe(true);
+    expect(matches({ kind: 'below', value: 60 }, 55, 70)).toBe(true);
+    expect(matches({ kind: 'below', value: 60 }, 50, 55)).toBe(false);
+    // Nothing known before, or nothing that was a number, is not past it.
+    expect(matches({ kind: 'below', value: 60 }, 55, undefined)).toBe(true);
+    expect(matches({ kind: 'below', value: 60 }, 55, 'dark')).toBe(true);
+  });
+
   it('describes itself for the run log', () => {
     expect(describeMatch({ kind: 'changed' })).toBe('changes');
     expect(describeMatch({ kind: 'changedTo', value: 'ON' })).toBe('becomes "ON"');
     expect(describeMatch({ kind: 'above', value: 20 })).toBe('rises above 20');
+    expect(describeMatch({ kind: 'below', value: 20 })).toBe('falls below 20');
+  });
+
+  it('says where a value stands when a condition asks', () => {
+    expect(describeMatch({ kind: 'above', value: 20 }, true)).toBe('is above 20');
+    expect(describeMatch({ kind: 'below', value: 20 }, true)).toBe('is below 20');
   });
 });
 
