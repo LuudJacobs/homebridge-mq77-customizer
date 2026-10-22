@@ -22,7 +22,6 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
-      routes: [],
     });
   });
 
@@ -76,7 +75,6 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
-      routes: [],
     });
   });
 
@@ -171,6 +169,34 @@ describe('Store', () => {
     // Automations can wait now, so a timer is a rule nothing would ever run.
     expect(store.data.rules.map((rule) => rule.id)).toEqual(['r1', 'm1']);
     expect(store.data.exposures).toEqual({ 'zigbee:0xa': { properties: ['state'] } });
+  });
+
+  it('drops the routes, and switches off a rule that asked about one', async () => {
+    const lamp = { kind: 'test', sourceId: 'z', deviceId: '0xa', propertyKey: 'state', match: { kind: 'equals', value: 'ON' } };
+    const route = { kind: 'route', routeId: 'route-1', test: 'on' };
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        exposures: {},
+        routes: [{ id: 'route-1', name: 'Hal', sensors: [], gapMs: 10_000, bothWays: true }],
+        rules: [
+          { id: 'r1', name: 'Asks', enabled: true, branches: [{ when: { kind: 'all', nodes: [lamp, route] } }, { when: route }] },
+          { id: 'r2', name: 'Does not', enabled: true, branches: [{ when: lamp }] },
+        ],
+      }),
+      'utf8',
+    );
+
+    const store = new Store(file, silentLogger);
+    await store.load();
+
+    expect('routes' in store.data).toBe(false);
+    const [asks, doesNot] = store.data.rules as unknown as { enabled: boolean; branches: unknown[] }[];
+    expect(asks).toMatchObject({ enabled: false, branches: [{ when: { kind: 'all', nodes: [lamp] } }, {}] });
+    expect(asks?.branches[1]).not.toHaveProperty('when');
+    expect(doesNot).toMatchObject({ enabled: true, branches: [{ when: lamp }] });
   });
 });
 

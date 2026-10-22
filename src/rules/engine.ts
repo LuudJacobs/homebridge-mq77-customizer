@@ -5,7 +5,6 @@ import type { Logger } from '../logger.js';
 import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
-import { RouteTracker } from '../routes.js';
 import { STATES_SOURCE } from '../states.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
@@ -104,8 +103,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    * restart cannot leave a stale wait behind.
    */
   private readonly ticker: ReturnType<typeof setInterval>;
-  /** Where somebody is on each route, for the conditions that ask. */
-  private readonly routes: RouteTracker;
   /** The last minute each rule fired on, so a repeated minute fires once. */
   private readonly firedAt = new Map<string, string>();
   /** The day each rule last complained about a time nothing can answer. */
@@ -172,7 +169,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   ) {
     super();
 
-    this.routes = new RouteTracker(store, catalog);
     this.ticker = setInterval(() => this.readClock(new Date()), CLOCK_TICK_MS);
     // Nothing here should hold Homebridge open on its own.
     this.ticker.unref?.();
@@ -243,10 +239,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
   handleState(update: StateUpdate): void {
     const rules = this.store.data.rules;
-
-    // First, so a rule set off by the same sensor finds somebody already
-    // where it put them on a route.
-    this.routes.handleState(update);
 
     // Captured before anything is overwritten, since a rule asking whether a
     // value changed needs what it was a moment ago.
@@ -1050,10 +1042,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
     // The first branch that holds wins, the rest are skipped. That is what
     // makes else if exclusive by construction rather than by hand.
-    const lookup = catalogLookup(this.catalog, () => new Date(), this.place, (id) => {
-      const route = this.store.data.routes.find((candidate) => candidate.id === id);
-      return route ? { route, position: this.routes.position(id) } : undefined;
-    });
+    const lookup = catalogLookup(this.catalog, () => new Date(), this.place);
     const branches = branchesOf(rule);
     const declined: string[] = [];
     const unanswerable: string[] = [];
