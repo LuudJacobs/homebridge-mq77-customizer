@@ -13,6 +13,7 @@ export type ServiceKind =
   | 'Thermostat'
   | 'TemperatureSensor'
   | 'HumiditySensor'
+  | 'LightSensor'
   | 'ContactSensor'
   | 'SmokeSensor'
   | 'MotionSensor'
@@ -177,6 +178,7 @@ function buildPlan(
       ...sensorServices(grouped.get('occupancy') ?? [], 'OccupancySensor', 'OccupancyDetected', name, 'Occupancy'),
       ...sensorServices(grouped.get('temperature') ?? [], 'TemperatureSensor', 'CurrentTemperature', name, 'Temperature'),
       ...sensorServices(grouped.get('humidity') ?? [], 'HumiditySensor', 'CurrentRelativeHumidity', name, 'Humidity'),
+      ...sensorServices(oneLightReading(grouped.get('light') ?? []), 'LightSensor', 'CurrentAmbientLightLevel', name, 'Light'),
       ...batteryServices(grouped.get('battery') ?? []),
       ...buttonServices(grouped.get('buttons') ?? [], name, exposure),
     ],
@@ -405,6 +407,15 @@ function sensorServices(
 }
 
 /**
+ * One light level per device, should it report two in lux: the one that says
+ * so in its name, else the first. A room has one brightness.
+ */
+function oneLightReading(properties: NormalisedProperty[]): NormalisedProperty[] {
+  const named = properties.find((property) => property.semantic === 'illuminance_lux');
+  return properties.length === 0 ? [] : [named ?? (properties[0] as NormalisedProperty)];
+}
+
+/**
  * Battery is linked rather than standalone, so it shows on the accessory itself.
  *
  * A percentage says everything a flag does and more, so where a device
@@ -445,6 +456,7 @@ const TAMPERABLE = new Set<ServiceKind>([
   'OccupancySensor',
   'TemperatureSensor',
   'HumiditySensor',
+  'LightSensor',
 ]);
 
 /**
