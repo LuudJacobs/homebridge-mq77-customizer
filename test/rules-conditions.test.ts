@@ -79,6 +79,26 @@ describe('not', () => {
   });
 });
 
+describe('a number', () => {
+  const dark: ConditionNode = {
+    kind: 'test',
+    sourceId: 'z',
+    deviceId: 'a',
+    propertyKey: 'illuminance',
+    match: { kind: 'below', value: 60 },
+  };
+
+  it('is asked where it stands, however long it has been there', () => {
+    expect(holds(dark, { a: 49 })).toBe(true);
+    expect(holds(dark, { a: 60 })).toBe(false);
+  });
+
+  it('is said the way a condition asks it', () => {
+    expect(describeNode(dark)).toBe('illuminance is below 60');
+    expect(evaluate(dark, world({ a: 70 }))?.detail).toBe('A is below 60 did not hold');
+  });
+});
+
 describe('the example from the request', () => {
   // (A and B) or (C and (D and E)), which flattens to two levels.
   const expression = any(all(test('a'), test('b')), all(test('c'), test('d'), test('e')));

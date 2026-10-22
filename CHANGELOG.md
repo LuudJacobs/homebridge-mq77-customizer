@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A number rising above or falling below a value sets a rule off once, when it crosses it
+- Conditions say is above and is below
 - Illuminance in lux can be published to HomeKit as a light sensor
 - Routes: the sensors along a way through the house, asked about in a rule's conditions
 - A condition switched from a time back to a device saves again

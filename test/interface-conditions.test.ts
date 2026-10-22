@@ -403,3 +403,54 @@ describe('branches', () => {
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
   });
 });
+
+describe('a number', () => {
+  const sensor = {
+    ...device('0xd', 'hall_sensor'),
+    properties: [
+      {
+        key: 'illuminance',
+        label: 'Illuminance',
+        type: 'numeric',
+        unit: 'lx',
+        category: 'primary',
+        endpoint: '',
+        readable: true,
+        writable: false,
+        publishable: false,
+      },
+    ],
+  };
+  const lux = { sourceId: 'zigbee', deviceId: '0xd', propertyKey: 'illuminance' };
+  const dark = {
+    id: 'r2',
+    name: 'Dark hall',
+    enabled: true,
+    triggers: [{ ...lux, match: { kind: 'below', value: 60 } }],
+    branches: [
+      {
+        when: { kind: 'test', ...lux, match: { kind: 'below', value: 60 } },
+        actions: [{ ...ref('0xc'), value: 'ON' }],
+      },
+    ],
+  };
+
+  const offered = (row: Element) =>
+    [...row.querySelectorAll('.rule-tail select option')].map((option) => option.textContent);
+
+  it('rises above or falls below as a trigger, and is above or below as a condition', async () => {
+    const ui = await openInterface({ state: { devices: [...devices, sensor] }, rules: [dark] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+
+    const trigger = ui.document.querySelector('.triggers .rule-row')!;
+    expect(offered(trigger)).toContain('falls below');
+    expect(offered(trigger)).not.toContain('is below');
+
+    const condition = ui.document.querySelector('.condition-group .rule-row')!;
+    expect(offered(condition)).toEqual(expect.arrayContaining(['is above', 'is below']));
+    expect(offered(condition)).not.toContain('falls below');
+    const kinds = condition.querySelector('.rule-tail select') as HTMLSelectElement;
+    expect(kinds.selectedOptions[0]?.textContent).toBe('is below');
+  });
+});
