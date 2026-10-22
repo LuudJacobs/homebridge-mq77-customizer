@@ -296,7 +296,7 @@ describe('an automation that waits', () => {
         triggers: [{ ...ref(LAMP.id, 'brightness'), match: { kind: 'above', value: 200 } }],
         branches: [{ actions: [{ ...ref(SOCKET.id, 'state'), value: 'OFF' }] }],
       });
-      const { mqtt } = await harness([warm]);
+      const { engine, mqtt } = await harness([warm]);
 
       mqtt.deliver(LAMP.topic, { brightness: 220 });
       // Still over, so this is not a reason to stop.
@@ -304,9 +304,16 @@ describe('an automation that waits', () => {
       await vi.advanceTimersByTimeAsync(31_000);
       expect(sent(mqtt)).toHaveLength(1);
 
+      // Back under and over again is a second crossing, which a drop calls off.
+      mqtt.deliver(LAMP.topic, { brightness: 150 });
       mqtt.published.length = 0;
       mqtt.deliver(LAMP.topic, { brightness: 220 });
+      expect(engine.getLog()[0]).toMatchObject({ outcome: 'waiting' });
       mqtt.deliver(LAMP.topic, { brightness: 150 });
+      expect(engine.getLog()[0]).toMatchObject({
+        outcome: 'cancelled',
+        detail: 'is above 200 no longer',
+      });
       await vi.advanceTimersByTimeAsync(31_000);
       expect(sent(mqtt)).toEqual([]);
     } finally {

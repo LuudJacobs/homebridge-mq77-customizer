@@ -217,6 +217,42 @@ describe('repeats versus changes', () => {
   });
 });
 
+describe('a number crossing a value', () => {
+  const LAMP = { id: '0x00158dfffe000003', topic: 'zigbee2mqtt/kitchen_dimmer-candeo' };
+  const dimmed = buttonRule({
+    trigger: {
+      sourceId: 'zigbee',
+      deviceId: LAMP.id,
+      propertyKey: 'brightness',
+      match: { kind: 'below', value: 60 },
+    },
+  });
+
+  it('fires once on the way down, not on every reading under it', async () => {
+    const { mqtt } = await harness([dimmed]);
+    mqtt.deliver(LAMP.topic, { brightness: 70 });
+    mqtt.deliver(LAMP.topic, { brightness: 55 });
+    mqtt.deliver(LAMP.topic, { brightness: 50 });
+    mqtt.deliver(LAMP.topic, { brightness: 45 });
+    expect(mqtt.published).toHaveLength(1);
+  });
+
+  it('fires again once it has been back over the value', async () => {
+    const { mqtt } = await harness([dimmed]);
+    mqtt.deliver(LAMP.topic, { brightness: 55 });
+    mqtt.deliver(LAMP.topic, { brightness: 65 });
+    mqtt.deliver(LAMP.topic, { brightness: 50 });
+    expect(mqtt.published).toHaveLength(2);
+  });
+
+  it('counts a reading replayed on connect as where it already was', async () => {
+    const { mqtt } = await harness([dimmed]);
+    mqtt.deliver(LAMP.topic, { brightness: 40 }, { retained: true });
+    mqtt.deliver(LAMP.topic, { brightness: 35 });
+    expect(mqtt.published).toEqual([]);
+  });
+});
+
 describe('retained messages', () => {
   it('never fires on a replay after a reconnect', async () => {
     const { mqtt } = await harness([buttonRule()]);
