@@ -15,6 +15,7 @@ export type Role =
   | 'childLock'
   | 'temperature'
   | 'humidity'
+  | 'illuminance'
   | 'battery'
   | 'lowBattery'
   | 'contact'
@@ -33,6 +34,7 @@ export type ServiceGroup =
   | 'thermostat'
   | 'temperature'
   | 'humidity'
+  | 'light'
   | 'contact'
   | 'smoke'
   | 'motion'
@@ -49,6 +51,7 @@ export const ROLE_GROUPS: Record<Role, ServiceGroup> = {
   childLock: 'tile',
   temperature: 'temperature',
   humidity: 'humidity',
+  illuminance: 'light',
   battery: 'battery',
   lowBattery: 'battery',
   contact: 'contact',
@@ -69,6 +72,9 @@ const NUMERIC_ROLES: Record<string, Role> = {
   speed: 'rotationSpeed',
   temperature: 'temperature',
   humidity: 'humidity',
+  // Light, in lux only: see `inLux`.
+  illuminance: 'illuminance',
+  illuminance_lux: 'illuminance',
   battery: 'battery',
   local_temperature: 'localTemperature',
   occupied_heating_setpoint: 'targetTemperature',
@@ -114,13 +120,32 @@ export function roleFor(property: NormalisedProperty): Role | undefined {
         return 'power';
       }
       return matched(BINARY_ROLES[semantic], property);
-    case 'numeric':
-      return matched(NUMERIC_ROLES[semantic], property);
+    case 'numeric': {
+      const role = NUMERIC_ROLES[semantic];
+      // A raw light reading is a number on the sensor's own scale, and HomeKit
+      // would show it as lux. Only one that says it is in lux is offered.
+      if (role === 'illuminance' && !inLux(property)) {
+        return undefined;
+      }
+      return matched(role, property);
+    }
     case 'enum':
       return matched(ENUM_ROLES[semantic], property);
     default:
       return undefined;
   }
+}
+
+/**
+ * Whether a light reading is in lux, by the unit it declares.
+ *
+ * Zigbee2MQTT has called the raw reading and the one in lux by each other's
+ * names from one version to the next, so the unit is what decides, never the
+ * name.
+ */
+export function inLux(property: NormalisedProperty): boolean {
+  const unit = property.unit?.trim().toLowerCase();
+  return unit === 'lx' || unit === 'lux';
 }
 
 /** Roles that only make sense if the value can actually be read back. */

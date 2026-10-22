@@ -12,6 +12,7 @@ export type CharacteristicKind =
   | 'CurrentHeatingCoolingState'
   | 'TargetHeatingCoolingState'
   | 'CurrentRelativeHumidity'
+  | 'CurrentAmbientLightLevel'
   | 'BatteryLevel'
   | 'StatusLowBattery'
   | 'ContactSensorState'
@@ -97,6 +98,11 @@ export function toHomeKit(
 
     case 'CurrentRelativeHumidity':
       return clamp(asNumber(value), 0, 100);
+
+    case 'CurrentAmbientLightLevel':
+      // HomeKit's own range, which has no darkness: nought lux is sent as the
+      // least it takes.
+      return clamp(asNumber(value), 0.0001, 100000);
 
     case 'CurrentTemperature':
       // HomeKit's own limits. A device reporting outside them would otherwise
