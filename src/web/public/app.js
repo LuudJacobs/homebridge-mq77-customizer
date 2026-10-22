@@ -10,7 +10,7 @@ const state = {
   /** Which kinds the activity list shows. */
   activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
   /** Whether the controller overview lists buttons nothing is bound to. */
-  unusedButtons: true,
+  unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
   homekitButtons: true,
   /** Whether a location is set, which is what lets a rule follow the sun. */
@@ -51,6 +51,15 @@ const state = {
   /** Device keys whose card is open, kept across re-renders. */
   open: new Set(),
   view: 'devices',
+  /** Which page of Home is open: `rooms` or `map`. */
+  homePage: 'rooms',
+  /** The rooms a device can be put in, A to Z, as the server keeps them. */
+  rooms: [],
+  /**
+   * The rooms as they are being edited, or nothing while they are only read.
+   * Each says what it was called when editing began, unless it is new.
+   */
+  roomsDraft: undefined,
   rules: [],
   openRules: new Set(),
   log: [],
@@ -84,7 +93,7 @@ const el = {
   tabSliders: document.getElementById('tab-sliders'),
   tabActivity: document.getElementById('tab-activity'),
   tabControllers: document.getElementById('tab-controllers'),
-  tabMap: document.getElementById('tab-map'),
+  tabHome: document.getElementById('tab-home'),
   tabSelect: document.getElementById('tab-select'),
   viewDevices: document.getElementById('view-devices'),
   viewAutomation: document.getElementById('view-automation'),
@@ -98,7 +107,13 @@ const el = {
   homekitButtons: document.getElementById('homekit-buttons'),
   homekitFilter: document.getElementById('homekit-buttons-filter'),
   downloadControllers: document.getElementById('download-controllers'),
-  viewMap: document.getElementById('view-map'),
+  viewHome: document.getElementById('view-home'),
+  homeRooms: document.getElementById('home-rooms'),
+  homeMap: document.getElementById('home-map'),
+  homePageRooms: document.getElementById('home-page-rooms'),
+  homePageMap: document.getElementById('home-page-map'),
+  rooms: document.getElementById('rooms'),
+  roomsButtons: document.getElementById('rooms-buttons'),
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
   scanMap: document.getElementById('scan-map'),
@@ -433,6 +448,7 @@ const ROLE_LABELS = {
   childLock: 'child lock',
   temperature: 'temperature sensor',
   humidity: 'humidity sensor',
+  illuminance: 'light sensor',
   battery: 'battery',
   lowBattery: 'low battery',
   contact: 'contact sensor',
@@ -491,6 +507,7 @@ function showApp() {
 async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
+  state.rooms = snapshot.rooms ?? [];
   state.tileTypes = snapshot.tileTypes;
   state.hasLocation = snapshot.hasLocation === true;
   state.canNotify = snapshot.canNotify === true;
@@ -841,7 +858,7 @@ const TAB_CONTROLS = {
   },
   activity: { sorts: [], placeholder: 'Filter...' },
   controllers: { sorts: [], placeholder: 'Filter...' },
-  map: { sorts: [], placeholder: 'Filter...' },
+  home: { sorts: [], placeholder: '' },
 };
 
 /** Points the header controls at whatever the current tab is about. */
@@ -867,7 +884,7 @@ function paintControls() {
 
   // Nothing on the map or the controller overview is filtered or sorted from
   // up here: one is a drawing and the other is every controller there is.
-  el.filter.hidden = view === 'map' || view === 'controllers';
+  el.filter.hidden = view === 'home' || view === 'controllers';
   el.filter.placeholder = controls.placeholder;
   el.filter.value = state.filters[view] ?? '';
 
@@ -1272,13 +1289,8 @@ function renderToggle(device) {
     keep();
   });
 
-  const room = document.createElement('input');
-  room.type = 'text';
-  room.maxLength = 64;
-  room.placeholder = 'none';
-  room.value = draft.room;
-  room.addEventListener('input', () => {
-    draft.room = room.value;
+  const room = roomSelect(draft.room, (picked) => {
+    draft.room = picked;
     keep();
   });
 
@@ -1375,6 +1387,34 @@ function renderToggle(device) {
   footer.append(save, revertButton(device), error, remove);
 
   wrap.append(row, footer);
+  return wrap;
+}
+
+/**
+ * A dropdown of the rooms, A to Z, with none at the top.
+ *
+ * A room that has since gone from the list is still offered while it is the
+ * one picked, so opening a panel never quietly moves anything.
+ */
+function roomSelect(current, onChange) {
+  const select = document.createElement('select');
+  select.className = 'room-select';
+  const rooms = state.rooms.includes(current) || !current ? state.rooms : [...state.rooms, current];
+  for (const [value, text] of [['', 'none'], ...rooms.map((room) => [room, room])]) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = text;
+    select.append(choice);
+  }
+  select.value = current ?? '';
+  select.addEventListener('change', () => onChange(select.value));
+  return select;
+}
+
+function roomField(current, onChange) {
+  const wrap = document.createElement('label');
+  wrap.className = 'device-field';
+  wrap.append(document.createTextNode('Room'), roomSelect(current, onChange));
   return wrap;
 }
 
@@ -1475,8 +1515,8 @@ function renderDeviceInfo(device) {
     }),
   );
   row.append(
-    field('Room', device.exposure.room, 'none', (value) => {
-      device.exposure.room = value || undefined;
+    roomField(device.exposure.room, (picked) => {
+      device.exposure.room = picked || undefined;
       repaint();
     }),
   );
@@ -1973,7 +2013,8 @@ el.kindState.addEventListener('change', () => {
 function anythingUnsaved() {
   return (
     state.devices.some((device) => isDeviceDirty(device)) ||
-    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id))
+    [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id)) ||
+    roomsDirty()
   );
 }
 
@@ -1988,10 +2029,12 @@ window.addEventListener('beforeunload', (event) => {
 async function start() {
   await load();
   listen();
-  // The plain address is Devices, said as such so it can be copied.
+  // Said in full, so what is copied is what is open: the plain address is
+  // Devices, /home is Rooms, and one nothing knows is Devices too.
   const view = viewOfAddress();
-  if (location.pathname === '/') {
-    setAddress(addressOf(view, linkOfAddress()), false);
+  const full = addressOf(view, linkOfAddress());
+  if (`${location.pathname}${location.hash}` !== full) {
+    setAddress(full, false);
   }
   follow(view, linkOfAddress());
 }
@@ -2014,8 +2057,9 @@ const MATCH_KINDS = [
   { kind: 'equals', label: 'is' },
   { kind: 'notEquals', label: 'is not' },
   { kind: 'changed', label: 'changes' },
-  { kind: 'above', label: 'rises above' },
-  { kind: 'below', label: 'falls below' },
+  // A condition asks where the value stands, so it is not rising anywhere.
+  { kind: 'above', label: 'rises above', conditionLabel: 'is above' },
+  { kind: 'below', label: 'falls below', conditionLabel: 'is below' },
 ];
 
 /** What a Text state can be asked: the whole of it, or a piece, either case. */
@@ -2467,8 +2511,8 @@ const kindOf = (rule) => {
 };
 
 function renderRules() {
-  safely(() => renderRuleList('standard', el.automation, 'No automations yet.'));
-  safely(() => renderRuleList('mirror', el.mirror, 'No mirrored devices yet.'));
+  safely(() => renderRuleList('standard', el.automation, 'No rules yet.'));
+  safely(() => renderRuleList('mirror', el.mirror, 'No mirrors yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
   const lists = { automation: el.automation, mirror: el.mirror, sliders: el.sliders };
   if (lists[state.view]) {
@@ -4650,6 +4694,11 @@ function refRow(ref, options) {
     for (const key of ['kind', 'at', 'offset', 'days', 'side', 'title', 'message']) {
       delete ref[key];
     }
+    // A condition row is a test of a device, said as such, or the rule is
+    // refused when it is saved.
+    if (options.asCondition) {
+      ref.kind = 'test';
+    }
     Object.assign(ref, {
       sourceId: device?.sourceId ?? '',
       deviceId: device?.deviceId ?? '',
@@ -4818,7 +4867,7 @@ function refRow(ref, options) {
       for (const entry of offered) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
-        choice.textContent = entry.label;
+        choice.textContent = (options.asCondition && entry.conditionLabel) || entry.label;
         kinds.append(choice);
       }
       // A state whose type changed since may hold a test it no longer has.
@@ -5060,7 +5109,7 @@ function valueInput(property, current, onChange, options = {}) {
 }
 
 const KIND_LABELS = {
-  standard: 'automation',
+  standard: 'rule',
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
@@ -5072,11 +5121,13 @@ function renderLog() {
   container.replaceChildren();
   const term = (state.filters.activity ?? '').trim().toLowerCase();
 
-  const entries = state.log
+  // Drawn first and matched after, so the filter reads what is on screen.
+  const lines = state.log
     .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
-    .filter((entry) => !term || entry.ruleName.toLowerCase().includes(term));
+    .map(logLine)
+    .filter((line) => !term || line.search.includes(term));
 
-  if (entries.length === 0) {
+  if (lines.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = state.log.length === 0 ? 'Nothing has run yet.' : 'Nothing matches.';
@@ -5084,24 +5135,56 @@ function renderLog() {
     return;
   }
 
-  for (const entry of entries.slice(0, 100)) {
-    const line = document.createElement('div');
-    line.className = `log-line ${entry.outcome}`;
-    const when = document.createElement('span');
-    when.className = 'log-time';
-    when.textContent = new Date(entry.at).toLocaleTimeString();
-    // Both kinds share this list now, and two rules can share a name, so each
-    // entry says which it came from.
-    const kind = document.createElement('span');
-    kind.className = 'tag';
-    kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+  container.append(...lines.slice(0, 100).map((line) => line.node));
+}
 
-    const what = document.createElement('span');
-    what.className = 'log-what';
-    what.replaceChildren(...logParts(entry));
-    line.append(when, kind, what);
-    container.append(line);
+/**
+ * One line of the log, and what the filter finds it by: everything the line
+ * says, and the names, topics and rooms of every device it involves, which is
+ * more than the line says of them.
+ */
+function logLine(entry) {
+  const line = document.createElement('div');
+  line.className = `log-line ${entry.outcome}`;
+  const when = document.createElement('span');
+  when.className = 'log-time';
+  when.textContent = new Date(entry.at).toLocaleTimeString();
+  // Both kinds share this list now, and two rules can share a name, so each
+  // entry says which it came from.
+  const kind = document.createElement('span');
+  kind.className = 'tag';
+  kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
+
+  const what = document.createElement('span');
+  what.className = 'log-what';
+  what.replaceChildren(...logParts(entry));
+  line.append(when, kind, what);
+
+  // The drawings carry titles, which are not words on the line.
+  const said = line.cloneNode(true);
+  said.querySelectorAll('title').forEach((title) => title.remove());
+  const words = [said.textContent];
+  for (const ref of logRefs(entry)) {
+    const device = findDevice(ref);
+    if (device) {
+      words.push(displayName(device), device.name, device.topic ?? '', device.exposure.room ?? '');
+    }
   }
+  return { node: line, search: words.join(' ').toLowerCase() };
+}
+
+/** Every device a log line is about: what set it off, and what it acted on. */
+function logRefs(entry) {
+  const rule = state.rules.find((candidate) => candidate.id === entry.ruleId);
+  return [
+    entry.press,
+    entry.changed,
+    entry.copy?.from,
+    ...(entry.copy?.to ?? []),
+    ...(rule ? ruleRefs(rule) : []),
+    // A press or an internal state on a line of its own is named by its key.
+    ...(entry.ruleKind === 'action' || entry.ruleKind === 'state' ? [refOf(entry.ruleId)] : []),
+  ].filter(Boolean);
 }
 
 /**
@@ -5693,17 +5776,36 @@ async function scanNetwork() {
   }
 }
 
-/** The tabs, each with an address of its own: `/automation`. */
-const VIEWS = ['devices', 'automation', 'mirror', 'sliders', 'activity', 'controllers', 'map'];
+/** The address of each tab, by the name the page knows it by inside. */
+const SLUGS = {
+  devices: 'devices',
+  automation: 'rules',
+  mirror: 'mirrors',
+  sliders: 'sliders',
+  home: 'home',
+  activity: 'log',
+  controllers: 'guide',
+};
+
+/** And of each page of Home. */
+const HOME_SLUGS = { rooms: 'rooms', map: 'zigbee-map' };
 
 /** The tab a rule is kept on. */
 const viewOfRule = (rule) =>
   rule.kind === 'mirror' ? 'mirror' : rule.kind === 'slider' ? 'sliders' : 'automation';
 
-/** Which tab the address is for, Devices for anything it does not name. */
+/**
+ * Which tab the address is for, Devices for anything it does not name, and
+ * for Home which of its pages: Rooms unless it names the map, which a phone
+ * has no room for.
+ */
 function viewOfAddress() {
-  const slug = location.pathname.replace(/^\/+|\/+$/g, '');
-  return VIEWS.includes(slug) ? slug : 'devices';
+  const [slug, page] = location.pathname.replace(/^\/+|\/+$/g, '').split('/');
+  const view = Object.keys(SLUGS).find((candidate) => SLUGS[candidate] === slug) ?? 'devices';
+  if (view === 'home') {
+    state.homePage = page === HOME_SLUGS.map && !narrow.matches ? 'map' : 'rooms';
+  }
+  return view;
 }
 
 /** What the address's # names, a device or a rule, if anything. */
@@ -5711,7 +5813,8 @@ function linkOfAddress() {
   return location.hash.slice(1).toUpperCase() || undefined;
 }
 
-const addressOf = (view, link) => `/${view}${link ? `#${link}` : ''}`;
+const addressOf = (view, link) =>
+  `/${SLUGS[view]}${view === 'home' ? `/${HOME_SLUGS[state.homePage]}` : ''}${link ? `#${link}` : ''}`;
 
 /**
  * The # of a device or a rule: eight of A to Z and 0 to 9, worked out from
@@ -5841,24 +5944,182 @@ function showView(view) {
   el.viewSliders.hidden = view !== 'sliders';
   el.viewActivity.hidden = view !== 'activity';
   el.viewControllers.hidden = view !== 'controllers';
-  el.viewMap.hidden = view !== 'map';
+  el.viewHome.hidden = view !== 'home';
   el.tabDevices.classList.toggle('active', view === 'devices');
   el.tabAutomation.classList.toggle('active', view === 'automation');
   el.tabMirror.classList.toggle('active', view === 'mirror');
   el.tabSliders.classList.toggle('active', view === 'sliders');
   el.tabActivity.classList.toggle('active', view === 'activity');
   el.tabControllers.classList.toggle('active', view === 'controllers');
-  el.tabMap.classList.toggle('active', view === 'map');
-  el.tabSelect.value = view;
+  el.tabHome.classList.toggle('active', view === 'home');
+  el.tabSelect.value = pickedOption();
   paintControls();
   if (view === 'devices') {
     safeRender();
-  } else if (view === 'map') {
-    // Nothing to fetch: a scan is slow enough that it only happens on asking.
-    drawMap();
+  } else if (view === 'home') {
+    drawHome();
   } else {
     loadRules().catch((problem) => setStatus(problem.message, 'lost'));
   }
+}
+
+/** Home: its menu on the left, and the page picked in it. */
+function drawHome() {
+  const onMap = state.homePage === 'map';
+  el.tabSelect.value = pickedOption();
+  el.homeRooms.classList.toggle('active', !onMap);
+  el.homeMap.classList.toggle('active', onMap);
+  el.homePageRooms.hidden = onMap;
+  el.homePageMap.hidden = !onMap;
+  if (onMap) {
+    // Nothing to fetch: a scan is slow enough that it only happens on asking.
+    drawMap();
+  } else {
+    renderRooms();
+  }
+}
+
+/** A page of Home picked from its menu, a step back and forward go through. */
+function openHomePage(page) {
+  state.homePage = page;
+  setAddress(addressOf('home'), true);
+  drawHome();
+}
+
+el.homeRooms.addEventListener('click', () => openHomePage('rooms'));
+el.homeMap.addEventListener('click', () => openHomePage('map'));
+
+/**
+ * The rooms: a list to read, A to Z with what is in each, until Edit rooms
+ * turns it into a form.
+ *
+ * The form is saved whole, with one Save: renames, removals and new rooms
+ * all wait for it, and saving it goes back to the list.
+ */
+function renderRooms() {
+  el.rooms.replaceChildren();
+  el.roomsButtons.replaceChildren();
+  const editing = state.roomsDraft !== undefined;
+  el.rooms.classList.toggle('editing', editing);
+
+  if (!editing) {
+    for (const room of state.rooms) {
+      const row = document.createElement('div');
+      row.className = 'room-row';
+      const name = document.createElement('span');
+      name.className = 'room-name';
+      name.textContent = room;
+      const count = document.createElement('span');
+      count.className = 'device-meta';
+      const inIt = state.devices.filter((device) => device.exposure.room === room).length;
+      count.textContent = `${inIt} device${inIt === 1 ? '' : 's'}`;
+      row.append(name, count);
+      el.rooms.append(row);
+    }
+    if (state.rooms.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'No rooms yet.';
+      el.rooms.append(empty);
+    }
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Edit rooms';
+    edit.addEventListener('click', () => {
+      state.roomsDraft = state.rooms.map((room) => ({ was: room, name: room }));
+      renderRooms();
+    });
+    el.roomsButtons.append(edit);
+    return;
+  }
+
+  const draft = state.roomsDraft;
+  const error = document.createElement('span');
+  error.className = 'error';
+  const revert = document.createElement('button');
+  revert.type = 'button';
+  revert.textContent = 'Revert';
+  const paint = () => {
+    revert.hidden = !roomsDirty();
+  };
+
+  for (const entry of draft) {
+    const row = document.createElement('div');
+    row.className = 'room-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 64;
+    input.placeholder = 'Room name';
+    input.value = entry.name;
+    input.addEventListener('input', () => {
+      entry.name = input.value;
+      paint();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Delete';
+    // Gone from the form, and from nowhere else until Save.
+    armDelete(remove, () => {
+      draft.splice(draft.indexOf(entry), 1);
+      renderRooms();
+    });
+    row.append(input, remove);
+    el.rooms.append(row);
+  }
+
+  el.rooms.append(
+    addButton('+ room', () => {
+      draft.push({ name: '' });
+      renderRooms();
+      [...el.rooms.querySelectorAll('input')].at(-1)?.focus();
+    }),
+  );
+
+  revert.addEventListener('click', () => {
+    state.roomsDraft = state.rooms.map((room) => ({ was: room, name: room }));
+    renderRooms();
+  });
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'primary';
+  save.textContent = 'Save';
+  save.addEventListener('click', async () => {
+    error.textContent = '';
+    try {
+      await api('/api/rooms', {
+        method: 'PUT',
+        body: JSON.stringify({
+          rooms: draft.map((entry) => ({
+            ...(entry.was === undefined ? {} : { was: entry.was }),
+            name: entry.name,
+          })),
+        }),
+      });
+      state.roomsDraft = undefined;
+      await load();
+      renderRooms();
+    } catch (problem) {
+      error.textContent = problem.message;
+    }
+  });
+
+  // Revert on the left of Save, as in every other footer.
+  el.roomsButtons.append(error, revert, save);
+  paint();
+}
+
+/** Whether the rooms being edited differ from the saved ones. */
+function roomsDirty() {
+  const draft = state.roomsDraft;
+  if (!draft) {
+    return false;
+  }
+  return (
+    draft.length !== state.rooms.length ||
+    draft.some((entry) => entry.was === undefined || entry.name.trim() !== entry.was)
+  );
 }
 
 const showsRules = () =>
@@ -5878,12 +6139,14 @@ const showsRules = () =>
  */
 const TAB_OPTIONS = [
   ['devices', 'Devices'],
-  ['automation', 'Automation'],
-  ['mirror', 'Mirror devices'],
+  ['automation', 'Rules'],
+  ['mirror', 'Mirrors'],
   ['sliders', 'Sliders'],
-  ['controllers', 'Controllers'],
-  ['activity', 'Activity'],
-  ['map', 'Map'],
+  // Home's pages, since the menu that picks them has no room here.
+  ['home:rooms', 'Home / Rooms'],
+  ['home:map', 'Home / Zigbee map'],
+  ['activity', 'Log'],
+  ['controllers', 'Guide'],
 ];
 
 const narrow = window.matchMedia('(max-width: 40rem)');
@@ -5891,7 +6154,8 @@ const narrow = window.matchMedia('(max-width: 40rem)');
 function drawTabOptions() {
   el.tabSelect.replaceChildren();
   for (const [view, label] of TAB_OPTIONS) {
-    if (view === 'map' && narrow.matches) {
+    // Too narrow to draw a network on, so the map is not offered.
+    if (view === 'home:map' && narrow.matches) {
       continue;
     }
     const option = document.createElement('option');
@@ -5899,19 +6163,35 @@ function drawTabOptions() {
     option.textContent = label;
     el.tabSelect.append(option);
   }
-  el.tabSelect.value = state.view;
+  el.tabSelect.value = pickedOption();
+}
+
+/** The dropdown's choice for what is open: the tab, or Home and its page. */
+function pickedOption() {
+  return state.view === 'home' ? `home:${state.homePage}` : state.view;
 }
 
 drawTabOptions();
 
-el.tabSelect.addEventListener('change', () => openTab(el.tabSelect.value));
+el.tabSelect.addEventListener('change', () => {
+  const [view, page] = el.tabSelect.value.split(':');
+  if (page && view === state.view) {
+    openHomePage(page);
+    return;
+  }
+  if (page) {
+    state.homePage = page;
+  }
+  openTab(view);
+});
 
 // Narrowing the window while the map is open would otherwise leave a page
 // with nothing on it, since the map is hidden and the dropdown cannot say so.
 narrow.addEventListener('change', () => {
-  if (narrow.matches && state.view === 'map') {
-    setAddress(addressOf('devices'), false);
-    showView('devices');
+  if (narrow.matches && state.view === 'home' && state.homePage === 'map') {
+    state.homePage = 'rooms';
+    setAddress(addressOf('home'), false);
+    drawHome();
   }
   drawTabOptions();
 });
@@ -5933,7 +6213,7 @@ el.clearLog.addEventListener('click', async () => {
 });
 
 el.tabActivity.addEventListener('click', () => openTab('activity'));
-el.tabMap.addEventListener('click', () => openTab('map'));
+el.tabHome.addEventListener('click', () => openTab('home'));
 el.scanMap.addEventListener('click', () => scanNetwork());
 
 // One device panel at a time, and anywhere else closes it.
@@ -5952,7 +6232,7 @@ async function addRule(draft) {
 
 el.addAutomation.addEventListener('click', () =>
   addRule({
-    name: 'New automation',
+    name: 'New rule',
     // Off to begin with, so a half built rule cannot fire while it is being
     // filled in.
     enabled: false,

@@ -16,7 +16,13 @@ describe('Store', () => {
   it('starts empty when there is no file yet', async () => {
     const store = new Store(await temporaryFile(), silentLogger);
     await store.load();
-    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [], states: [] });
+    expect(store.data).toEqual({
+      version: 1,
+      exposures: {},
+      rules: [],
+      states: [],
+      rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+    });
   });
 
   it('creates the directory on first write', async () => {
@@ -63,7 +69,46 @@ describe('Store', () => {
     await writeFile(file, JSON.stringify({ version: 1 }), 'utf8');
     const store = new Store(file, silentLogger);
     await store.load();
-    expect(store.data).toEqual({ version: 1, exposures: {}, rules: [], states: [] });
+    expect(store.data).toEqual({
+      version: 1,
+      exposures: {},
+      rules: [],
+      states: [],
+      rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+    });
+  });
+
+  it('empties every room once, on first meeting settings from before the rooms list', async () => {
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        exposures: { 'zigbee:0xa': { properties: ['state'], room: 'Zolder', label: 'Lamp' } },
+      }),
+      'utf8',
+    );
+    const store = new Store(file, silentLogger);
+    await store.load();
+    expect(store.data.rooms).toEqual(['Bathroom', 'Bedroom', 'Kitchen', 'Living room']);
+    expect(store.data.exposures['zigbee:0xa']).toEqual({ properties: ['state'], label: 'Lamp' });
+  });
+
+  it('keeps the rooms and every device in one, once there is a list', async () => {
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        rooms: ['zolder', 'Hal', ' ', 'Hal'],
+        exposures: { 'zigbee:0xa': { properties: [], room: 'Hal' } },
+      }),
+      'utf8',
+    );
+    const store = new Store(file, silentLogger);
+    await store.load();
+    expect(store.data.rooms).toEqual(['Hal', 'zolder']);
+    expect(store.data.exposures['zigbee:0xa']?.room).toBe('Hal');
   });
 
   it('keeps the state toggles, and drops one that is not', async () => {
@@ -124,6 +169,34 @@ describe('Store', () => {
     // Automations can wait now, so a timer is a rule nothing would ever run.
     expect(store.data.rules.map((rule) => rule.id)).toEqual(['r1', 'm1']);
     expect(store.data.exposures).toEqual({ 'zigbee:0xa': { properties: ['state'] } });
+  });
+
+  it('drops the routes, and switches off a rule that asked about one', async () => {
+    const lamp = { kind: 'test', sourceId: 'z', deviceId: '0xa', propertyKey: 'state', match: { kind: 'equals', value: 'ON' } };
+    const route = { kind: 'route', routeId: 'route-1', test: 'on' };
+    const file = await temporaryFile();
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        exposures: {},
+        routes: [{ id: 'route-1', name: 'Hal', sensors: [], gapMs: 10_000, bothWays: true }],
+        rules: [
+          { id: 'r1', name: 'Asks', enabled: true, branches: [{ when: { kind: 'all', nodes: [lamp, route] } }, { when: route }] },
+          { id: 'r2', name: 'Does not', enabled: true, branches: [{ when: lamp }] },
+        ],
+      }),
+      'utf8',
+    );
+
+    const store = new Store(file, silentLogger);
+    await store.load();
+
+    expect('routes' in store.data).toBe(false);
+    const [asks, doesNot] = store.data.rules as unknown as { enabled: boolean; branches: unknown[] }[];
+    expect(asks).toMatchObject({ enabled: false, branches: [{ when: { kind: 'all', nodes: [lamp] } }, {}] });
+    expect(asks?.branches[1]).not.toHaveProperty('when');
+    expect(doesNot).toMatchObject({ enabled: true, branches: [{ when: lamp }] });
   });
 });
 

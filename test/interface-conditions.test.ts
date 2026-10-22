@@ -51,7 +51,7 @@ const legacyRule = {
 
 async function openRule(rule: unknown) {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   const card = ui.document.querySelector('.rule') as HTMLDetailsElement;
   await ui.openCard(card);
   return ui;
@@ -401,5 +401,78 @@ describe('branches', () => {
     // The tooltip says which one is going.
     await ui.click(ui.document.querySelector('.branch-head button[title="Remove outcome 2"]'));
     expect(ui.document.querySelectorAll('.branch')).toHaveLength(1);
+  });
+});
+
+describe('a number', () => {
+  const sensor = {
+    ...device('0xd', 'hall_sensor'),
+    exposure: { properties: [], room: 'Hal' },
+    properties: [
+      {
+        key: 'illuminance',
+        label: 'Illuminance',
+        type: 'numeric',
+        unit: 'lx',
+        category: 'primary',
+        endpoint: '',
+        readable: true,
+        writable: false,
+        publishable: false,
+      },
+    ],
+  };
+  const lux = { sourceId: 'zigbee', deviceId: '0xd', propertyKey: 'illuminance' };
+  const dark = {
+    id: 'r2',
+    name: 'Dark hall',
+    enabled: true,
+    triggers: [{ ...lux, match: { kind: 'below', value: 60 } }],
+    branches: [
+      {
+        when: { kind: 'test', ...lux, match: { kind: 'below', value: 60 } },
+        actions: [{ ...ref('0xc'), value: 'ON' }],
+      },
+    ],
+  };
+
+  const offered = (row: Element) =>
+    [...row.querySelectorAll('.rule-tail select option')].map((option) => option.textContent);
+
+  it('rises above or falls below as a trigger, and is above or below as a condition', async () => {
+    const ui = await openInterface({ state: { devices: [...devices, sensor] }, rules: [dark] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+
+    const trigger = ui.document.querySelector('.triggers .rule-row')!;
+    expect(offered(trigger)).toContain('falls below');
+    expect(offered(trigger)).not.toContain('is below');
+
+    const condition = ui.document.querySelector('.condition-group .rule-row')!;
+    expect(offered(condition)).toEqual(expect.arrayContaining(['is above', 'is below']));
+    expect(offered(condition)).not.toContain('falls below');
+    const kinds = condition.querySelector('.rule-tail select') as HTMLSelectElement;
+    expect(kinds.selectedOptions[0]?.textContent).toBe('is below');
+  });
+
+  it('stays a test when a condition goes from a time back to a device', async () => {
+    const atNight = {
+      ...dark,
+      branches: [{ ...dark.branches[0], when: { kind: 'time', at: '22:00', side: 'after' } }],
+    };
+    const ui = await openInterface({ state: { devices: [...devices, sensor] }, rules: [atNight] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
+
+    const room = ui.document.querySelector('.condition-group .rule-row select') as HTMLSelectElement;
+    room.value = 'Hal';
+    room.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      branches: { when: unknown }[];
+    };
+    expect(saved.branches[0]?.when).toMatchObject({ kind: 'test', deviceId: '0xd' });
   });
 });

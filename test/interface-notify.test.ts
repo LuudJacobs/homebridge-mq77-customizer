@@ -46,7 +46,7 @@ const rule = (actions: unknown[]) => ({
 
 async function openRule(actions: unknown[], canNotify = true) {
   const ui = await openInterface({ state: { devices, canNotify }, rules: [rule(actions)] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
   return ui;
 }
@@ -141,7 +141,7 @@ describe('sending a notification from the action row', () => {
       state: { devices, canNotify: true },
       rules: [rule([{ kind: 'notify', message: 'Hallo' }])],
     });
-    await only.click(only.byText('button.tab', 'Automation'));
+    await only.click(only.byText('button.tab', 'Rules'));
     expect(only.document.querySelector('#automation .device-meta')?.textContent).toBe(
       'hall_lamp → notification',
     );
@@ -150,7 +150,7 @@ describe('sending a notification from the action row', () => {
       state: { devices, canNotify: true },
       rules: [rule([{ ...ref('0xb'), value: 'ON' }, { kind: 'notify', message: 'Hallo' }])],
     });
-    await both.click(both.byText('button.tab', 'Automation'));
+    await both.click(both.byText('button.tab', 'Rules'));
     expect(both.document.querySelector('#automation .device-meta')?.textContent).toBe(
       'hall_lamp → porch_lamp + notification',
     );

@@ -94,9 +94,18 @@ const rules = [
   },
 ];
 
+/** Shows the buttons nothing is bound to as well, which starts off unticked. */
+async function showUnused(ui: Awaited<ReturnType<typeof openInterface>>) {
+  const box = ui.document.getElementById('unused-buttons') as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new ui.window.Event('change'));
+  await ui.settle();
+}
+
 async function openControllers(over: { rules?: unknown[] } = {}) {
   const ui = await openInterface({ state: { devices }, rules: over.rules ?? rules });
-  await ui.click(ui.byText('button.tab', 'Controllers'));
+  await ui.click(ui.byText('button.tab', 'Guide'));
+  await showUnused(ui);
   return ui;
 }
 
@@ -142,6 +151,16 @@ describe('what every controller sets off', () => {
     expect(spanning.rowSpan).toBe(2);
   });
 
+  it('leaves the free buttons out to begin with', async () => {
+    const ui = await openInterface({ state: { devices }, rules });
+    await ui.click(ui.byText('button.tab', 'Guide'));
+    expect((ui.document.getElementById('unused-buttons') as HTMLInputElement).checked).toBe(false);
+    expect(table(ui)[1]?.rows).toEqual([
+      ['1 Single', 'Woonkamer: Licht cycle'],
+      ['Woonkamer: Alles uit'],
+    ]);
+  });
+
   it('leaves the free buttons out when they are not wanted', async () => {
     const ui = await openControllers();
     const box = ui.document.getElementById('unused-buttons') as HTMLInputElement;
@@ -163,7 +182,7 @@ describe('what every controller sets off', () => {
       devices[2]!,
     ];
     const ui = await openInterface({ state: { devices: bare }, rules });
-    await ui.click(ui.byText('button.tab', 'Controllers'));
+    await ui.click(ui.byText('button.tab', 'Guide'));
 
     // Nothing says what else it could send, so what is bound is all there is.
     expect(table(ui)[0]?.rows).toEqual([
@@ -174,7 +193,7 @@ describe('what every controller sets off', () => {
 
   it('says so when nothing is marked as a controller', async () => {
     const ui = await openInterface({ state: { devices: [devices[2]!] }, rules: [] });
-    await ui.click(ui.byText('button.tab', 'Controllers'));
+    await ui.click(ui.byText('button.tab', 'Guide'));
 
     expect(ui.document.querySelector('#controllers .empty')?.textContent).toContain('controller');
   });
@@ -255,7 +274,8 @@ const published = (over: Record<string, unknown> = {}) => [
 
 async function openPublished(over: Record<string, unknown> = {}) {
   const ui = await openInterface({ state: { devices: published(over) }, rules });
-  await ui.click(ui.byText('button.tab', 'Controllers'));
+  await ui.click(ui.byText('button.tab', 'Guide'));
+  await showUnused(ui);
   return ui;
 }
 

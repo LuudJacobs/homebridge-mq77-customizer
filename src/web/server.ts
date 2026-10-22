@@ -18,6 +18,7 @@ import {
   type DeviceType,
   type SensorType,
   type StateType,
+  sortRooms,
   type Store,
   type TileType,
 } from '../store.js';
@@ -38,20 +39,6 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
 };
-
-/**
- * The tabs, each with an address of its own. The page answers every one of
- * them and works out from the address which tab to show.
- */
-const TAB_PATHS = new Set([
-  '/devices',
-  '/automation',
-  '/mirror',
-  '/sliders',
-  '/activity',
-  '/controllers',
-  '/map',
-]);
 
 /** Slows down password guessing without needing any state. */
 const FAILED_LOGIN_DELAY_MS = 500;
@@ -183,6 +170,9 @@ export class WebServer {
       if (path.startsWith('/api/rules/') && request.method === 'DELETE') {
         return this.deleteRule(decodeURIComponent(path.slice('/api/rules/'.length)), response);
       }
+      if (path === '/api/rooms' && request.method === 'PUT') {
+        return this.saveRooms(request, response);
+      }
       if (path === '/api/devices' && request.method === 'DELETE') {
         return this.forgetDevice(request, response);
       }
@@ -256,6 +246,15 @@ export class WebServer {
     }
 
     const exposure = sanitiseExposure(body?.exposure, device.properties.map((p) => p.key));
+    // Only a room from the list, written the way the list has it.
+    const room = this.deps.store.data.rooms.find(
+      (known) => known.toLowerCase() === exposure.room?.toLowerCase(),
+    );
+    if (room) {
+      exposure.room = room;
+    } else {
+      delete exposure.room;
+    }
     if (sourceId === STATES_SOURCE) {
       // A toggle has a room and nothing else: no HomeKit, and a kind that is
       // always its own.
@@ -309,6 +308,55 @@ export class WebServer {
     }
     this.broadcast({ type: 'rules' });
     return send(response, 200, { ok: true });
+  }
+
+  /**
+   * Saves the rooms as they were edited, all at once.
+   *
+   * Each room says what it was called before, if it is not new. One left out
+   * is removed. Everything in a room goes with it: renamed, it is in the room
+   * of the new name; removed, it is in no room at all.
+   */
+  private async saveRooms(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJson(request);
+    if (!Array.isArray(body?.rooms)) {
+      return send(response, 400, { error: 'The rooms are a list' });
+    }
+    const current = this.deps.store.data.rooms;
+    const rooms: { was?: string; name: string }[] = [];
+    for (const entry of body.rooms as { was?: unknown; name?: unknown }[]) {
+      const name = typeof entry?.name === 'string' ? entry.name.trim().slice(0, 64) : '';
+      if (!name) {
+        return send(response, 400, { error: 'A room needs a name' });
+      }
+      const was = current.find((room) => room === entry?.was);
+      if (entry?.was !== undefined && !was) {
+        return send(response, 400, { error: `There is no room called ${String(entry.was)}` });
+      }
+      if (rooms.some((other) => other.name.toLowerCase() === name.toLowerCase())) {
+        return send(response, 400, { error: `There are two rooms called ${name}` });
+      }
+      rooms.push({ ...(was ? { was } : {}), name });
+    }
+
+    const renamed = new Map(rooms.flatMap((room) => (room.was ? [[room.was, room.name]] : [])));
+    this.deps.store.update((state) => {
+      for (const exposure of Object.values(state.exposures)) {
+        if (!exposure.room) {
+          continue;
+        }
+        const to = renamed.get(exposure.room);
+        if (to) {
+          exposure.room = to;
+        } else {
+          delete exposure.room;
+        }
+      }
+      state.rooms = sortRooms(rooms.map((room) => room.name));
+    });
+
+    this.broadcast({ type: 'devices' });
+    return send(response, 200, { rooms: this.deps.store.data.rooms });
   }
 
   /**
@@ -490,6 +538,7 @@ export class WebServer {
 
     return {
       devices,
+      rooms: this.deps.store.data.rooms,
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       hasLocation: this.deps.hasLocation === true,
@@ -580,7 +629,10 @@ export class WebServer {
   }
 
   private async serveStatic(path: string, response: ServerResponse): Promise<void> {
-    const page = path === '/' || TAB_PATHS.has(path.replace(/\/+$/, ''));
+    // Every tab has an address of its own, /rules or /home/rooms, and the page
+    // works out from it which to show; one it does not know shows Devices.
+    // Anything with an extension is a file, and missing if it is not there.
+    const page = extname(path) === '';
     const relative = page ? 'index.html' : path.replace(/^\/+/, '');
     // normalize collapses any `..` before it can escape the public directory.
     const file = join(PUBLIC_DIR, normalize(relative));

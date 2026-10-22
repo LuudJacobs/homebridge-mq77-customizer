@@ -870,7 +870,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // same as on a timer's own line.
     this.moved = said(trigger, value);
     try {
-      this.record(rule, 'cancelled', `${describeMatch(trigger.match)} no longer`);
+      this.record(rule, 'cancelled', `${describeMatch(trigger.match, true)} no longer`);
     } finally {
       this.moved = undefined;
     }

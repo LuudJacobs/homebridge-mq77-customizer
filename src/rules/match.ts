@@ -22,15 +22,14 @@ export function matches(match: Match, value: unknown, previous?: unknown): boole
       // which Zigbee2MQTT does on every message it sends.
       return same(value, match.value) && !same(previous, match.value);
 
-    case 'above': {
-      const number = asNumber(value);
-      return number !== undefined && number > match.value;
-    }
+    case 'above':
+      // Crossing the value, not every reading past it: a sensor saying 31,
+      // 32 and 33 rose above 30 once. Asked as a condition there is nothing
+      // before, and it is where the value stands.
+      return isAbove(value, match.value) && !isAbove(previous, match.value);
 
-    case 'below': {
-      const number = asNumber(value);
-      return number !== undefined && number < match.value;
-    }
+    case 'below':
+      return isBelow(value, match.value) && !isBelow(previous, match.value);
 
     case 'contains':
       // Asked as a condition there is nothing before, and it is whether the
@@ -43,6 +42,16 @@ export function matches(match: Match, value: unknown, previous?: unknown): boole
   }
 }
 
+function isAbove(value: unknown, line: number): boolean {
+  const number = asNumber(value);
+  return number !== undefined && number > line;
+}
+
+function isBelow(value: unknown, line: number): boolean {
+  const number = asNumber(value);
+  return number !== undefined && number < line;
+}
+
 function contains(value: unknown, part: string): boolean {
   if (value === undefined || value === null) {
     return false;
@@ -50,7 +59,6 @@ function contains(value: unknown, part: string): boolean {
   return String(value).toLowerCase().includes(part.toLowerCase());
 }
 
-/** Describes a match in words, for the run log and the interface. */
 /**
  * Whether a match still describes where a value stands.
  *
@@ -82,7 +90,14 @@ export function holds(match: Match, value: unknown, startedWith: unknown): boole
   }
 }
 
-export function describeMatch(match: Match): string {
+/**
+ * Describes a match in words, for the run log and the interface.
+ *
+ * A trigger is something happening, a reading rising above a value. A
+ * condition, or a wait asking whether to go on, is about where the value
+ * stands, so `asState` says the same match as being above it.
+ */
+export function describeMatch(match: Match, asState = false): string {
   switch (match.kind) {
     case 'changed':
       return 'changes';
@@ -93,9 +108,9 @@ export function describeMatch(match: Match): string {
     case 'changedTo':
       return `becomes ${format(match.value)}`;
     case 'above':
-      return `rises above ${match.value}`;
+      return `${asState ? 'is' : 'rises'} above ${match.value}`;
     case 'below':
-      return `falls below ${match.value}`;
+      return `${asState ? 'is' : 'falls'} below ${match.value}`;
     case 'contains':
       return `contains ${format(match.value)}`;
     default:

@@ -115,7 +115,7 @@ function test(node: { kind: 'test' } & Condition, lookup: Lookup): Reason | unde
 
   return matches(node.match, value)
     ? undefined
-    : { detail: `${property.label} ${describeMatch(node.match)} did not hold` };
+    : { detail: `${property.label} ${describeMatch(node.match, true)} did not hold` };
 }
 
 /** Describes an expression in words, for a reason or for the interface. */
@@ -123,7 +123,7 @@ export function describe(node: ConditionNode, lookup?: Lookup): string {
   switch (node.kind) {
     case 'test': {
       const label = lookup?.property(node)?.label ?? node.propertyKey;
-      return `${label} ${describeMatch(node.match)}`;
+      return `${label} ${describeMatch(node.match, true)}`;
     }
     case 'all':
       return node.nodes.map((child) => describe(child, lookup)).join(' and ');

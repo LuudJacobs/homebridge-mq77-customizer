@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.5.0
+# MQ77 Customizer 2.6.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -55,7 +55,7 @@ What was described is logged at startup, so a topic that matches no device is vi
 
 Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
 
-Every tab has an address of its own, `/automation`, `/controllers` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Controllers, every rule on a button is a link to it.
+The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide. Every tab has an address of its own, `/rules`, `/guide` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Guide, every rule on a button is a link to it.
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
@@ -80,6 +80,7 @@ Accessory names are corrected to what HomeKit accepts, which must start and end 
 | on/off | Switch, Outlet, Lightbulb or Fan, your choice |
 | brightness | Brightness on a Lightbulb |
 | temperature, humidity | their sensor services |
+| illuminance, in lux | Light Sensor; a raw reading with no unit is not offered |
 | contact | a Contact sensor, closed while the two halves touch |
 | smoke | a Smoke sensor. Heat alarms report `smoke` too, so they become one as well |
 | occupancy | a Motion sensor by default, or an Occupancy sensor if you pick that under HomeKit sensor. A PIR and an mmWave sensor both report `occupancy`, so which one a device is has to be picked by hand |
@@ -96,11 +97,11 @@ Button names and gestures are worked out from the action names the device publis
 
 ### Naming and grouping
 
-Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them.
+Every device takes a name, a room and a kind, set in its panel. They are for this interface: HomeKit keeps rooms in the Home app, where no accessory can set or read them. A room is picked from the list under Home, Rooms. Edit rooms turns the list into a form to rename, remove and add them, saved all at once: a rename takes everything in the room along, a removal leaves it in no room. The list starts as Living room, Kitchen, Bedroom and Bathroom.
 
 Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by. Every heading in a list says how many are under it and folds them away when clicked. Headings start closed, except Unknown Devices, and open while a filter finds something under them.
 
-Marking a device as a Controller puts its button presses in the Activity tab, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
+Marking a device as a Controller puts its button presses in the Log, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
 
@@ -112,27 +113,28 @@ Both come from the source rather than from this plugin. When a message reached t
 
 Whether messages are retained is read from Zigbee2MQTT's own configuration, where three things decide it: the device's own `retain`, the `device_options` defaults it otherwise inherits, and `mqtt.force_disable_retain`, which overrides both. A source that keeps no such configuration says nothing rather than guessing.
 
-### Controllers
+### Guide
 
-The Controllers tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks in the header say which of those lines are wanted, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
+The Guide tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks say which of those lines are wanted, Unused buttons off to begin with, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
-### Map
+### Zigbee map
 
-The Map tab draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
+Under Home, Zigbee map draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
 
-A scan questions every device in turn, so it takes minutes on a mesh of any size and only runs when asked for. Zigbee2MQTT only: a flat JSON source has no network to describe.
+A scan questions every device in turn, so it takes minutes on a mesh of any size and only runs when asked for. Zigbee2MQTT only: a flat JSON source has no network to describe. Not on a phone, which has no room to draw one.
 
-### Activity
+### Log
 
-The Activity tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default.
+The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
 
 ## Rules
 
-Rules live in three tabs: Automation, Mirror devices and Sliders. Automation is the general one: when something happens on one device, send something to another, straight away or after a wait. All three work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
+Rules live in three tabs: Rules, Mirrors and Sliders. Rules is the general one: when something happens on one device, send something to another, straight away or after a wait. All three work across sources, so a Zigbee button can drive an infrared blaster, and apply the moment they are saved.
 
 Across all four:
 
 - anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
+- a number sets a rule off when it rises above or falls below a value, once each time it crosses it. A condition asks whether it is above or below the value now
 - a device is picked in two steps, its room and then the device in it. Devices without a room are under Unknown
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
 - an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
@@ -142,19 +144,19 @@ Across all four:
 - rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press
 - a rule will not run more often than its rate limit, one second by default, and one that runs more than twenty times in ten seconds is switched off and logged on the assumption it is setting itself off
 
-An automation can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. A light coming on, thirty seconds, the light going out again.
+A rule can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. A light coming on, thirty seconds, the light going out again.
 
 The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. The same thing happening again starts the wait from the top, a different trigger of the same rule takes it over, and a rule's own doing is not read as either. A wait running when Homebridge restarts is forgotten.
 
-An action's own delay is a different thing: it comes after the conditions and cannot be called off. Timers were a tab of their own until the wait arrived; anything one of those did is an automation with a wait now.
+An action's own delay is a different thing: it comes after the conditions and cannot be called off. Timers were a tab of their own until the wait arrived; anything one of those did is a rule with a wait now.
 
-An automation can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
+A rule can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
 
 ### Times
 
-An automation can be set off by a time of day rather than by a device. Current time sits at the bottom of the room picker, under the rooms, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the activity log. The same pick is offered among the conditions, where it asks what the clock says now.
+A rule can be set off by a time of day rather than by a device. Current time sits at the bottom of the room picker, under the rooms, and a rule set off that way carries a clock where a device carries its kind, in the rule list and in the log. The same pick is offered among the conditions, where it asks what the clock says now.
 
-Only automations. A mirror and a slider are driven by their devices.
+Only on the Rules tab. A mirror and a slider are driven by their devices.
 
 The clock is whatever the machine running Homebridge thinks it is, and a rule fires during the minute it names. Four things worth knowing:
 
@@ -167,7 +169,7 @@ As a condition it is said as a side rather than a range: `is before 04:00`, or `
 
 A time can also be one the sun decides: sunrise, sunset, dawn or dusk, with an offset in minutes either side, so `sunset -30` is half an hour before the sun goes down. Dawn and dusk are civil twilight, which is when it is actually dark rather than the moment the sun crosses the horizon, and for lights that is usually what is meant.
 
-These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the activity log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
+These need a location, set under Location in the Homebridge settings. Without one they are not offered at all, and a rule that already uses one keeps saying so rather than being quietly rewritten: it fails once a day and says in the log that the location is missing. Filling the coordinates back in makes it work again with nothing re-edited.
 
 Far enough north there are days when the sun never reaches one of these points, dawn and dusk long before sunrise and sunset. Those days are skipped and said in the log.
 
@@ -186,7 +188,7 @@ With a topic set, a device with a battery also gets **Low battery warning** in i
 
 Whether or not a topic is set, a low battery shows as a red, empty battery at the start of the device's line in the Devices list.
 
-### Mirror devices
+### Mirrors
 
 Which devices, and which of their functions, should stay in step. Every member is both a trigger and a target. Functions are matched on meaning rather than on name, so a socket calling its on/off `state` mirrors a two channel switch calling the same thing `state_l1`.
 
@@ -216,7 +218,7 @@ A value the plugin keeps itself, for what the house is doing rather than what an
 
 Text is matched ignoring case, and anything it cannot hold is dropped as it is typed. Changing the type starts the value again from false, empty or 0.
 
-An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the activity log, and deleting one leaves the rules that used it saying what is missing.
+An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 

@@ -685,12 +685,63 @@ describe('the address of a tab', () => {
   it('is answered with the page, signed in or not', async () => {
     const context = await harness();
     try {
-      for (const path of ['/devices', '/automation', '/mirror/', '/map']) {
+      // Every tab's, and one it does not know, which shows Devices.
+      for (const path of ['/devices', '/rules', '/mirrors/', '/home/zigbee-map', '/nothing-here']) {
         const response = await fetch(`${context.base}${path}`);
         expect(response.status, path).toBe(200);
         expect(await response.text(), path).toContain('MQ77 Customizer');
       }
-      expect((await fetch(`${context.base}/nothing-here`)).status).toBe(404);
+      // A file that is not there is missing.
+      expect((await fetch(`${context.base}/nothing-here.css`)).status).toBe(404);
+    } finally {
+      await context.server.stop();
+    }
+  });
+});
+
+describe('rooms', () => {
+  it('are saved all at once: added, renamed and removed, and what is in them goes along', async () => {
+    const context = await harness();
+    try {
+      const session = await signIn(context.base);
+      const save = (rooms: unknown) =>
+        session.fetch('/api/rooms', { method: 'PUT', body: JSON.stringify({ rooms }) });
+      const put = (deviceId: string, room: string) =>
+        session.fetch('/api/exposure', {
+          method: 'PUT',
+          body: JSON.stringify({ sourceId: 'zigbee', deviceId, exposure: { properties: [], room } }),
+        });
+      const roomOf = (deviceId: string) => context.store.getExposure(`zigbee:${deviceId}`)?.room;
+      const SOCKET = '0x00158dfffe000006';
+      const LAMP = '0x00158dfffe000003';
+
+      // Only a room from the list, written as the list has it.
+      await put(SOCKET, 'kitchen');
+      expect(roomOf(SOCKET)).toBe('Kitchen');
+      await put(SOCKET, 'Kelder');
+      expect(roomOf(SOCKET)).toBeUndefined();
+
+      await put(SOCKET, 'Kitchen');
+      await put(LAMP, 'Bedroom');
+      const answer = await save([
+        { was: 'Kitchen', name: ' Keuken ' },
+        { was: 'Living room', name: 'Living room' },
+        { name: 'Zolder' },
+      ]);
+      expect(((await answer.json()) as { rooms: string[] }).rooms).toEqual([
+        'Keuken',
+        'Living room',
+        'Zolder',
+      ]);
+      // Renamed with its room, and out of one that went.
+      expect(roomOf(SOCKET)).toBe('Keuken');
+      expect(roomOf(LAMP)).toBeUndefined();
+
+      // Refused whole, and nothing changed.
+      expect((await save([{ name: 'Hal' }, { name: 'hal' }])).status).toBe(400);
+      expect((await save([{ name: '  ' }])).status).toBe(400);
+      expect((await save([{ was: 'Schuur', name: 'Schuur' }])).status).toBe(400);
+      expect(context.store.data.rooms).toEqual(['Keuken', 'Living room', 'Zolder']);
     } finally {
       await context.server.stop();
     }

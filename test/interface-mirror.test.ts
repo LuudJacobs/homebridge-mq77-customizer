@@ -61,7 +61,7 @@ const pair = {
 
 async function openMirror(rules: unknown[] = [pair]) {
   const ui = await openInterface({ state: { devices }, rules });
-  await ui.click(ui.byText('button.tab', 'Mirror devices'));
+  await ui.click(ui.byText('button.tab', 'Mirrors'));
   const card = ui.document.querySelector('#mirror .rule') as HTMLDetailsElement;
   await ui.openCard(card);
   return ui;
@@ -242,7 +242,7 @@ describe('a one way mirror', () => {
 
   it('reads as one way in the list', async () => {
     const both = await openInterface({ state: { devices }, rules: [pair] });
-    await both.click(both.byText('button.tab', 'Mirror devices'));
+    await both.click(both.byText('button.tab', 'Mirrors'));
     const line = (ui: { document: Document }) => {
       const meta = ui.document.querySelector('#mirror .device-meta')!.cloneNode(true) as Element;
       meta.querySelectorAll('title').forEach((title) => title.remove());
@@ -254,7 +254,7 @@ describe('a one way mirror', () => {
       state: { devices },
       rules: [{ ...pair, groups: [[ref('0xa'), ref('0xb'), ref('0xc')]], leader: { sourceId: 'zigbee', deviceId: '0xb' } }],
     });
-    await one.click(one.byText('button.tab', 'Mirror devices'));
+    await one.click(one.byText('button.tab', 'Mirrors'));
     expect(line(one)).toBe('lamp_b → lamp_a, lamp_c · 1 field');
   });
 });

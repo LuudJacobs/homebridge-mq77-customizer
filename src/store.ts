@@ -112,18 +112,34 @@ export interface StateToggle {
   value: boolean | string | number;
 }
 
+/** The rooms a house starts with, before anybody has said which it has. */
+export const DEFAULT_ROOMS = ['Living room', 'Kitchen', 'Bedroom', 'Bathroom'];
+
+/** Rooms by name, A to Z, whatever case they were typed in. */
+export function sortRooms(rooms: string[]): string[] {
+  return [...rooms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
   exposures: Record<string, DeviceExposure>;
   rules: AnyRule[];
   states: StateToggle[];
+  /** The rooms a device can be put in, A to Z. */
+  rooms: string[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
 
 function emptyState(): PersistedState {
-  return { version: STORE_VERSION, exposures: {}, rules: [], states: [] };
+  return {
+    version: STORE_VERSION,
+    exposures: {},
+    rules: [],
+    states: [],
+    rooms: sortRooms(DEFAULT_ROOMS),
+  };
 }
 
 /**
@@ -380,18 +396,77 @@ function migrate(parsed: unknown): PersistedState {
     return emptyState();
   }
   const state = parsed as Partial<PersistedState>;
+  const exposures = state.exposures ?? {};
+
+  // Rooms became a list of their own. Settings from before it start from the
+  // usual few, and every device's room is emptied to be set again from them,
+  // rather than carrying over whatever was typed into a free text box.
+  let rooms: string[];
+  if (Array.isArray(state.rooms)) {
+    rooms = sortRooms(
+      [...new Set(state.rooms.filter((room): room is string => typeof room === 'string'))]
+        .map((room) => room.trim())
+        .filter(Boolean),
+    );
+  } else {
+    rooms = sortRooms(DEFAULT_ROOMS);
+    for (const exposure of Object.values(exposures)) {
+      delete exposure.room;
+    }
+  }
+
   return {
     version: STORE_VERSION,
-    exposures: state.exposures ?? {},
+    exposures,
+    rooms,
     // Timers were folded into automations, which can wait. One stored by an
     // older version is dropped rather than carried: nothing runs it, nothing
     // draws it, and leaving it would only be a rule that never fires.
-    rules: (state.rules ?? []).filter(
-      (rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer',
-    ),
+    rules: (state.rules ?? [])
+      .filter((rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer')
+      .map(withoutRoutes),
     states: (Array.isArray(state.states) ? state.states : []).flatMap(readToggle),
     sessionSecret: state.sessionSecret,
   };
+}
+
+/**
+ * A rule without the routes a test build let its conditions ask about.
+ *
+ * The question goes, and a rule that asked one is switched off: the route
+ * was holding it back, and running it without that is for somebody to decide.
+ */
+function withoutRoutes(rule: AnyRule): AnyRule {
+  const branches = (rule as { branches?: { when?: unknown }[] }).branches;
+  if (!Array.isArray(branches)) {
+    return rule;
+  }
+  let asked = false;
+  const prune = (node: unknown): unknown => {
+    const { kind } = (node ?? {}) as { kind?: string };
+    if (kind === 'route') {
+      asked = true;
+      return undefined;
+    }
+    if (kind === 'not') {
+      const inner = prune((node as { node: unknown }).node);
+      return inner === undefined ? undefined : { kind, node: inner };
+    }
+    if (kind === 'all' || kind === 'any') {
+      const nodes = (node as { nodes: unknown[] }).nodes.map(prune).filter(Boolean);
+      return nodes.length > 0 ? { kind, nodes } : undefined;
+    }
+    return node;
+  };
+  const pruned = branches.map((branch) => {
+    if (branch.when === undefined) {
+      return branch;
+    }
+    const { when, ...rest } = branch;
+    const kept = prune(when);
+    return kept === undefined ? rest : { ...rest, when: kept };
+  });
+  return asked ? ({ ...rule, enabled: false, branches: pruned } as AnyRule) : rule;
 }
 
 /** One stored state, or nothing for one that is not; one from before types is a truth. */

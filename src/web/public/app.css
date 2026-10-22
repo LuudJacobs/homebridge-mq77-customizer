@@ -267,6 +267,59 @@ header {
   margin: 0 0 1rem;
 }
 
+/* Home: its pages on a menu on the left, the one picked beside it. */
+.home {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.home-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.home-link {
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 0.45rem 0.7rem;
+}
+
+.home-link.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* A room a line: its name and what it holds, or its name to edit. */
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.6rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.room-name {
+  color: var(--text);
+  min-width: 10rem;
+}
+
+/* As wide as there is room for, up to a sensible name's worth. */
+.room-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 20rem;
+}
+
+.rooms .add-row {
+  margin-top: 0.6rem;
+}
+
 /* Devices */
 
 .device {
@@ -544,7 +597,8 @@ header {
  * become a dropdown as wide as the section it names, with the way out to
  * Zigbee2MQTT still at the far end of the line.
  */
-@media (max-width: 60rem) {
+/* Below 768 pixels the row of tabs gives way to a dropdown. */
+@media (max-width: 47.99rem) {
   .tabs {
     display: none;
   }
@@ -552,6 +606,15 @@ header {
   .tab-select {
     display: block;
     margin: 0.35rem 0;
+  }
+
+  /* The dropdown that stands in for the tabs has Home's pages in it. */
+  .home {
+    grid-template-columns: 1fr;
+  }
+
+  .home-menu {
+    display: none;
   }
 }
 
@@ -1387,10 +1450,11 @@ table.buttons td.in-homekit {
   }
 
   /* No room to draw a network here. */
-  #tab-map,
-  #view-map {
+  #home-map,
+  #home-page-map {
     display: none;
   }
+
 
   header {
     flex-direction: column;
@@ -1501,6 +1565,11 @@ table.buttons td.in-homekit {
   /* Adding, scanning, downloading and clearing are for a desk. */
   .tab-buttons {
     display: none;
+  }
+
+  /* Rooms are worth editing from anywhere, so theirs stay. */
+  #home-page-rooms .tab-buttons {
+    display: flex;
   }
 
   /* Nothing in a panel but the button that runs the rule by hand. */

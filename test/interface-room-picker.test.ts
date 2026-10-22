@@ -52,7 +52,7 @@ const rule = {
 
 async function openRule() {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
-  await ui.click(ui.byText('button.tab', 'Automation'));
+  await ui.click(ui.byText('button.tab', 'Rules'));
   await ui.openCard(ui.document.querySelector('.rule') as HTMLDetailsElement);
   return ui;
 }
@@ -153,8 +153,8 @@ describe('picking a device by its room first', () => {
 
   it('still gives a brand-new automation a device, so it can be stored at all', async () => {
     const ui = await openInterface({ state: { devices }, rules: [] });
-    await ui.click(ui.byText('button.tab', 'Automation'));
-    await ui.click(ui.byText('button', '+ automation'));
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    await ui.click(ui.byText('button', '+ rule'));
 
     const created = ui.requests.find((request) => request.body !== undefined)?.body as {
       trigger: { deviceId: string };
