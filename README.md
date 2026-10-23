@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.6.0
+# MQ77 Customizer 2.7.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -117,6 +117,14 @@ Whether messages are retained is read from Zigbee2MQTT's own configuration, wher
 
 The Guide tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks say which of those lines are wanted, Unused buttons off to begin with, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
+### Routes
+
+Under Home, Routes are ways through the house, as the motion and presence sensors along them notice somebody: bedroom to living room, past four of them. Each has a name, its sensors in the order they are passed, a walk time, thirty seconds to begin with, and Both ways, on to begin with.
+
+A walk is set out on when a sensor after the first notices somebody while the first still reads occupied: somebody leaving where the route starts, however long they stood there. The walk time counts from then. The route is walked once the last sensor is reached within it and is occupied while every other sensor on the route reads unoccupied, at once or as soon as the one just left behind clears. The last one clearing first is nobody arriving, and no walk. Sensors in between may be missed, the second one too, since a motion sensor still reading occupied does not report anybody new, but none may come out of order: one already passed noticing somebody, the first included, calls the walk off. A sensor counts when it comes on, not while it stays on. With Both ways the route is walked back the same way, as a walk of its own. A restart forgets any walk under way.
+
+A walk sets a rule off, from Routes above Current time in a trigger's room picker: either way, or towards the room at one end. The rule list and the log carry the route where a device carries its kind, and a notification's `<trigger>` is the route's name.
+
 ### Zigbee map
 
 Under Home, Zigbee map draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
@@ -125,7 +133,7 @@ A scan questions every device in turn, so it takes minutes on a mesh of any size
 
 ### Log
 
-The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
+The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default, and so do Ignored rules: every line that reads ignored, whether the rule ran into Ignore, no condition held, it was held back by its rate limit or a slider had nothing left to do. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
 
 ## Rules
 

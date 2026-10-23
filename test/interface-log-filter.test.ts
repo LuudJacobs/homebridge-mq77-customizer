@@ -83,10 +83,12 @@ const log = [
 async function filtered(term: string) {
   const ui = await openInterface({ state: { devices: devices() }, rules, log });
   await ui.click(ui.byText('button.tab', 'Log'));
-  // Presses on a line of their own are hidden to begin with.
-  const presses = ui.document.getElementById('kind-action') as HTMLInputElement;
-  presses.checked = true;
-  presses.dispatchEvent(new ui.window.Event('change'));
+  // Presses on a line of their own and ignored rules are hidden to begin with.
+  for (const id of ['kind-action', 'kind-ignored']) {
+    const box = ui.document.getElementById(id) as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new ui.window.Event('change'));
+  }
   const filter = ui.document.querySelector('#filter') as HTMLInputElement;
   filter.value = term;
   filter.dispatchEvent(new ui.window.Event('input'));
