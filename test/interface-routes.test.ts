@@ -38,6 +38,7 @@ const devices = () => [
   device('0xa', 'Beweging', 'Bedroom', [property('occupancy', 'motion')]),
   device('0xb', 'Gang', 'Hal', [property('presence', 'occupancy')]),
   device('0xc', 'Deur', 'Living room', [property('contact', 'contact')]),
+  device('0xe', 'Bank', 'Living room', [property('occupancy', 'motion')]),
   device('0xd', 'Lamp', 'Living room', [
     property('state', 'power', { writable: true, onValue: 'ON', offValue: 'OFF' }),
   ]),
@@ -48,7 +49,7 @@ const routes = [
   {
     id: 'route-1',
     name: 'Bedroom to living room',
-    sensors: [sensor('0xa'), sensor('0xb'), sensor('0xc')],
+    sensors: [sensor('0xa'), sensor('0xb'), sensor('0xe')],
     walkMs: 30_000,
     bothWays: true,
   },
@@ -69,16 +70,19 @@ describe('the Routes page', () => {
     expect(summary.querySelector('.device-meta')?.textContent).toBe('3 sensors · both ways');
   });
 
-  it('offers only what notices somebody as a sensor, in order, to move up and down', async () => {
+  it('offers only motion and presence sensors, in order, to move up and down', async () => {
     const ui = await open();
     await ui.openCard(card(ui));
     const picks = [...card(ui).querySelectorAll('select.route-sensor')] as HTMLSelectElement[];
     expect(picks.map((pick) => pick.options[pick.selectedIndex]?.textContent)).toEqual([
       'Bedroom Beweging',
       'Hal Gang',
-      'Living room Deur',
+      'Living room Bank',
     ]);
-    expect([...picks[0]!.options].map((option) => option.textContent)).not.toContain('Living room Lamp');
+    const offered = [...picks[0]!.options].map((option) => option.textContent);
+    expect(offered).not.toContain('Living room Lamp');
+    // A door says when it opens, never that nobody is there.
+    expect(offered).not.toContain('Living room Deur');
 
     const down = [...card(ui).querySelectorAll('.route-sensors .rule-row')][0]!.querySelectorAll('button')[1] as HTMLButtonElement;
     await ui.click(down);
@@ -86,7 +90,7 @@ describe('the Routes page', () => {
     const saved = ui.requests.findLast((request) => request.path === '/api/routes')?.body as {
       route: { sensors: { deviceId: string }[] };
     };
-    expect(saved.route.sensors.map((entry) => entry.deviceId)).toEqual(['0xb', '0xa', '0xc']);
+    expect(saved.route.sensors.map((entry) => entry.deviceId)).toEqual(['0xb', '0xa', '0xe']);
   });
 
   it('adds one at the top, thirty seconds and both ways, saved without an id of its own', async () => {
@@ -227,5 +231,20 @@ describe('a walk in the log', () => {
     await ui.click(ui.byText('button.tab', 'Log'));
     const line = ui.document.querySelector('#activity-log .log-what')?.textContent?.replace(/\s+/g, ' ');
     expect(line).toContain('Bedroom to living room: walked towards Bedroom →');
+  });
+});
+
+describe('a door on a route made before doors were left out', () => {
+  it('says it is not a motion sensor, rather than that it has gone', async () => {
+    const ui = await openInterface({
+      state: { devices: devices(), routes: [{ ...routes[0], sensors: [sensor('0xa'), sensor('0xc')] }] },
+      at: '/home/routes',
+    });
+    const card = ui.document.querySelector('#routes details.route') as HTMLDetailsElement;
+    await ui.openCard(card);
+    const picks = [...card.querySelectorAll('select.route-sensor')] as HTMLSelectElement[];
+    expect(picks[1]!.options[picks[1]!.selectedIndex]?.textContent).toBe(
+      'Living room Deur (not a motion sensor)',
+    );
   });
 });
