@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.7.0] - 2026-10-23
+
+### Added
+
 - Routes under Home: a walk along one, start to end, sets a rule off
 - Ignored rules can be hidden in the log, and are to begin with
 
