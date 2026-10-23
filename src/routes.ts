@@ -18,7 +18,7 @@ export interface Walked {
   direction: Direction;
 }
 
-/** A walk under way: the sensor passed last, and when the first one was. */
+/** A walk under way: the sensor passed last, and when it was set out on. */
 interface Walk {
   index: number;
   startedAt: number;
@@ -38,12 +38,14 @@ const keyOf = (sensor: Sensor) => `${sensor.sourceId}:${sensor.deviceId}`;
  * Follows walks along the routes, from the motion and presence sensors on
  * them.
  *
- * A walk starts at a route's first sensor and reaches its end once the last
- * one notices somebody, inside the route's time for the whole walk. The ones
- * in between may be missed, since a sensor still reading occupied does not
- * report anybody new, but none may come out of order: one already passed
- * noticing somebody calls the walk off. The first one noticing somebody
- * starts it again from there.
+ * A walk is set out on when a sensor after the first notices somebody while
+ * the first still reads occupied: somebody leaving where the route starts.
+ * However long they stood there first, the route's time for the walk counts
+ * from then, and it reaches its end once the last sensor notices somebody
+ * inside that time. Sensors in between may be missed, since one still
+ * reading occupied does not report anybody new, but none may come out of
+ * order: one already passed noticing somebody, the first included, calls
+ * the walk off.
  *
  * Reaching the end is not yet having walked it: that is the last sensor
  * occupied and every other one on the route unoccupied, which is somebody
@@ -85,7 +87,7 @@ export class RouteWalks {
         }
         const key = `${route.id}:${direction}`;
         if (reading.noticed) {
-          this.step(route, key, index, update.at);
+          this.step(route, key, order, index, update.at);
         }
         if (this.arrived(key, order)) {
           walked.push({ route, direction });
@@ -95,18 +97,25 @@ export class RouteWalks {
     return walked;
   }
 
-  /** Moves a walk along, or calls it off. */
-  private step(route: Route, key: string, index: number, at: number): void {
-    if (index === 0) {
-      this.walks.set(key, { index, startedAt: at });
-      return;
-    }
+  /** Sets out on a walk, moves one along, or calls it off. */
+  private step(route: Route, key: string, order: Sensor[], index: number, at: number): void {
     const walk = this.walks.get(key);
-    if (!walk || index < walk.index || (index > walk.index && at - walk.startedAt > route.walkMs)) {
+    // Behind where the walk got to: going back, or somebody else.
+    if (index === 0 || (walk && index < walk.index)) {
       this.walks.delete(key);
       return;
     }
-    walk.index = index;
+    if (walk && (index === walk.index || at - walk.startedAt <= route.walkMs)) {
+      walk.index = index;
+      return;
+    }
+    // Nothing under way, or one that took too long: somebody leaving the
+    // first sensor sets out on a walk from here.
+    if (this.occupied(order[0]!)) {
+      this.walks.set(key, { index, startedAt: at });
+    } else {
+      this.walks.delete(key);
+    }
   }
 
   /**
