@@ -124,11 +124,13 @@ async function lines(log: unknown[]) {
   const ui = await openInterface({ state: { devices }, rules, log });
   await ui.click(ui.byText('button.tab', 'Log'));
 
-  // Presses of their own are left out by default, and here the list itself is
-  // what is under test.
-  const box = ui.document.getElementById('kind-action') as HTMLInputElement;
-  box.checked = true;
-  box.dispatchEvent(new ui.window.Event('change'));
+  // Presses of their own and ignored rules are left out by default, and here
+  // the list itself is what is under test.
+  for (const id of ['kind-action', 'kind-ignored']) {
+    const box = ui.document.getElementById(id) as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new ui.window.Event('change'));
+  }
   await ui.settle();
 
   return [...ui.document.querySelectorAll('#activity-log .log-line .log-what')].map((node) => {
@@ -344,5 +346,66 @@ describe('what a log line says', () => {
     // A press that set a rule off is on that rule line, so the list opens
     // without a column of presses beside it.
     expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
+  });
+});
+
+describe('ignored rules', () => {
+  const log = [
+    entry({ detail: 'ignored', press }),
+    entry({ outcome: 'conditionsFailed', detail: 'State is ON did not hold' }),
+    entry({ outcome: 'rateLimited', detail: 'Fired 651ms ago, minimum 1000ms' }),
+    entry({
+      ruleId: 's1',
+      ruleName: 'Ceiling',
+      ruleKind: 'slider',
+      outcome: 'skipped',
+      detail: 'already at the top',
+    }),
+    entry({ press }),
+  ];
+
+  async function open() {
+    const ui = await openInterface({ state: { devices }, rules, log });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    return ui;
+  }
+  const shown = (ui: Awaited<ReturnType<typeof open>>) =>
+    [...ui.document.querySelectorAll('#activity-log .log-line .log-what')].map((node) => {
+      for (const icon of node.querySelectorAll('svg')) {
+        icon.remove();
+      }
+      return node.textContent?.replace(/\s+/g, ' ').trim();
+    });
+
+  it('sits after Action, unticked', async () => {
+    const ui = await open();
+    const labels = [...ui.document.querySelectorAll('#kind-filters label')].map((label) =>
+      label.textContent?.trim(),
+    );
+    expect(labels.slice(-2)).toEqual(['Action', 'Ignored rules']);
+    expect((ui.document.getElementById('kind-ignored') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('leaves out every line that reads ignored, and the press on it', async () => {
+    const ui = await open();
+    expect(shown(ui)).toEqual([
+      'Woonkamer Remote: 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
+    ]);
+
+    // Not even as a press of its own, with presses asked for.
+    const presses = ui.document.getElementById('kind-action') as HTMLInputElement;
+    presses.checked = true;
+    presses.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    expect(shown(ui)).toHaveLength(1);
+  });
+
+  it('shows them all once ticked', async () => {
+    const ui = await open();
+    const box = ui.document.getElementById('kind-ignored') as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    expect(shown(ui)).toHaveLength(5);
   });
 });

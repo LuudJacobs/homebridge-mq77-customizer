@@ -258,6 +258,7 @@ describe('the Zigbee map', () => {
       'Mirrors',
       'Sliders',
       'Home / Rooms',
+      'Home / Routes',
       'Home / Zigbee map',
       'Log',
       'Guide',

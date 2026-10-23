@@ -83,6 +83,10 @@
             <input id="kind-action" type="checkbox" />
             Action
           </label>
+          <label class="toggle" for="kind-ignored">
+            <input id="kind-ignored" type="checkbox" />
+            Ignored rules
+          </label>
         </span>
         <label id="unused-buttons-filter" class="toggle" for="unused-buttons" hidden>
           <input id="unused-buttons" type="checkbox" />
@@ -137,6 +141,7 @@
         <div class="home">
           <nav class="home-menu">
             <button id="home-rooms" type="button" class="home-link">Rooms</button>
+            <button id="home-routes" type="button" class="home-link">Routes</button>
             <button id="home-map" type="button" class="home-link">Zigbee map</button>
           </nav>
           <div class="home-pages">
@@ -145,6 +150,14 @@
                 <span id="rooms-buttons" class="tab-buttons"></span>
               </div>
               <div id="rooms" class="rooms"></div>
+            </div>
+            <div id="home-page-routes" class="home-page" hidden>
+              <div class="rules-actions">
+                <span class="tab-buttons">
+                  <button id="add-route" type="button">+ route</button>
+                </span>
+              </div>
+              <div id="routes" class="routes"></div>
             </div>
             <div id="home-page-map" class="home-page" hidden>
               <div class="rules-actions">
