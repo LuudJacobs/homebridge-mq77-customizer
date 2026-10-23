@@ -184,7 +184,7 @@ function currentHeatingCooling(mode: string, siblings: Siblings): number {
 }
 
 /** Whether a `contact` reading says the two halves touch. */
-export function isShut(value: unknown): boolean {
+function isShut(value: unknown): boolean {
   if (typeof value === 'string') {
     const said = value.trim().toLowerCase();
     return said === 'true' || said === 'closed' || said === 'close';

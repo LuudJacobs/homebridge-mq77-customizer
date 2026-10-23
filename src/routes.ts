@@ -1,6 +1,6 @@
 import type { Catalog } from './catalog.js';
 import { roleFor } from './homekit/roles.js';
-import { isShut, toBoolean } from './homekit/values.js';
+import { toBoolean } from './homekit/values.js';
 import type { StateUpdate } from './model/types.js';
 import type { Route, Store } from './store.js';
 
@@ -24,26 +24,41 @@ interface Walk {
   startedAt: number;
 }
 
+/** What one message says about the motion sensor it came from. */
+interface Reading {
+  /** Somebody newly noticed: a reading coming on that was off. */
+  noticed: boolean;
+  /** Whether it said anything about motion or presence at all. */
+  moved: boolean;
+}
+
 const keyOf = (sensor: Sensor) => `${sensor.sourceId}:${sensor.deviceId}`;
 
 /**
- * Follows walks along the routes, from the sensors on them.
+ * Follows walks along the routes, from the motion and presence sensors on
+ * them.
  *
- * A walk starts at a route's first sensor and is walked once its last one
- * notices somebody, inside the route's time for the whole walk. The ones in
- * between may be missed, since a motion sensor still reading occupied does
- * not report anybody new, but none may come out of order: one already passed
+ * A walk starts at a route's first sensor and reaches its end once the last
+ * one notices somebody, inside the route's time for the whole walk. The ones
+ * in between may be missed, since a sensor still reading occupied does not
+ * report anybody new, but none may come out of order: one already passed
  * noticing somebody calls the walk off. The first one noticing somebody
- * starts it again from there. Each way is a walk of its own, so going one way
- * does not get in the way of anybody coming back.
+ * starts it again from there.
  *
- * Kept while Homebridge runs and no longer: a walk is seconds long.
+ * Reaching the end is not yet having walked it: that is the last sensor
+ * occupied and every other one on the route unoccupied, which is somebody
+ * having arrived rather than somebody still on the way or somebody else
+ * about. It may be so at once, or once the sensor just left behind clears.
+ * The last one clearing first means nobody stayed, and the walk is off.
+ *
+ * Each way is a walk of its own, so going one way does not get in the way of
+ * anybody coming back. Kept while Homebridge runs and no longer.
  */
 export class RouteWalks {
   /** Keyed by route and way. */
   private readonly walks = new Map<string, Walk>();
-  /** Whether each reading that notices somebody is noticing them now. */
-  private readonly noticing = new Map<string, boolean>();
+  /** Each motion or presence reading, by sensor, and whether it is on now. */
+  private readonly occupancy = new Map<string, Map<string, boolean>>();
 
   constructor(
     private readonly store: Store,
@@ -52,9 +67,9 @@ export class RouteWalks {
 
   /** The routes this message finished a walk along. */
   handleState(update: StateUpdate): Walked[] {
-    const noticed = this.noticed(update);
+    const reading = this.read(update);
     // A value replayed on connect is not somebody walking past.
-    if (update.retained || !noticed) {
+    if (update.retained || !reading.moved) {
       return [];
     }
 
@@ -65,7 +80,14 @@ export class RouteWalks {
       for (const direction of ways) {
         const order = direction === 'forward' ? route.sensors : [...route.sensors].reverse();
         const index = order.findIndex((candidate) => keyOf(candidate) === sensor);
-        if (index >= 0 && this.step(route, direction, index, order.length, update.at)) {
+        if (index < 0) {
+          continue;
+        }
+        const key = `${route.id}:${direction}`;
+        if (reading.noticed) {
+          this.step(route, key, index, update.at);
+        }
+        if (this.arrived(key, order)) {
           walked.push({ route, direction });
         }
       }
@@ -73,62 +95,74 @@ export class RouteWalks {
     return walked;
   }
 
-  /** Moves a walk along, and says whether that finished it. */
-  private step(
-    route: Route,
-    direction: Direction,
-    index: number,
-    length: number,
-    at: number,
-  ): boolean {
-    const key = `${route.id}:${direction}`;
+  /** Moves a walk along, or calls it off. */
+  private step(route: Route, key: string, index: number, at: number): void {
     if (index === 0) {
       this.walks.set(key, { index, startedAt: at });
-      return false;
+      return;
     }
-
     const walk = this.walks.get(key);
-    if (!walk || at - walk.startedAt > route.walkMs || index < walk.index) {
+    if (!walk || index < walk.index || (index > walk.index && at - walk.startedAt > route.walkMs)) {
       this.walks.delete(key);
-      return false;
-    }
-    if (index === length - 1) {
-      this.walks.delete(key);
-      return true;
+      return;
     }
     walk.index = index;
-    return false;
   }
 
   /**
-   * Whether a message has somebody being noticed: motion or presence coming
-   * on, a door opening. Coming on rather than being on, since a sensor still
-   * reading occupied repeats it with every other thing it reports.
+   * Whether a walk that reached the end has now been walked, the last sensor
+   * occupied and the rest of them clear. One whose last sensor cleared first
+   * is called off.
    */
-  private noticed(update: StateUpdate): boolean {
-    const device = this.catalog.getDevice(update.sourceId, update.deviceId);
-    if (!device) {
+  private arrived(key: string, order: Sensor[]): boolean {
+    const walk = this.walks.get(key);
+    const last = order.length - 1;
+    if (!walk || walk.index !== last) {
       return false;
     }
-    let noticed = false;
+    if (!this.occupied(order[last]!)) {
+      this.walks.delete(key);
+      return false;
+    }
+    if (order.slice(0, last).some((sensor) => this.occupied(sensor))) {
+      return false;
+    }
+    this.walks.delete(key);
+    return true;
+  }
+
+  private occupied(sensor: Sensor): boolean {
+    return [...(this.occupancy.get(keyOf(sensor))?.values() ?? [])].some(Boolean);
+  }
+
+  /**
+   * What a message says about motion or presence, kept for the sensor.
+   * Noticing is a reading coming on rather than being on, since a sensor
+   * still reading occupied repeats it with every other thing it reports.
+   */
+  private read(update: StateUpdate): Reading {
+    const device = this.catalog.getDevice(update.sourceId, update.deviceId);
+    const reading: Reading = { noticed: false, moved: false };
+    if (!device) {
+      return reading;
+    }
+    const sensor = keyOf(update);
     for (const [key, value] of Object.entries(update.changes)) {
       const property = device.properties.find((candidate) => candidate.key === key);
       const role = property ? roleFor(property) : undefined;
       if (!property || value === undefined || value === null) {
         continue;
       }
-      let now: boolean;
-      if (role === 'motion' || role === 'occupancy') {
-        now = toBoolean(property, value);
-      } else if (role === 'contact') {
-        now = !isShut(value);
-      } else {
+      if (role !== 'motion' && role !== 'occupancy') {
         continue;
       }
-      const reading = `${keyOf(update)}:${key}`;
-      noticed ||= now && this.noticing.get(reading) !== true;
-      this.noticing.set(reading, now);
+      const now = toBoolean(property, value);
+      const readings = this.occupancy.get(sensor) ?? new Map<string, boolean>();
+      reading.noticed ||= now && readings.get(key) !== true;
+      reading.moved = true;
+      readings.set(key, now);
+      this.occupancy.set(sensor, readings);
     }
-    return noticed;
+    return reading;
   }
 }

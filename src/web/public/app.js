@@ -6357,11 +6357,11 @@ function roomsDirty() {
 }
 
 /**
- * The devices that can be on a route: anything that notices somebody, by
- * motion, by presence, or by a door it is on opening.
+ * The devices that can be on a route: those that notice somebody by motion
+ * or by presence, and say when they no longer do.
  */
 const isSensor = (device) =>
-  device.properties.some((property) => ['motion', 'occupancy', 'contact'].includes(property.role));
+  device.properties.some((property) => ['motion', 'occupancy'].includes(property.role));
 
 const sensorKey = (ref) => `${ref.sourceId}|${ref.deviceId}`;
 
@@ -6524,7 +6524,14 @@ function renderRoute(route) {
       for (const device of offered) {
         const choice = document.createElement('option');
         choice.value = sensorKey(device);
-        choice.textContent = device.gone ? `${ref.deviceId} (gone)` : displayName(device);
+        // One still here but not a motion sensor, a door from before they
+        // were left out, says so rather than that it has gone.
+        const here = device.gone && findDevice(ref);
+        choice.textContent = here
+          ? `${displayName(here)} (not a motion sensor)`
+          : device.gone
+            ? `${ref.deviceId} (gone)`
+            : displayName(device);
         pick.append(choice);
       }
       pick.value = sensorKey(ref);
@@ -6572,7 +6579,7 @@ function renderRoute(route) {
     } else if (sensors.length === 0) {
       const none = document.createElement('p');
       none.className = 'empty';
-      none.textContent = 'Nothing here notices somebody: no motion, presence or door sensor.';
+      none.textContent = 'Nothing here notices somebody: no motion or presence sensor.';
       list.append(none);
     }
   };
