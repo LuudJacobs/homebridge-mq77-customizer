@@ -9,6 +9,8 @@ const state = {
   /** Hides rules that are switched off. */
   /** Which kinds the activity list shows. */
   activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
+  /** Lines that read `ignored`, left out until they are asked for. */
+  showIgnored: false,
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
@@ -80,6 +82,7 @@ const el = {
   kindMirror: document.getElementById('kind-mirror'),
   kindSlider: document.getElementById('kind-slider'),
   kindAction: document.getElementById('kind-action'),
+  kindIgnored: document.getElementById('kind-ignored'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
   exportSettings: document.getElementById('export-settings'),
@@ -2009,6 +2012,11 @@ el.kindState.addEventListener('change', () => {
   renderLog();
 });
 
+el.kindIgnored.addEventListener('change', () => {
+  state.showIgnored = el.kindIgnored.checked;
+  renderLog();
+});
+
 /** Whether any panel, of a device or a rule, holds something not saved. */
 function anythingUnsaved() {
   return (
@@ -2087,6 +2095,18 @@ const OUTCOME_LABELS = {
   started: 'started',
   cancelled: 'called off',
 };
+
+/**
+ * Whether a line reads `ignored`: a rule held back, with no outcome to take,
+ * or one that ran into Ignore, and a slider with nothing left to do. A press
+ * that set it off is on the same line, and goes with it.
+ */
+function isIgnored(entry) {
+  return (
+    OUTCOME_LABELS[entry.outcome] === 'ignored' ||
+    (entry.outcome === 'fired' && entry.detail === 'ignored')
+  );
+}
 
 /** Outcomes that say everything in the word itself. */
 const WORDLESS = new Set(['cancelled']);
@@ -5124,6 +5144,7 @@ function renderLog() {
   // Drawn first and matched after, so the filter reads what is on screen.
   const lines = state.log
     .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
+    .filter((entry) => state.showIgnored || !isIgnored(entry))
     .map(logLine)
     .filter((line) => !term || line.search.includes(term));
 

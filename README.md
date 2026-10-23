@@ -125,7 +125,7 @@ A scan questions every device in turn, so it takes minutes on a mesh of any size
 
 ### Log
 
-The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
+The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default, and so do Ignored rules: every line that reads ignored, whether the rule ran into Ignore, no condition held, it was held back by its rate limit or a slider had nothing left to do. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
 
 ## Rules
 
