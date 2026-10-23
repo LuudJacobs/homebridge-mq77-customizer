@@ -60,17 +60,34 @@ export interface TimeTrigger {
 }
 
 /**
+ * A route walked from one end to the other.
+ *
+ * Without a direction either way will do. With one it is towards the room at
+ * that end: `forward` along the sensors in the order the route lists them,
+ * `back` the other way, on a route that goes both ways.
+ */
+export interface RouteTrigger {
+  kind: 'route';
+  routeId: string;
+  direction?: 'forward' | 'back';
+}
+
+/**
  * What may set an automation off.
  *
  * Only an automation: a mirror and a slider are driven by their devices, and
- * a clock is not something happening to a device. Keeping the union here
- * rather than widening `Trigger` means neither of those can hold one by type,
- * and validation turns away anything hand written into one.
+ * neither a clock nor a walk is something happening to a device. Keeping the
+ * union here rather than widening `Trigger` means neither of those can hold
+ * one by type, and validation turns away anything hand written into one.
  */
-export type AutomationTrigger = Trigger | TimeTrigger;
+export type AutomationTrigger = Trigger | TimeTrigger | RouteTrigger;
 
 export function isTimeTrigger(trigger: AutomationTrigger): trigger is TimeTrigger {
   return (trigger as TimeTrigger).kind === 'time';
+}
+
+export function isRouteTrigger(trigger: AutomationTrigger): trigger is RouteTrigger {
+  return (trigger as RouteTrigger).kind === 'route';
 }
 
 export interface Condition extends PropertyRef {
@@ -372,6 +389,8 @@ export interface LogEntry {
    * nothing at all here, since wording is the interface's business.
    */
   firedAt?: LogTime;
+  /** The route that set it off, when a walk along one did. */
+  walked?: LogWalk;
   /**
    * What set it off, when a device's own value did.
    *
@@ -396,6 +415,13 @@ export interface LogTime {
   at: string;
   /** Minutes either side, for a sun time. */
   offset?: number;
+}
+
+/** A route walked, and which way: its name as it was, for a route since deleted. */
+export interface LogWalk {
+  routeId: string;
+  routeName: string;
+  direction: 'forward' | 'back';
 }
 
 /** A button press: which device, which function, and what it said. */

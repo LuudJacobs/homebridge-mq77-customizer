@@ -22,6 +22,7 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+      routes: [],
     });
   });
 
@@ -75,6 +76,7 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
+      routes: [],
     });
   });
 
@@ -171,7 +173,7 @@ describe('Store', () => {
     expect(store.data.exposures).toEqual({ 'zigbee:0xa': { properties: ['state'] } });
   });
 
-  it('drops the routes, and switches off a rule that asked about one', async () => {
+  it('drops a test build’s routes, and switches off a rule that asked about one', async () => {
     const lamp = { kind: 'test', sourceId: 'z', deviceId: '0xa', propertyKey: 'state', match: { kind: 'equals', value: 'ON' } };
     const route = { kind: 'route', routeId: 'route-1', test: 'on' };
     const file = await temporaryFile();
@@ -192,11 +194,34 @@ describe('Store', () => {
     const store = new Store(file, silentLogger);
     await store.load();
 
-    expect('routes' in store.data).toBe(false);
+    // A gap between sensors rather than a time for the whole walk.
+    expect(store.data.routes).toEqual([]);
     const [asks, doesNot] = store.data.rules as unknown as { enabled: boolean; branches: unknown[] }[];
     expect(asks).toMatchObject({ enabled: false, branches: [{ when: { kind: 'all', nodes: [lamp] } }, {}] });
     expect(asks?.branches[1]).not.toHaveProperty('when');
     expect(doesNot).toMatchObject({ enabled: true, branches: [{ when: lamp }] });
+  });
+});
+
+describe('routes', () => {
+  it('keeps a route with a time for the whole walk', async () => {
+    const route = {
+      id: 'route-1',
+      name: 'Bedroom to living room',
+      sensors: [
+        { sourceId: 'zigbee', deviceId: '0xa' },
+        { sourceId: 'zigbee', deviceId: '0xb' },
+      ],
+      walkMs: 30_000,
+      bothWays: true,
+    };
+    const file = await temporaryFile();
+    await writeFile(file, JSON.stringify({ version: 1, routes: [route] }), 'utf8');
+
+    const store = new Store(file, silentLogger);
+    await store.load();
+
+    expect(store.data.routes).toEqual([route]);
   });
 });
 

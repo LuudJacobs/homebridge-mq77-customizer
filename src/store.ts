@@ -120,6 +120,21 @@ export function sortRooms(rooms: string[]): string[] {
   return [...rooms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
+/**
+ * A way through the house, as the sensors along it notice somebody: the
+ * bedroom to the living room past four of them.
+ */
+export interface Route {
+  id: string;
+  name: string;
+  /** In the order somebody walking it passes them. */
+  sensors: { sourceId: string; deviceId: string }[];
+  /** How long from the first sensor to the last, at most, for it to be walked. */
+  walkMs: number;
+  /** Whether it is walked back the other way as well. */
+  bothWays: boolean;
+}
+
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
@@ -128,6 +143,7 @@ export interface PersistedState {
   states: StateToggle[];
   /** The rooms a device can be put in, A to Z. */
   rooms: string[];
+  routes: Route[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
@@ -139,6 +155,7 @@ function emptyState(): PersistedState {
     rules: [],
     states: [],
     rooms: sortRooms(DEFAULT_ROOMS),
+    routes: [],
   };
 }
 
@@ -426,12 +443,16 @@ function migrate(parsed: unknown): PersistedState {
       .filter((rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer')
       .map(withoutRoutes),
     states: (Array.isArray(state.states) ? state.states : []).flatMap(readToggle),
+    // One from a test build has a gap between sensors rather than a time for
+    // the whole walk, and is not one of these.
+    routes: (Array.isArray(state.routes) ? state.routes : []).filter(isRoute),
     sessionSecret: state.sessionSecret,
   };
 }
 
 /**
  * A rule without the routes a test build let its conditions ask about.
+ * Routes set a rule off now, and are never asked about.
  *
  * The question goes, and a rule that asked one is switched off: the route
  * was holding it back, and running it without that is for somebody to decide.
@@ -483,10 +504,27 @@ function readToggle(value: unknown): StateToggle[] {
   return fits ? [{ id: toggle.id, name: toggle.name, type, value: toggle.value as never }] : [];
 }
 
+function isRoute(value: unknown): value is Route {
+  const route = value as Partial<Route> | undefined;
+  return (
+    typeof route?.id === 'string' &&
+    typeof route.name === 'string' &&
+    Array.isArray(route.sensors) &&
+    route.sensors.every(
+      (sensor) => typeof sensor?.sourceId === 'string' && typeof sensor.deviceId === 'string',
+    ) &&
+    typeof route.walkMs === 'number' &&
+    typeof route.bothWays === 'boolean'
+  );
+}
+
 /** Whether there is anything in it somebody would miss. */
 function hasAnything(state: PersistedState): boolean {
   return (
-    Object.keys(state.exposures).length > 0 || state.rules.length > 0 || state.states.length > 0
+    Object.keys(state.exposures).length > 0 ||
+    state.rules.length > 0 ||
+    state.states.length > 0 ||
+    state.routes.length > 0
   );
 }
 

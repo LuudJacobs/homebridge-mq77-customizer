@@ -5,6 +5,7 @@ import type { Logger } from '../logger.js';
 import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
+import { RouteWalks, type Walked } from '../routes.js';
 import { STATES_SOURCE } from '../states.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
@@ -21,6 +22,7 @@ import {
   isRelative,
   isSlider,
   isSunTime,
+  isRouteTrigger,
   isTimeTrigger,
   DEFAULT_RATE_LIMIT_MS,
   DEFAULT_SETTLE_MS,
@@ -48,6 +50,7 @@ import {
   type Rule,
   type AutomationTrigger,
   type LogTime,
+  type LogWalk,
   type SliderRule,
   type TimeTrigger,
   type Trigger,
@@ -88,6 +91,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   private moved?: LogChange;
   /** The time the rules are being run for, if the clock is what reached one. */
   private struck?: LogTime;
+  /** The route the rules are being run for, if a walk along one finished. */
+  private walkedAlong?: LogWalk;
+  /** The walks along each route under way. */
+  private readonly walks: RouteWalks;
 
   /** Whether any rule answered that press. */
   private answered = false;
@@ -169,6 +176,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   ) {
     super();
 
+    this.walks = new RouteWalks(store, catalog);
     this.ticker = setInterval(() => this.readClock(new Date()), CLOCK_TICK_MS);
     // Nothing here should hold Homebridge open on its own.
     this.ticker.unref?.();
@@ -240,6 +248,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
   handleState(update: StateUpdate): void {
     const rules = this.store.data.rules;
 
+    // Every message, replayed or not, so a sensor coming on is told apart
+    // from one that already was.
+    const walked = this.walks.handleState(update);
+
     // Captured before anything is overwritten, since a rule asking whether a
     // value changed needs what it was a moment ago.
     const previously = new Map<string, unknown>();
@@ -279,6 +291,41 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     if (!this.answered) {
       for (const press of presses) {
         this.notePress(press);
+      }
+    }
+
+    for (const walk of walked) {
+      this.walk(walk);
+    }
+  }
+
+  /** Sets off the rules waiting for a walk along a route, that way or either. */
+  private walk({ route, direction }: Walked): void {
+    for (const rule of this.store.data.rules) {
+      if (!rule.enabled || isMirror(rule) || isSlider(rule)) {
+        continue;
+      }
+      const trigger = triggersOf(rule)
+        .filter(isRouteTrigger)
+        .find(
+          (candidate) =>
+            candidate.routeId === route.id &&
+            (candidate.direction === undefined || candidate.direction === direction),
+        );
+      if (!trigger) {
+        continue;
+      }
+
+      this.walkedAlong = { routeId: route.id, routeName: route.name, direction };
+      const fired: Fired = { property: undefined, value: undefined, route: this.walkedAlong };
+      try {
+        if (rule.waitMs) {
+          this.startCountdown(rule, fired);
+        } else {
+          this.fire(rule, fired);
+        }
+      } finally {
+        this.walkedAlong = undefined;
       }
     }
   }
@@ -831,11 +878,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       this.struck = fired.time
         ? { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) }
         : undefined;
+      this.walkedAlong = fired.route;
       try {
         this.fire(rule, fired);
       } finally {
         this.moved = undefined;
         this.struck = undefined;
+        this.walkedAlong = undefined;
       }
     }, wait);
     this.timers.add(timer);
@@ -1176,7 +1225,9 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const said: Record<string, string> = {
       trigger: fired.time
         ? capitalised(describeTime(fired.time.at, fired.time.offset))
-        : fired.property
+        : fired.route
+          ? fired.route.routeName
+          : fired.property
           ? this.nameOf(fired.property)
           : '',
       property: property?.label ?? '',
@@ -1392,6 +1443,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       // controller's own action is what moved.
       ...(this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {}),
       ...(this.struck ? { firedAt: this.struck } : {}),
+      ...(this.walkedAlong ? { walked: this.walkedAlong } : {}),
       ...parts,
     };
     this.entries.push(entry);
@@ -1483,6 +1535,7 @@ interface Fired {
   property?: PropertyRef;
   value: unknown;
   time?: TimeTrigger;
+  route?: LogWalk;
 }
 
 /** Keeps a wait inside what the interface offers, whatever was stored. */
@@ -1573,7 +1626,9 @@ function triggersOf(rule: Rule): AutomationTrigger[] {
  * matching.
  */
 function deviceTriggersOf(rule: Rule): Trigger[] {
-  return triggersOf(rule).filter((trigger): trigger is Trigger => !isTimeTrigger(trigger));
+  return triggersOf(rule).filter(
+    (trigger): trigger is Trigger => !isTimeTrigger(trigger) && !isRouteTrigger(trigger),
+  );
 }
 
 function refersTo(ref: PropertyRef, update: StateUpdate, propertyKey: string): boolean {
