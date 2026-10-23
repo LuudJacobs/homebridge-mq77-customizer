@@ -15,25 +15,26 @@ import safety from './fixtures/safety-devices.json' with { type: 'json' };
 import { FakeMqtt } from './helpers/fake-mqtt.js';
 
 const DOOR = { id: '0x00158dfffe0000a2', topic: 'zigbee2mqtt/front_door-contact' };
+const FRONT = { id: '0x00158dfffe0000a6', topic: 'zigbee2mqtt/front_motion-aqara' };
 const MOTION = { id: '0x00158dfffe0000a3', topic: 'zigbee2mqtt/hallway_motion-aqara' };
 const LANDING = { id: '0x00158dfffe0000a5', topic: 'zigbee2mqtt/landing_motion-aqara' };
 const PRESENCE = { id: '0x00158dfffe0000a4', topic: 'zigbee2mqtt/study_presence-aqara' };
 const SOCKET = { id: '0x00158dfffe000006', topic: 'zigbee2mqtt/living_room_lamp-socket' };
 
-/** A second motion sensor, on the landing, so a route can have four. */
-const landing = {
-  ...safety.find((device) => device.ieee_address === MOTION.id)!,
-  ieee_address: LANDING.id,
-  friendly_name: 'landing_motion-aqara',
-};
+/** More motion sensors, by the front door and on the landing, so a route can have four. */
+const motion = safety.find((device) => device.ieee_address === MOTION.id)!;
+const extra = [
+  { ...motion, ieee_address: FRONT.id, friendly_name: 'front_motion-aqara' },
+  { ...motion, ieee_address: LANDING.id, friendly_name: 'landing_motion-aqara' },
+];
 
 const sensor = (id: string) => ({ sourceId: 'zigbee', deviceId: id });
 
-/** The front door, the hallway, the landing and the study. */
+/** By the front door, the hallway, the landing and the study. */
 const route = (over: Partial<Route> = {}): Route => ({
   id: 'route-1',
   name: 'Door to study',
-  sensors: [sensor(DOOR.id), sensor(MOTION.id), sensor(LANDING.id), sensor(PRESENCE.id)],
+  sensors: [sensor(FRONT.id), sensor(MOTION.id), sensor(LANDING.id), sensor(PRESENCE.id)],
   walkMs: 30_000,
   bothWays: true,
   ...over,
@@ -61,10 +62,10 @@ async function harness(routes: Route[], rules: AnyRule[]) {
   const mqtt = new FakeMqtt();
   const catalog = new Catalog(mqtt.asConnection(), silentLogger);
   await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
-  mqtt.deliver('zigbee2mqtt/bridge/devices', [...fixture, ...safety, landing], { retained: true });
+  mqtt.deliver('zigbee2mqtt/bridge/devices', [...fixture, ...safety, ...extra], { retained: true });
   const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger);
   catalog.on('state', (update) => engine.handleState(update));
-  return { mqtt, engine, store };
+  return { mqtt, engine, store, catalog };
 }
 
 /** What a sensor says when it notices somebody, and when it stops. */
@@ -75,8 +76,8 @@ const reading = (topic: string, on: boolean) =>
       ? { presence: on }
       : { occupancy: on };
 
-/** Somebody noticed by each of these, a second apart. */
-const walk = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
+/** These noticing somebody, a second apart. */
+const on = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
   for (const step of steps) {
     mqtt.deliver(step.topic, reading(step.topic, true));
     vi.advanceTimersByTime(1000);
@@ -84,9 +85,17 @@ const walk = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
 };
 
 /** These no longer noticing anybody. */
-const clear = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
+const off = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
   for (const step of steps) {
     mqtt.deliver(step.topic, reading(step.topic, false));
+  }
+};
+
+/** Somebody going past each of these, which clears behind them. */
+const pass = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
+  for (const step of steps) {
+    on(mqtt, step);
+    off(mqtt, step);
   }
 };
 
@@ -101,12 +110,12 @@ describe('walking a route', () => {
     vi.useRealTimers();
   });
 
-  it('sets a rule off at the last sensor, and not before', async () => {
+  it('is walked once the last sensor is occupied and the rest are clear', async () => {
     const { mqtt, engine } = await harness([route()], [walkedRule()]);
-    walk(mqtt, DOOR, MOTION, LANDING);
+    pass(mqtt, FRONT, MOTION, LANDING);
     expect(lampOn(mqtt)).toBe(0);
 
-    walk(mqtt, PRESENCE);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
     expect(engine.getLog()[0]).toMatchObject({
       outcome: 'fired',
@@ -114,87 +123,132 @@ describe('walking a route', () => {
     });
   });
 
+  it('waits for the sensor just left behind to clear', async () => {
+    const { mqtt } = await harness([route()], [walkedRule()]);
+    pass(mqtt, FRONT, MOTION);
+    on(mqtt, LANDING, PRESENCE);
+    expect(lampOn(mqtt)).toBe(0);
+
+    off(mqtt, LANDING);
+    expect(lampOn(mqtt)).toBe(1);
+  });
+
+  it('is no walk when the last sensor clears first', async () => {
+    const { mqtt } = await harness([route()], [walkedRule()]);
+    pass(mqtt, FRONT, MOTION);
+    on(mqtt, LANDING, PRESENCE);
+    off(mqtt, PRESENCE, LANDING);
+    expect(lampOn(mqtt)).toBe(0);
+  });
+
+  it('is no walk while somebody else is on the route', async () => {
+    const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
+    on(mqtt, LANDING);
+    pass(mqtt, FRONT, MOTION);
+    on(mqtt, PRESENCE);
+    expect(lampOn(mqtt)).toBe(0);
+  });
+
   it('lets a sensor in between be missed', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    walk(mqtt, DOOR, LANDING, PRESENCE);
+    pass(mqtt, FRONT, LANDING);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('needs the first sensor to start from', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    walk(mqtt, MOTION, LANDING, PRESENCE);
+    pass(mqtt, MOTION, LANDING);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('calls the walk off when a sensor already passed notices somebody', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    walk(mqtt, DOOR, MOTION);
-    clear(mqtt, MOTION);
-    walk(mqtt, LANDING, MOTION, PRESENCE);
+    pass(mqtt, FRONT, MOTION, LANDING, MOTION);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('starts again from the first sensor noticing somebody', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    walk(mqtt, DOOR, MOTION);
-    clear(mqtt, DOOR);
+    pass(mqtt, FRONT, MOTION);
     vi.advanceTimersByTime(25_000);
-    // Thirty seconds from the first door would have run out by the study.
-    walk(mqtt, DOOR, LANDING, PRESENCE);
+    // Thirty seconds from the first time by the door would have run out.
+    pass(mqtt, FRONT, LANDING);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('is not walked when it takes longer than the route’s time', async () => {
     const { mqtt } = await harness([route({ walkMs: 5_000 })], [walkedRule()]);
-    walk(mqtt, DOOR, MOTION);
+    pass(mqtt, FRONT, MOTION);
     vi.advanceTimersByTime(4_000);
-    walk(mqtt, PRESENCE);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('takes a sensor coming on, not one still saying it is on', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    walk(mqtt, DOOR, MOTION, LANDING);
+    pass(mqtt, FRONT);
+    on(mqtt, MOTION, LANDING);
     // The hallway still occupied, said again with whatever else it reports.
-    walk(mqtt, MOTION, PRESENCE);
+    on(mqtt, MOTION);
+    off(mqtt, MOTION, LANDING);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('does not count what the broker replays on connect', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    mqtt.deliver(DOOR.topic, reading(DOOR.topic, true), { retained: true });
-    walk(mqtt, MOTION, PRESENCE);
+    mqtt.deliver(FRONT.topic, reading(FRONT.topic, true), { retained: true });
+    off(mqtt, FRONT);
+    pass(mqtt, MOTION, LANDING);
+    on(mqtt, PRESENCE);
+    expect(lampOn(mqtt)).toBe(0);
+  });
+
+  it('leaves a door out, since it never says nobody is there', async () => {
+    const door = route({ sensors: [sensor(DOOR.id), sensor(MOTION.id), sensor(PRESENCE.id)] });
+    const { mqtt } = await harness([door], [walkedRule()]);
+    pass(mqtt, DOOR, MOTION);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('goes back the other way only on a route that goes both ways', async () => {
     const both = await harness([route()], [walkedRule()]);
-    walk(both.mqtt, PRESENCE, LANDING, MOTION, DOOR);
+    pass(both.mqtt, PRESENCE, LANDING, MOTION);
+    on(both.mqtt, FRONT);
     expect(lampOn(both.mqtt)).toBe(1);
     expect(both.engine.getLog()[0]).toMatchObject({ walked: { direction: 'back' } });
 
     const one = await harness([route({ bothWays: false })], [walkedRule()]);
-    walk(one.mqtt, PRESENCE, LANDING, MOTION, DOOR);
+    pass(one.mqtt, PRESENCE, LANDING, MOTION);
+    on(one.mqtt, FRONT);
     expect(lampOn(one.mqtt)).toBe(0);
   });
 
   it('takes a direction from the trigger, towards one end', async () => {
     const { mqtt } = await harness([route()], [walkedRule({}, 'back')]);
-    walk(mqtt, DOOR, MOTION, PRESENCE);
+    pass(mqtt, FRONT, MOTION);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
 
-    clear(mqtt, DOOR, MOTION, PRESENCE);
+    off(mqtt, PRESENCE);
     vi.advanceTimersByTime(60_000);
-    walk(mqtt, PRESENCE, LANDING, DOOR);
+    pass(mqtt, PRESENCE, LANDING);
+    on(mqtt, FRONT);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('waits when the rule says to, and nothing calls the wait off', async () => {
     const { mqtt, engine } = await harness([route()], [walkedRule({ waitMs: 10_000 })]);
-    walk(mqtt, DOOR, MOTION, PRESENCE);
+    pass(mqtt, FRONT, MOTION);
+    on(mqtt, PRESENCE);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'waiting', walked: { routeId: 'route-1' } });
 
-    clear(mqtt, DOOR, MOTION, PRESENCE);
+    off(mqtt, PRESENCE);
     await vi.advanceTimersByTimeAsync(11_000);
     expect(lampOn(mqtt)).toBe(1);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'fired', walked: { routeId: 'route-1' } });
@@ -214,7 +268,7 @@ describe('walking a route', () => {
     const mqtt = new FakeMqtt();
     const catalog = new Catalog(mqtt.asConnection(), silentLogger);
     await catalog.start([{ id: 'zigbee', adapter: 'zigbee2mqtt', baseTopic: 'zigbee2mqtt' }]);
-    mqtt.deliver('zigbee2mqtt/bridge/devices', [...fixture, ...safety, landing], {
+    mqtt.deliver('zigbee2mqtt/bridge/devices', [...fixture, ...safety, ...extra], {
       retained: true,
     });
     const engine = new RulesEngine(catalog, store, mqtt.asConnection(), silentLogger, undefined, {
@@ -224,7 +278,8 @@ describe('walking a route', () => {
     });
     catalog.on('state', (update) => engine.handleState(update));
 
-    walk(mqtt, DOOR, PRESENCE);
+    pass(mqtt, FRONT);
+    on(mqtt, PRESENCE);
     await vi.advanceTimersByTimeAsync(0);
     expect(sent).toEqual(['Door to study walked']);
   });
