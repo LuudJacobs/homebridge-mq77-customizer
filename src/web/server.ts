@@ -19,6 +19,7 @@ import {
   type SensorType,
   type StateType,
   sortRooms,
+  type Route,
   type Store,
   type TileType,
 } from '../store.js';
@@ -26,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { RulesEngine } from '../rules/engine.js';
 import { parseRule } from '../rules/validate.js';
+import { DEFAULT_WALK_MS } from '../routes.js';
 import { STATES_SOURCE, TEXT_PATTERN, type StateToggles } from '../states.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
@@ -172,6 +174,12 @@ export class WebServer {
       }
       if (path === '/api/rooms' && request.method === 'PUT') {
         return this.saveRooms(request, response);
+      }
+      if (path === '/api/routes' && request.method === 'PUT') {
+        return this.saveRoute(request, response);
+      }
+      if (path.startsWith('/api/routes/') && request.method === 'DELETE') {
+        return this.deleteRoute(decodeURIComponent(path.slice('/api/routes/'.length)), response);
       }
       if (path === '/api/devices' && request.method === 'DELETE') {
         return this.forgetDevice(request, response);
@@ -360,6 +368,75 @@ export class WebServer {
   }
 
   /**
+   * Saves a route, a new one when it has no id yet.
+   *
+   * Two sensors at least, since one is a room and not a way through the
+   * house, each once. The time for the whole walk is held to between a second
+   * and ten minutes.
+   */
+  private async saveRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJson(request);
+    const raw = (body?.route ?? {}) as Record<string, unknown>;
+    const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 64) : '';
+    if (!name) {
+      return send(response, 400, { error: 'A route needs a name' });
+    }
+    const sensors: Route['sensors'] = [];
+    for (const entry of Array.isArray(raw.sensors) ? raw.sensors : []) {
+      const { sourceId, deviceId } = (entry ?? {}) as Record<string, unknown>;
+      if (typeof sourceId !== 'string' || typeof deviceId !== 'string') {
+        return send(response, 400, { error: 'Every sensor on a route needs a device' });
+      }
+      if (sensors.some((sensor) => sensor.sourceId === sourceId && sensor.deviceId === deviceId)) {
+        return send(response, 400, { error: 'A sensor can be on a route once' });
+      }
+      sensors.push({ sourceId, deviceId });
+    }
+    if (sensors.length < 2) {
+      return send(response, 400, { error: 'A route needs two sensors at least' });
+    }
+    const walkMs =
+      typeof raw.walkMs === 'number' && Number.isFinite(raw.walkMs)
+        ? Math.min(600_000, Math.max(1_000, Math.round(raw.walkMs)))
+        : DEFAULT_WALK_MS;
+    const known =
+      typeof raw.id === 'string' && this.deps.store.data.routes.some((route) => route.id === raw.id);
+    const route: Route = {
+      id: known ? (raw.id as string) : randomUUID(),
+      name,
+      sensors,
+      walkMs,
+      bothWays: raw.bothWays !== false,
+    };
+
+    this.deps.store.update((state) => {
+      const at = state.routes.findIndex((existing) => existing.id === route.id);
+      if (at >= 0) {
+        state.routes[at] = route;
+      } else {
+        state.routes.push(route);
+      }
+    });
+    this.broadcast({ type: 'devices' });
+    return send(response, 200, { route });
+  }
+
+  /**
+   * Deletes a route. Rules it set off are left as they are, the way they are
+   * when a device leaves: they say what is missing rather than vanish.
+   */
+  private deleteRoute(id: string, response: ServerResponse): void {
+    if (!this.deps.store.data.routes.some((route) => route.id === id)) {
+      return send(response, 404, { error: 'No such route' });
+    }
+    this.deps.store.update((state) => {
+      state.routes = state.routes.filter((route) => route.id !== id);
+    });
+    this.broadcast({ type: 'devices' });
+    return send(response, 200, { ok: true });
+  }
+
+  /**
    * Forgets what was set for a device: its name, room, kind and tiles.
    *
    * Nothing stops it coming back. A source that lists what it has, as
@@ -539,6 +616,7 @@ export class WebServer {
     return {
       devices,
       rooms: this.deps.store.data.rooms,
+      routes: this.deps.store.data.routes,
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       hasLocation: this.deps.hasLocation === true,
