@@ -91,12 +91,17 @@ const off = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
   }
 };
 
-/** Somebody going past each of these, which clears behind them. */
-const pass = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
-  for (const step of steps) {
+/**
+ * Somebody walking past each of these in turn: each comes on as they reach
+ * it, and the one before clears as they leave it. The last stays on.
+ */
+const walk = (mqtt: FakeMqtt, ...steps: { topic: string }[]) => {
+  steps.forEach((step, index) => {
     on(mqtt, step);
-    off(mqtt, step);
-  }
+    if (index > 0) {
+      off(mqtt, steps[index - 1]!);
+    }
+  });
 };
 
 const lampOn = (mqtt: FakeMqtt) =>
@@ -112,10 +117,7 @@ describe('walking a route', () => {
 
   it('is walked once the last sensor is occupied and the rest are clear', async () => {
     const { mqtt, engine } = await harness([route()], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION, LANDING);
-    expect(lampOn(mqtt)).toBe(0);
-
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, LANDING, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
     expect(engine.getLog()[0]).toMatchObject({
       outcome: 'fired',
@@ -125,18 +127,35 @@ describe('walking a route', () => {
 
   it('waits for the sensor just left behind to clear', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION);
-    on(mqtt, LANDING, PRESENCE);
+    walk(mqtt, FRONT, MOTION, LANDING);
+    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
 
     off(mqtt, LANDING);
     expect(lampOn(mqtt)).toBe(1);
   });
 
+  it('counts the walk from leaving the first sensor, however long somebody stood there', async () => {
+    const { mqtt } = await harness([route()], [walkedRule()]);
+    on(mqtt, FRONT);
+    // A minute by the door, still occupied, before setting off.
+    vi.advanceTimersByTime(60_000);
+    walk(mqtt, FRONT, MOTION, LANDING, PRESENCE);
+    expect(lampOn(mqtt)).toBe(1);
+  });
+
+  it('needs the first sensor still occupied when the next one notices somebody', async () => {
+    const { mqtt } = await harness([route()], [walkedRule()]);
+    on(mqtt, FRONT);
+    off(mqtt, FRONT);
+    walk(mqtt, MOTION, LANDING, PRESENCE);
+    expect(lampOn(mqtt)).toBe(0);
+  });
+
   it('is no walk when the last sensor clears first', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION);
-    on(mqtt, LANDING, PRESENCE);
+    walk(mqtt, FRONT, MOTION, LANDING);
+    on(mqtt, PRESENCE);
     off(mqtt, PRESENCE, LANDING);
     expect(lampOn(mqtt)).toBe(0);
   });
@@ -144,108 +163,85 @@ describe('walking a route', () => {
   it('is no walk while somebody else is on the route', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
     on(mqtt, LANDING);
-    pass(mqtt, FRONT, MOTION);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
-  it('lets a sensor in between be missed', async () => {
+  it('lets a sensor in between be missed, the second one too', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    pass(mqtt, FRONT, LANDING);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, LANDING, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
-  });
-
-  it('needs the first sensor to start from', async () => {
-    const { mqtt } = await harness([route()], [walkedRule()]);
-    pass(mqtt, MOTION, LANDING);
-    on(mqtt, PRESENCE);
-    expect(lampOn(mqtt)).toBe(0);
   });
 
   it('calls the walk off when a sensor already passed notices somebody', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION, LANDING, MOTION);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, LANDING, MOTION, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
-  it('starts again from the first sensor noticing somebody', async () => {
+  it('sets out afresh from somebody coming back to the first sensor and leaving it again', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION);
-    vi.advanceTimersByTime(25_000);
-    // Thirty seconds from the first time by the door would have run out.
-    pass(mqtt, FRONT, LANDING);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, FRONT, LANDING, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('is not walked when it takes longer than the route’s time', async () => {
     const { mqtt } = await harness([route({ walkMs: 5_000 })], [walkedRule()]);
-    pass(mqtt, FRONT, MOTION);
-    vi.advanceTimersByTime(4_000);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION);
+    vi.advanceTimersByTime(6_000);
+    walk(mqtt, MOTION, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('takes a sensor coming on, not one still saying it is on', async () => {
     const { mqtt } = await harness([route({ bothWays: false })], [walkedRule()]);
-    pass(mqtt, FRONT);
-    on(mqtt, MOTION, LANDING);
-    // The hallway still occupied, said again with whatever else it reports.
-    on(mqtt, MOTION);
-    off(mqtt, MOTION, LANDING);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, LANDING);
+    // The landing still occupied, said again with whatever else it reports.
+    on(mqtt, LANDING);
+    walk(mqtt, LANDING, PRESENCE);
     expect(lampOn(mqtt)).toBe(1);
   });
 
-  it('does not count what the broker replays on connect', async () => {
+  it('does not take what the broker replays on connect for somebody noticed', async () => {
     const { mqtt } = await harness([route()], [walkedRule()]);
-    mqtt.deliver(FRONT.topic, reading(FRONT.topic, true), { retained: true });
+    on(mqtt, FRONT);
+    mqtt.deliver(PRESENCE.topic, reading(PRESENCE.topic, true), { retained: true });
     off(mqtt, FRONT);
-    pass(mqtt, MOTION, LANDING);
-    on(mqtt, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('leaves a door out, since it never says nobody is there', async () => {
     const door = route({ sensors: [sensor(DOOR.id), sensor(MOTION.id), sensor(PRESENCE.id)] });
     const { mqtt } = await harness([door], [walkedRule()]);
-    pass(mqtt, DOOR, MOTION);
-    on(mqtt, PRESENCE);
+    walk(mqtt, DOOR, MOTION, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
   });
 
   it('goes back the other way only on a route that goes both ways', async () => {
     const both = await harness([route()], [walkedRule()]);
-    pass(both.mqtt, PRESENCE, LANDING, MOTION);
-    on(both.mqtt, FRONT);
+    walk(both.mqtt, PRESENCE, LANDING, MOTION, FRONT);
     expect(lampOn(both.mqtt)).toBe(1);
     expect(both.engine.getLog()[0]).toMatchObject({ walked: { direction: 'back' } });
 
     const one = await harness([route({ bothWays: false })], [walkedRule()]);
-    pass(one.mqtt, PRESENCE, LANDING, MOTION);
-    on(one.mqtt, FRONT);
+    walk(one.mqtt, PRESENCE, LANDING, MOTION, FRONT);
     expect(lampOn(one.mqtt)).toBe(0);
   });
 
   it('takes a direction from the trigger, towards one end', async () => {
     const { mqtt } = await harness([route()], [walkedRule({}, 'back')]);
-    pass(mqtt, FRONT, MOTION);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, PRESENCE);
     expect(lampOn(mqtt)).toBe(0);
 
     off(mqtt, PRESENCE);
     vi.advanceTimersByTime(60_000);
-    pass(mqtt, PRESENCE, LANDING);
-    on(mqtt, FRONT);
+    walk(mqtt, PRESENCE, LANDING, FRONT);
     expect(lampOn(mqtt)).toBe(1);
   });
 
   it('waits when the rule says to, and nothing calls the wait off', async () => {
     const { mqtt, engine } = await harness([route()], [walkedRule({ waitMs: 10_000 })]);
-    pass(mqtt, FRONT, MOTION);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, MOTION, PRESENCE);
     expect(engine.getLog()[0]).toMatchObject({ outcome: 'waiting', walked: { routeId: 'route-1' } });
 
     off(mqtt, PRESENCE);
@@ -278,8 +274,7 @@ describe('walking a route', () => {
     });
     catalog.on('state', (update) => engine.handleState(update));
 
-    pass(mqtt, FRONT);
-    on(mqtt, PRESENCE);
+    walk(mqtt, FRONT, PRESENCE);
     await vi.advanceTimersByTimeAsync(0);
     expect(sent).toEqual(['Door to study walked']);
   });
