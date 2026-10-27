@@ -1,6 +1,26 @@
 // Deliberately dependency free and unbuilt, so it can be edited in place on
 // the Pi and reloaded without a toolchain.
 
+/**
+ * Keeps an iPhone or iPad from zooming in on a field it focuses.
+ *
+ * iOS does that to any field set smaller than 16px, which is every field
+ * here. Held at its own scale it stops, and still lets a pinch zoom in. Only
+ * there: Android never zooms on focus, and held the same way it would stop
+ * a pinch as well.
+ */
+function keepScaleOnFocus() {
+  const apple =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    // An iPad asks for the desktop site, and says it is a Mac.
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (apple && viewport) {
+    viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+  }
+}
+keepScaleOnFocus();
+
 const state = {
   devices: [],
   tileTypes: [],
