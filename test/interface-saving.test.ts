@@ -194,12 +194,12 @@ describe('a rule panel', () => {
     expect(button(ui, 'Trigger').hidden).toBe(false);
 
     await rename(ui, 'Lampen');
-    expect(ruleName(ui)).toBe('* Keuken: Licht');
+    expect(ruleName(ui)).toBe('* Whole house: Licht');
     expect(button(ui, 'Revert').hidden).toBe(false);
     expect(button(ui, 'Trigger').hidden).toBe(true);
 
     await ui.click(button(ui, 'Revert'));
-    expect(ruleName(ui)).toBe('Keuken: Licht');
+    expect(ruleName(ui)).toBe('Whole house: Licht');
     expect((ui.document.querySelector('#automation .rule .option input') as HTMLInputElement).value).toBe('Licht');
   });
 

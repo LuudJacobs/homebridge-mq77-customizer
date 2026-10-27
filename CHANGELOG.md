@@ -6,7 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- A rule acting in several rooms says Whole house or how many, rather than listing them
+- A rule in several rooms says Whole house or how many, rather than listing them
+- A rule's rooms include where its trigger device is, in its name and when sorted by room
 
 ## [2.7.0] - 2026-10-23
 

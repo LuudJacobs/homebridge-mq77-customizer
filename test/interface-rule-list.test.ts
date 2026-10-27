@@ -352,9 +352,9 @@ describe('naming a rule by where it acts', () => {
 
     const ui = await openInterface({ state: { devices: spread }, rules: [three] });
     await ui.click(ui.byText('button.tab', 'Rules'));
-    // The study and the kitchen, where it acts: not the hall it is set off
-    // from, and not the attic.
-    expect(titles(ui)).toEqual(['2 Rooms: Evening']);
+    // The hall it is set off from and the study and kitchen it acts in, but
+    // not the attic.
+    expect(titles(ui)).toEqual(['3 Rooms: Evening']);
   });
 
   it('says nothing extra when no device it touches has a room', async () => {
