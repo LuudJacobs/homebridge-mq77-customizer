@@ -2722,30 +2722,15 @@ function ruleSides(rule) {
 }
 
 /**
- * The devices a rule acts on, which is not the same as the ones that set it
- * off. What a rule does is where it matters: a button in the hall turning on
- * a lamp in the study is a study rule.
+ * The rooms a rule is about, in order, with unplaced devices passed over:
+ * where what sets it off is as well as where it acts. A button in the hall
+ * turning on a lamp in the study is a hall rule and a study rule.
+ *
+ * Only devices: a time or a route set it off from nowhere in particular.
  */
-function affectedRefs(rule) {
-  if (rule.kind === 'mirror') {
-    // Every member is both sides of a mirror, so all of them are affected,
-    // except in a one way mirror, where the trigger device is only followed.
-    const leader = leaderOf(rule);
-    return (rule.groups ?? [])
-      .flat()
-      .filter(Boolean)
-      .filter((ref) => !leader || !sameDevice(ref, leader));
-  }
-  if (rule.kind === 'slider') {
-    return [rule.target].filter(Boolean);
-  }
-  return ruleActions(rule);
-}
-
-/** The rooms a rule reaches, in order, with unplaced devices passed over. */
 function affectedRooms(rule) {
   const rooms = new Set();
-  for (const ref of affectedRefs(rule)) {
+  for (const ref of ruleRefs(rule)) {
     const room = findDevice(ref)?.exposure?.room?.trim();
     if (room) {
       rooms.add(room);
@@ -2869,9 +2854,10 @@ function renderRuleList(kind, container, emptyText) {
     return;
   }
 
-  // By room means by the rooms a rule acts in, which is where somebody is
-  // standing when they wonder what runs there. A rule reaching two rooms is
-  // listed under both, since it is the answer in both. Kind is not offered
+  // By room means by the rooms a rule is about, where it is set off and where
+  // it acts, which is where somebody is standing when they wonder what runs
+  // there. A rule in two rooms is listed under both, since it is the answer
+  // in both. Kind is not offered
   // here: what runs on the lights is not a question anybody asks.
   if (sort === 'room') {
     const groups = new Map();
