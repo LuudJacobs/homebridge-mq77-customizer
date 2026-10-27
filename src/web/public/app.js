@@ -2755,7 +2755,7 @@ function affectedRooms(rule) {
 }
 
 /**
- * A rule's name, said with the rooms it reaches in front of it.
+ * A rule's name, said with where it reaches in front of it.
  *
  * Left off under a room heading, which has already said it, and off entirely
  * for a rule that reaches nowhere named.
@@ -2767,7 +2767,22 @@ function ruleTitle(rule, grouped = false) {
   if (rooms.length === 0 || (grouped && rooms.length === 1)) {
     return rule.name;
   }
-  return `${rooms.join(' / ')}: ${rule.name}`;
+  return `${roomsSaid(rooms)}: ${rule.name}`;
+}
+
+/**
+ * Where a rule reaches, short: one room by its name, every room that has a
+ * device in it as the whole house, and otherwise how many. A list of rooms
+ * soon says more than the rule's own name does.
+ */
+function roomsSaid(rooms) {
+  if (rooms.length === 1) {
+    return rooms[0];
+  }
+  const lived = new Set(state.devices.map((device) => device.exposure?.room?.trim()).filter(Boolean));
+  return rooms.every((room) => lived.has(room)) && rooms.length >= lived.size
+    ? 'Whole house'
+    : `${rooms.length} Rooms`;
 }
 
 function ruleSortKey(rule, sort) {
