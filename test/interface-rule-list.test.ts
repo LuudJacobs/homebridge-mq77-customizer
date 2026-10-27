@@ -333,7 +333,28 @@ describe('naming a rule by where it acts', () => {
 
     const ui = await openInterface({ state: { devices: spread }, rules: [two] });
     await ui.click(ui.byText('button.tab', 'Rules'));
-    expect(titles(ui)).toEqual(['Kitchen / Study: Evening']);
+    // Every room with a device in it.
+    expect(titles(ui)).toEqual(['Whole house: Evening']);
+  });
+
+  it('counts the rooms it reaches when it is not all of them', async () => {
+    const three = automation('r1', 'Evening', '0xa', '0xb');
+    (three as { branches: { actions: unknown[] }[] }).branches[0]!.actions.push(
+      { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+    );
+    const spread = [
+      ...devices.map((entry, index) => ({
+        ...entry,
+        exposure: { properties: [], room: ['Hall', 'Study', 'Kitchen'][index] },
+      })),
+      { ...devices[0]!, deviceId: '0xd', name: 'attic_lamp', exposure: { properties: [], room: 'Attic' } },
+    ];
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [three] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    // The study and the kitchen, where it acts: not the hall it is set off
+    // from, and not the attic.
+    expect(titles(ui)).toEqual(['2 Rooms: Evening']);
   });
 
   it('says nothing extra when no device it touches has a room', async () => {
@@ -404,11 +425,12 @@ describe('naming a rule by where it acts', () => {
     expect(headings).toEqual(['Kitchen (1)', 'Study (1)']);
     expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
 
-    // And it still says both under either, since the other room is news.
+    // And it still says where it reaches under either, since the other room
+    // is news.
     const titles = [...ui.document.querySelectorAll('#automation .device-name')].map(
       (node) => node.textContent,
     );
-    expect(titles).toEqual(['Kitchen / Study: Evening', 'Kitchen / Study: Evening']);
+    expect(titles).toEqual(['Whole house: Evening', 'Whole house: Evening']);
   });
 });
 
