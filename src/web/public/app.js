@@ -1,6 +1,26 @@
 // Deliberately dependency free and unbuilt, so it can be edited in place on
 // the Pi and reloaded without a toolchain.
 
+/**
+ * Keeps an iPhone or iPad from zooming in on a field it focuses.
+ *
+ * iOS does that to any field set smaller than 16px, which is every field
+ * here. Held at its own scale it stops, and still lets a pinch zoom in. Only
+ * there: Android never zooms on focus, and held the same way it would stop
+ * a pinch as well.
+ */
+function keepScaleOnFocus() {
+  const apple =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    // An iPad asks for the desktop site, and says it is a Mac.
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (apple && viewport) {
+    viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+  }
+}
+keepScaleOnFocus();
+
 const state = {
   devices: [],
   tileTypes: [],
@@ -2722,30 +2742,15 @@ function ruleSides(rule) {
 }
 
 /**
- * The devices a rule acts on, which is not the same as the ones that set it
- * off. What a rule does is where it matters: a button in the hall turning on
- * a lamp in the study is a study rule.
+ * The rooms a rule is about, in order, with unplaced devices passed over:
+ * where what sets it off is as well as where it acts. A button in the hall
+ * turning on a lamp in the study is a hall rule and a study rule.
+ *
+ * Only devices: a time or a route set it off from nowhere in particular.
  */
-function affectedRefs(rule) {
-  if (rule.kind === 'mirror') {
-    // Every member is both sides of a mirror, so all of them are affected,
-    // except in a one way mirror, where the trigger device is only followed.
-    const leader = leaderOf(rule);
-    return (rule.groups ?? [])
-      .flat()
-      .filter(Boolean)
-      .filter((ref) => !leader || !sameDevice(ref, leader));
-  }
-  if (rule.kind === 'slider') {
-    return [rule.target].filter(Boolean);
-  }
-  return ruleActions(rule);
-}
-
-/** The rooms a rule reaches, in order, with unplaced devices passed over. */
 function affectedRooms(rule) {
   const rooms = new Set();
-  for (const ref of affectedRefs(rule)) {
+  for (const ref of ruleRefs(rule)) {
     const room = findDevice(ref)?.exposure?.room?.trim();
     if (room) {
       rooms.add(room);
@@ -2755,7 +2760,7 @@ function affectedRooms(rule) {
 }
 
 /**
- * A rule's name, said with the rooms it reaches in front of it.
+ * A rule's name, said with where it reaches in front of it.
  *
  * Left off under a room heading, which has already said it, and off entirely
  * for a rule that reaches nowhere named.
@@ -2767,7 +2772,22 @@ function ruleTitle(rule, grouped = false) {
   if (rooms.length === 0 || (grouped && rooms.length === 1)) {
     return rule.name;
   }
-  return `${rooms.join(' / ')}: ${rule.name}`;
+  return `${roomsSaid(rooms)}: ${rule.name}`;
+}
+
+/**
+ * Where a rule reaches, short: one room by its name, every room that has a
+ * device in it as the whole house, and otherwise how many. A list of rooms
+ * soon says more than the rule's own name does.
+ */
+function roomsSaid(rooms) {
+  if (rooms.length === 1) {
+    return rooms[0];
+  }
+  const lived = new Set(state.devices.map((device) => device.exposure?.room?.trim()).filter(Boolean));
+  return rooms.every((room) => lived.has(room)) && rooms.length >= lived.size
+    ? 'Whole house'
+    : `${rooms.length} Rooms`;
 }
 
 function ruleSortKey(rule, sort) {
@@ -2854,9 +2874,10 @@ function renderRuleList(kind, container, emptyText) {
     return;
   }
 
-  // By room means by the rooms a rule acts in, which is where somebody is
-  // standing when they wonder what runs there. A rule reaching two rooms is
-  // listed under both, since it is the answer in both. Kind is not offered
+  // By room means by the rooms a rule is about, where it is set off and where
+  // it acts, which is where somebody is standing when they wonder what runs
+  // there. A rule in two rooms is listed under both, since it is the answer
+  // in both. Kind is not offered
   // here: what runs on the lights is not a question anybody asks.
   if (sort === 'room') {
     const groups = new Map();

@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.7.0
+# MQ77 Customizer 2.7.1
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -144,6 +144,7 @@ Across all four:
 - anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
 - a number sets a rule off when it rises above or falls below a value, once each time it crosses it. A condition asks whether it is above or below the value now
 - a device is picked in two steps, its room and then the device in it. Devices without a room are under Unknown
+- a rule's name is shown with its rooms in front of it, where its trigger device is and where it acts: one room by name, `<n> Rooms` for several, or `Whole house` for every room with a device in it. Sorted by room, a rule is listed under each of them
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
 - an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
 - a rule with several outcomes runs the first whose condition holds and skips the rest

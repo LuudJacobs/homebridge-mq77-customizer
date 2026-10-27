@@ -134,8 +134,9 @@ describe('a section of a list', () => {
     sort.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
 
+    // Under the hall it is set off in as well as the kitchen it acts in.
     const title = ui.document.querySelector('#automation h3.section-title') as HTMLElement;
-    expect(title.textContent).toBe('Keuken (1)');
+    expect(title.textContent).toBe('Gang (1)');
     expect(isOpen(title)).toBe(false);
     await ui.click(title);
     expect(isOpen(ui.document.querySelector('#automation h3.section-title') as HTMLElement)).toBe(true);

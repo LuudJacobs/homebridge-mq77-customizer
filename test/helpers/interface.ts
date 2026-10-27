@@ -25,6 +25,8 @@ export async function openInterface(options: {
   log?: unknown[];
   /** Where the page is opened, for following an address: `/automation#r1`. */
   at?: string;
+  /** What the browser says it is, for what only one kind of device does. */
+  userAgent?: string;
 }) {
   // Anything the page throws is collected rather than swallowed, since a
   // handler that fails silently is the whole difficulty with this code.
@@ -113,6 +115,10 @@ export async function openInterface(options: {
       stream = this as never;
     }
   };
+
+  if (options.userAgent) {
+    Object.defineProperty(window.navigator, 'userAgent', { value: options.userAgent });
+  }
 
   window.eval(read('app.js'));
   await settle(window);
