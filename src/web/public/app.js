@@ -746,15 +746,12 @@ function exposedCount(device) {
 }
 
 function paintBadge(badge, device) {
-  if (device.rulesOnly) {
-    // Not "none": this device is doing its job, it just does it in rules.
-    badge.textContent = 'rules only';
-    badge.className = 'badge rules';
-    return;
-  }
+  // Only what reaches HomeKit is worth a word. A device that reaches nothing
+  // there, a state among them, is doing its job in rules and needs no label.
   const count = exposedCount(device);
-  badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
-  badge.className = count === 0 ? 'badge none' : 'badge';
+  badge.textContent = count === 0 ? '' : `${count} in HomeKit`;
+  badge.className = 'badge';
+  badge.hidden = count === 0;
 }
 
 /** What each ordering compares, other than last seen which is a number. */
