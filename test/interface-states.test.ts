@@ -106,7 +106,7 @@ describe('the states, under Home', () => {
     const ui = await openStates();
     expect(
       [...ui.document.querySelectorAll('.home-menu .home-link')].map((link) => link.textContent),
-    ).toEqual(['Rooms', 'States', 'Routes', 'Zigbee map']);
+    ).toEqual(['Rooms', 'States', 'Zigbee map']);
     expect(ui.document.getElementById('home-page-states')?.hidden).toBe(false);
     // By name, and in no room.
     expect(

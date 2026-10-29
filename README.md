@@ -130,14 +130,6 @@ Changing the type starts the value again from false or 0.
 
 A state is picked in a rule from States, under the rooms in a row's first dropdown. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
 
-### Routes
-
-Under Home, Routes are ways through the house, as the motion and presence sensors along them notice somebody: bedroom to living room, past four of them. Each has a name, its sensors in the order they are passed, a walk time, thirty seconds to begin with, and Both ways, on to begin with.
-
-A walk is set out on when a sensor after the first notices somebody while the first still reads occupied: somebody leaving where the route starts, however long they stood there. The walk time counts from then. The route is walked once the last sensor is reached within it and is occupied while every other sensor on the route reads unoccupied, at once or as soon as the one just left behind clears. The last one clearing first is nobody arriving, and no walk. Sensors in between may be missed, the second one too, since a motion sensor still reading occupied does not report anybody new, but none may come out of order: one already passed noticing somebody, the first included, calls the walk off. A sensor counts when it comes on, not while it stays on. With Both ways the route is walked back the same way, as a walk of its own. A restart forgets any walk under way.
-
-A walk sets a rule off, from Routes above Current time in a trigger's room picker: either way, or towards the room at one end. The rule list and the log carry the route where a device carries its kind, and a notification's `<trigger>` is the route's name.
-
 ### Zigbee map
 
 Under Home, Zigbee map draws the Zigbee network: what reaches the hub directly and what reaches it through something else. Every link found is drawn, and the route each device uses back to the hub is picked out.
