@@ -119,21 +119,6 @@ export function sortRooms(rooms: string[]): string[] {
   return [...rooms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
-/**
- * A way through the house, as the sensors along it notice somebody: the
- * bedroom to the living room past four of them.
- */
-export interface Route {
-  id: string;
-  name: string;
-  /** In the order somebody walking it passes them. */
-  sensors: { sourceId: string; deviceId: string }[];
-  /** How long from the first sensor to the last, at most, for it to be walked. */
-  walkMs: number;
-  /** Whether it is walked back the other way as well. */
-  bothWays: boolean;
-}
-
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
@@ -142,7 +127,6 @@ export interface PersistedState {
   states: StateToggle[];
   /** The rooms a device can be put in, A to Z. */
   rooms: string[];
-  routes: Route[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
@@ -154,7 +138,6 @@ function emptyState(): PersistedState {
     rules: [],
     states: [],
     rooms: sortRooms(DEFAULT_ROOMS),
-    routes: [],
   };
 }
 
@@ -452,21 +435,25 @@ function migrate(parsed: unknown): PersistedState {
       .map(withoutRoutes)
       .map((rule) => askingTruthsPlainly(rule, truths)),
     states,
-    // One from a test build has a gap between sensors rather than a time for
-    // the whole walk, and is not one of these.
-    routes: (Array.isArray(state.routes) ? state.routes : []).filter(isRoute),
     sessionSecret: state.sessionSecret,
   };
 }
 
 /**
- * A rule without the routes a test build let its conditions ask about.
- * Routes set a rule off now, and are never asked about.
+ * A rule without the routes there used to be.
  *
- * The question goes, and a rule that asked one is switched off: the route
- * was holding it back, and running it without that is for somebody to decide.
+ * A walk along one setting it off goes, and the rule runs on whatever else
+ * does; with nothing else it is a rule waiting for a trigger. A question a
+ * test build let its conditions ask about one goes too, and that rule is
+ * switched off: the route was holding it back, and running it without that
+ * is for somebody to decide.
  */
 function withoutRoutes(rule: AnyRule): AnyRule {
+  const isRoute = (node: unknown) => (node as { kind?: string } | undefined)?.kind === 'route';
+  const triggers = (rule as { triggers?: unknown[] }).triggers;
+  if (Array.isArray(triggers) && triggers.some(isRoute)) {
+    rule = { ...rule, triggers: triggers.filter((trigger) => !isRoute(trigger)) } as AnyRule;
+  }
   const branches = (rule as { branches?: { when?: unknown }[] }).branches;
   if (!Array.isArray(branches)) {
     return rule;
@@ -474,7 +461,7 @@ function withoutRoutes(rule: AnyRule): AnyRule {
   let asked = false;
   const prune = (node: unknown): unknown => {
     const { kind } = (node ?? {}) as { kind?: string };
-    if (kind === 'route') {
+    if (isRoute(node)) {
       asked = true;
       return undefined;
     }
@@ -593,27 +580,10 @@ function askingTruthsPlainly(rule: AnyRule, truths: Set<string>): AnyRule {
   } as AnyRule;
 }
 
-function isRoute(value: unknown): value is Route {
-  const route = value as Partial<Route> | undefined;
-  return (
-    typeof route?.id === 'string' &&
-    typeof route.name === 'string' &&
-    Array.isArray(route.sensors) &&
-    route.sensors.every(
-      (sensor) => typeof sensor?.sourceId === 'string' && typeof sensor.deviceId === 'string',
-    ) &&
-    typeof route.walkMs === 'number' &&
-    typeof route.bothWays === 'boolean'
-  );
-}
-
 /** Whether there is anything in it somebody would miss. */
 function hasAnything(state: PersistedState): boolean {
   return (
-    Object.keys(state.exposures).length > 0 ||
-    state.rules.length > 0 ||
-    state.states.length > 0 ||
-    state.routes.length > 0
+    Object.keys(state.exposures).length > 0 || state.rules.length > 0 || state.states.length > 0
   );
 }
 

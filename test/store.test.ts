@@ -22,7 +22,6 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
-      routes: [],
     });
   });
 
@@ -76,7 +75,6 @@ describe('Store', () => {
       rules: [],
       states: [],
       rooms: ['Bathroom', 'Bedroom', 'Kitchen', 'Living room'],
-      routes: [],
     });
   });
 
@@ -173,7 +171,7 @@ describe('Store', () => {
     expect(store.data.exposures).toEqual({ 'zigbee:0xa': { properties: ['state'] } });
   });
 
-  it('drops a test build’s routes, and switches off a rule that asked about one', async () => {
+  it('drops a test build’s route questions, and switches off a rule that asked one', async () => {
     const lamp = { kind: 'test', sourceId: 'z', deviceId: '0xa', propertyKey: 'state', match: { kind: 'equals', value: 'ON' } };
     const route = { kind: 'route', routeId: 'route-1', test: 'on' };
     const file = await temporaryFile();
@@ -194,34 +192,39 @@ describe('Store', () => {
     const store = new Store(file, silentLogger);
     await store.load();
 
-    // A gap between sensors rather than a time for the whole walk.
-    expect(store.data.routes).toEqual([]);
+    expect(store.data).not.toHaveProperty('routes');
     const [asks, doesNot] = store.data.rules as unknown as { enabled: boolean; branches: unknown[] }[];
     expect(asks).toMatchObject({ enabled: false, branches: [{ when: { kind: 'all', nodes: [lamp] } }, {}] });
     expect(asks?.branches[1]).not.toHaveProperty('when');
     expect(doesNot).toMatchObject({ enabled: true, branches: [{ when: lamp }] });
   });
-});
 
-describe('routes', () => {
-  it('keeps a route with a time for the whole walk', async () => {
-    const route = {
-      id: 'route-1',
-      name: 'Bedroom to living room',
-      sensors: [
-        { sourceId: 'zigbee', deviceId: '0xa' },
-        { sourceId: 'zigbee', deviceId: '0xb' },
-      ],
-      walkMs: 30_000,
-      bothWays: true,
-    };
+  it('drops the routes, and a walk along one setting a rule off', async () => {
+    const lamp = { sourceId: 'z', deviceId: '0xa', propertyKey: 'state', match: { kind: 'changedTo', value: 'ON' } };
+    const walked = { kind: 'route', routeId: 'route-1', direction: 'forward' };
     const file = await temporaryFile();
-    await writeFile(file, JSON.stringify({ version: 1, routes: [route] }), 'utf8');
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        exposures: {},
+        routes: [{ id: 'route-1', name: 'Hal', sensors: [], walkMs: 30_000, bothWays: true }],
+        rules: [
+          { id: 'r1', name: 'Either', enabled: true, triggers: [walked, lamp], branches: [{ actions: [] }] },
+          { id: 'r2', name: 'Only', enabled: true, triggers: [walked], branches: [{ actions: [] }] },
+        ],
+      }),
+      'utf8',
+    );
 
     const store = new Store(file, silentLogger);
     await store.load();
 
-    expect(store.data.routes).toEqual([route]);
+    expect(store.data).not.toHaveProperty('routes');
+    const [either, only] = store.data.rules as unknown as { enabled: boolean; triggers: unknown[] }[];
+    // The rule runs on what else sets it off, and waits for a trigger with nothing else.
+    expect(either).toMatchObject({ enabled: true, triggers: [lamp] });
+    expect(only).toMatchObject({ enabled: true, triggers: [] });
   });
 });
 
