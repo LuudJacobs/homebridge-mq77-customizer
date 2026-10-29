@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Boolean state is offered only true, false, changes and toggle; Text states are removed
 - A device is labelled only with how many of its functions reach HomeKit, and not at all when none do
 - A rule in two rooms names both, and under a room heading that room comes first
+- Routes are removed, along with rule triggers that were a walk along one
 
 ## [2.7.1] - 2026-10-27
 
