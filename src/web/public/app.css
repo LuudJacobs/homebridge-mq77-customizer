@@ -410,17 +410,6 @@ header {
   white-space: nowrap;
 }
 
-.badge.rules {
-  background: var(--rules-soft);
-  color: var(--rules);
-}
-
-.badge.none {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
-}
-
 .device-body {
   border-top: 1px solid var(--line);
   padding: 0.9rem;
