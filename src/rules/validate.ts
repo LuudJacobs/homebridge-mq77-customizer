@@ -71,15 +71,6 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
   const triggers: AutomationTrigger[] = [];
 
   for (const entry of given) {
-    if (isObject(entry) && entry.kind === 'route') {
-      if (typeof entry.routeId !== 'string' || !entry.routeId) {
-        return { error: 'A route trigger needs a route' };
-      }
-      const direction =
-        entry.direction === 'forward' || entry.direction === 'back' ? entry.direction : undefined;
-      triggers.push({ kind: 'route', routeId: entry.routeId, ...(direction ? { direction } : {}) });
-      continue;
-    }
     if (saysTime(entry)) {
       const time = parseTimeTrigger(entry);
       if ('error' in time) {

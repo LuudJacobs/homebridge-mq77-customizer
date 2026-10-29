@@ -333,8 +333,8 @@ describe('naming a rule by where it acts', () => {
 
     const ui = await openInterface({ state: { devices: spread }, rules: [two] });
     await ui.click(ui.byText('button.tab', 'Rules'));
-    // Every room with a device in it.
-    expect(titles(ui)).toEqual(['Whole house: Evening']);
+    // Two rooms are said by name, whole house or not.
+    expect(titles(ui)).toEqual(['Kitchen and Study: Evening']);
   });
 
   it('counts the rooms it reaches when it is not all of them', async () => {
@@ -355,6 +355,38 @@ describe('naming a rule by where it acts', () => {
     // The hall it is set off from and the study and kitchen it acts in, but
     // not the attic.
     expect(titles(ui)).toEqual(['3 Rooms: Evening']);
+
+    // Under each room it is in, that room and how many more.
+    await sortBy(ui, 'room');
+    const grouped = [...ui.document.querySelectorAll('#automation .device-name')].map(
+      (node) => node.textContent,
+    );
+    expect(grouped).toEqual([
+      'Hall and 2 more: Evening',
+      'Kitchen and 2 more: Evening',
+      'Study and 2 more: Evening',
+    ]);
+  });
+
+  it('says Whole house for more than two rooms that are all of them, under any heading', async () => {
+    const three = automation('r1', 'Evening', '0xa', '0xb');
+    (three as { branches: { actions: unknown[] }[] }).branches[0]!.actions.push(
+      { sourceId: 'zigbee', deviceId: '0xc', propertyKey: 'state', value: 'ON' },
+    );
+    const spread = devices.map((entry, index) => ({
+      ...entry,
+      exposure: { properties: [], room: ['Hall', 'Study', 'Kitchen'][index] },
+    }));
+
+    const ui = await openInterface({ state: { devices: spread }, rules: [three] });
+    await ui.click(ui.byText('button.tab', 'Rules'));
+    expect(titles(ui)).toEqual(['Whole house: Evening']);
+
+    await sortBy(ui, 'room');
+    const grouped = [...ui.document.querySelectorAll('#automation .device-name')].map(
+      (node) => node.textContent,
+    );
+    expect(grouped).toEqual(['Whole house: Evening', 'Whole house: Evening', 'Whole house: Evening']);
   });
 
   it('says nothing extra when no device it touches has a room', async () => {
@@ -426,11 +458,11 @@ describe('naming a rule by where it acts', () => {
     expect(ui.document.querySelectorAll('#automation .rule')).toHaveLength(2);
 
     // And it still says where it reaches under either, since the other room
-    // is news.
+    // is news, the room of the heading first.
     const titles = [...ui.document.querySelectorAll('#automation .device-name')].map(
       (node) => node.textContent,
     );
-    expect(titles).toEqual(['Whole house: Evening', 'Whole house: Evening']);
+    expect(titles).toEqual(['Kitchen and Study: Evening', 'Study and Kitchen: Evening']);
   });
 });
 

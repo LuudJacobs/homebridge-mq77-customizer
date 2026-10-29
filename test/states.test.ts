@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -337,7 +337,7 @@ describe('the web interface', () => {
     };
     expect(toggles.find(made.id)).toEqual({
       id: made.id,
-      name: 'New internal state',
+      name: 'New state',
       type: 'boolean',
       value: false,
     });
@@ -360,7 +360,7 @@ describe('the web interface', () => {
     expect((await call(`/api/states/${made.id}`, { method: 'DELETE' })).status).toBe(404);
   });
 
-  it('lists one as the state toggle kind, with its room and nothing for HomeKit', async () => {
+  it('lists one as the state kind, in no room and with nothing for HomeKit', async () => {
     const { call, toggles, store } = await serve();
     store.update((state) => {
       state.rooms = ['Gang'];
@@ -379,33 +379,32 @@ describe('the web interface', () => {
     expect(await listed(call)).toEqual([
       expect.objectContaining({
         name: 'Away',
-        exposure: { properties: [], room: 'Gang', type: 'state' },
+        exposure: { properties: [], type: 'state' },
         state: { state: false },
       }),
     ]);
+    expect(store.getExposure(`${STATES_SOURCE}:${away.id}`)).toBeUndefined();
   });
 
   it('takes a type, and only values that type can hold', async () => {
     const { call, toggles } = await serve();
     const made = (await (
-      await call('/api/states', { method: 'POST', body: '{"type":"text"}' })
+      await call('/api/states', { method: 'POST', body: '{"type":"number"}' })
     ).json()) as { id: string };
-    expect(toggles.find(made.id)).toMatchObject({ type: 'text', value: '' });
+    expect(toggles.find(made.id)).toMatchObject({ type: 'number', value: 0 });
 
     const put = (body: unknown) =>
       call(`/api/states/${made.id}`, { method: 'PUT', body: JSON.stringify(body) });
-    expect((await put({ value: ' film-avond ' })).status).toBe(200);
-    expect(toggles.find(made.id)?.value).toBe('film-avond');
-    expect((await put({ value: 'twee woorden' })).status).toBe(400);
-    expect((await put({ value: 'veel-te-lang-hoor' })).status).toBe(400);
+    expect((await put({ value: -4 })).status).toBe(200);
+    expect(toggles.find(made.id)?.value).toBe(-4);
+    expect((await put({ value: 1.5 })).status).toBe(400);
 
     // A new type and a value for it, in one go.
-    expect((await put({ type: 'number', value: -4 })).status).toBe(200);
-    expect(toggles.find(made.id)).toMatchObject({ type: 'number', value: -4 });
-    expect((await put({ value: 1.5 })).status).toBe(400);
-    // Refused whole: not renamed either.
-    expect((await put({ name: 'Ander', type: 'kleur' })).status).toBe(400);
-    expect(toggles.find(made.id)?.name).toBe('New internal state');
+    expect((await put({ type: 'boolean', value: true })).status).toBe(200);
+    expect(toggles.find(made.id)).toMatchObject({ type: 'boolean', value: true });
+    // Text is not a type any more, and is refused whole: not renamed either.
+    expect((await put({ name: 'Ander', type: 'text' })).status).toBe(400);
+    expect(toggles.find(made.id)?.name).toBe('New state');
   });
 
   it('does not let another device be one', async () => {
@@ -438,22 +437,17 @@ describe('the web interface', () => {
   });
 });
 
-describe('the three types', () => {
-  it('reads a Text state as it can hold it, and a Number as a whole one', async () => {
+describe('the two types', () => {
+  it('reads a Number as a whole one', async () => {
     const { toggles, catalog } = await harness();
-    const mode = toggles.create('Modus', 'text');
     const guests = toggles.create('Gasten', 'number');
 
-    expect(catalog.getDevice(STATES_SOURCE, mode.id)?.properties[0]).toMatchObject({ type: 'text' });
     expect(catalog.getDevice(STATES_SOURCE, guests.id)?.properties[0]).toMatchObject({
       type: 'numeric',
       step: 1,
     });
-    expect(toggles.find(mode.id)?.value).toBe('');
     expect(toggles.find(guests.id)?.value).toBe(0);
 
-    toggles.set(mode.id, ' film-avond! en meer ');
-    expect(toggles.find(mode.id)?.value).toBe('film-avonden');
     toggles.set(guests.id, '-3.7');
     expect(toggles.find(guests.id)?.value).toBe(-3);
     expect(toggles.set(guests.id, 'veel')).toBe(false);
@@ -489,27 +483,6 @@ describe('the three types', () => {
     expect(toggles.find(guests.id)?.value).toBe(4);
   });
 
-  it('sets a rule off when a Text state comes to contain something, either case', async () => {
-    const { toggles, store, mqtt } = await harness();
-    const mode = toggles.create('Modus', 'text');
-    store.update((state) => {
-      state.rules = [
-        automation({
-          triggers: [{ ...toggle(mode.id), match: { kind: 'contains', value: 'FILM' } }],
-          branches: [{ actions: [{ ...device(SOCKET.id), value: 'OFF' }] }],
-        }),
-      ];
-    });
-
-    toggles.set(mode.id, 'thuis');
-    expect(mqtt.published).toEqual([]);
-    toggles.set(mode.id, 'filmavond');
-    expect(mqtt.published).toHaveLength(1);
-    // Changing to another value that has it sets it off again.
-    toggles.set(mode.id, 'filmnacht');
-    expect(mqtt.published).toHaveLength(2);
-  });
-
   it('is asked in a condition by number', async () => {
     const { toggles, store, mqtt } = await harness();
     const guests = toggles.create('Gasten', 'number');
@@ -535,5 +508,91 @@ describe('the three types', () => {
     toggles.set(guests.id, 3);
     mqtt.deliver(SOCKET.topic, { state: 'ON' });
     expect(mqtt.published.map((message) => message.topic)).toEqual([`${LAMP.topic}/set`]);
+  });
+});
+
+describe('settings from before', () => {
+  async function loaded(saved: unknown) {
+    const directory = await mkdtemp(join(tmpdir(), 'mq77-states-'));
+    const file = join(directory, 'state.json');
+    await writeFile(file, JSON.stringify({ version: 1, ...(saved as object) }), 'utf8');
+    const store = new Store(file, silentLogger);
+    await store.load();
+    return store;
+  }
+
+  it('deletes a Text state, and keeps a room for none', async () => {
+    const store = await loaded({
+      states: [
+        { id: 'a', name: 'Away', type: 'boolean', value: true },
+        { id: 'm', name: 'Modus', type: 'text', value: 'film' },
+        { id: 'g', name: 'Gasten', type: 'number', value: 2 },
+      ],
+      exposures: {
+        'states:a': { properties: [], room: 'Gang' },
+        'states:m': { properties: [], room: 'Gang' },
+        [`zigbee:${SOCKET.id}`]: { properties: ['state'], room: 'Gang' },
+      },
+    });
+
+    expect(store.data.states.map((one) => one.id)).toEqual(['a', 'g']);
+    expect(Object.keys(store.data.exposures)).toEqual([`zigbee:${SOCKET.id}`]);
+  });
+
+  it('asks a truth what it is offered now, where that means the same', async () => {
+    const away = toggle('a');
+    const guests = toggle('g');
+    const store = await loaded({
+      states: [
+        { id: 'a', name: 'Away', type: 'boolean', value: false },
+        { id: 'g', name: 'Gasten', type: 'number', value: 0 },
+      ],
+      rules: [
+        {
+          id: 'r1',
+          name: 'Thuis',
+          enabled: true,
+          triggers: [
+            { ...away, match: { kind: 'equals', value: true } },
+            { ...away, match: { kind: 'notEquals', value: 'true' } },
+            // A number keeps whatever it was asked.
+            { ...guests, match: { kind: 'equals', value: 2 } },
+          ],
+          branches: [
+            {
+              when: {
+                kind: 'any',
+                nodes: [
+                  { kind: 'test', ...away, match: { kind: 'notEquals', value: false } },
+                  {
+                    kind: 'not',
+                    node: { kind: 'test', ...away, match: { kind: 'changedTo', value: 'true' } },
+                  },
+                  // Nothing it means the same as, so it is left.
+                  { kind: 'test', ...away, match: { kind: 'changed' } },
+                ],
+              },
+              actions: [{ ...away, valueFrom: { kind: 'trigger' } }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const rule = store.data.rules[0] as unknown as {
+      triggers: unknown[];
+      branches: { when: { nodes: unknown[] }; actions: unknown[] }[];
+    };
+    expect(rule.triggers).toEqual([
+      { ...away, match: { kind: 'changedTo', value: true } },
+      { ...away, match: { kind: 'changedTo', value: 'false' } },
+      { ...guests, match: { kind: 'equals', value: 2 } },
+    ]);
+    expect(rule.branches[0]?.when.nodes).toEqual([
+      { kind: 'test', ...away, match: { kind: 'equals', value: true } },
+      { kind: 'not', node: { kind: 'test', ...away, match: { kind: 'equals', value: 'true' } } },
+      { kind: 'test', ...away, match: { kind: 'changed' } },
+    ]);
+    expect(rule.branches[0]?.actions).toEqual([{ ...away, valueFrom: { kind: 'trigger' } }]);
   });
 });

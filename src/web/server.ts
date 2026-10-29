@@ -19,7 +19,6 @@ import {
   type SensorType,
   type StateType,
   sortRooms,
-  type Route,
   type Store,
   type TileType,
 } from '../store.js';
@@ -27,8 +26,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { RulesEngine } from '../rules/engine.js';
 import { parseRule } from '../rules/validate.js';
-import { DEFAULT_WALK_MS } from '../routes.js';
-import { STATES_SOURCE, TEXT_PATTERN, type StateToggles } from '../states.js';
+import { STATES_SOURCE, type StateToggles } from '../states.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
@@ -175,12 +173,6 @@ export class WebServer {
       if (path === '/api/rooms' && request.method === 'PUT') {
         return this.saveRooms(request, response);
       }
-      if (path === '/api/routes' && request.method === 'PUT') {
-        return this.saveRoute(request, response);
-      }
-      if (path.startsWith('/api/routes/') && request.method === 'DELETE') {
-        return this.deleteRoute(decodeURIComponent(path.slice('/api/routes/'.length)), response);
-      }
       if (path === '/api/devices' && request.method === 'DELETE') {
         return this.forgetDevice(request, response);
       }
@@ -264,14 +256,9 @@ export class WebServer {
       delete exposure.room;
     }
     if (sourceId === STATES_SOURCE) {
-      // A toggle has a room and nothing else: no HomeKit, and a kind that is
-      // always its own.
-      const room = exposure.room;
-      this.deps.store.setExposure(`${sourceId}:${deviceId}`, {
-        properties: [],
-        ...(room ? { room } : {}),
-      });
-      return send(response, 200, { ok: true, exposure: toggleExposure(room) });
+      // A state has nothing to keep here: no HomeKit, no room, and a kind
+      // that is always its own.
+      return send(response, 200, { ok: true, exposure: toggleExposure() });
     }
     this.deps.store.setExposure(`${sourceId}:${deviceId}`, exposure);
     this.deps.onExposureChanged();
@@ -368,75 +355,6 @@ export class WebServer {
   }
 
   /**
-   * Saves a route, a new one when it has no id yet.
-   *
-   * Two sensors at least, since one is a room and not a way through the
-   * house, each once. The time for the whole walk is held to between a second
-   * and ten minutes.
-   */
-  private async saveRoute(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const body = await readJson(request);
-    const raw = (body?.route ?? {}) as Record<string, unknown>;
-    const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 64) : '';
-    if (!name) {
-      return send(response, 400, { error: 'A route needs a name' });
-    }
-    const sensors: Route['sensors'] = [];
-    for (const entry of Array.isArray(raw.sensors) ? raw.sensors : []) {
-      const { sourceId, deviceId } = (entry ?? {}) as Record<string, unknown>;
-      if (typeof sourceId !== 'string' || typeof deviceId !== 'string') {
-        return send(response, 400, { error: 'Every sensor on a route needs a device' });
-      }
-      if (sensors.some((sensor) => sensor.sourceId === sourceId && sensor.deviceId === deviceId)) {
-        return send(response, 400, { error: 'A sensor can be on a route once' });
-      }
-      sensors.push({ sourceId, deviceId });
-    }
-    if (sensors.length < 2) {
-      return send(response, 400, { error: 'A route needs two sensors at least' });
-    }
-    const walkMs =
-      typeof raw.walkMs === 'number' && Number.isFinite(raw.walkMs)
-        ? Math.min(600_000, Math.max(1_000, Math.round(raw.walkMs)))
-        : DEFAULT_WALK_MS;
-    const known =
-      typeof raw.id === 'string' && this.deps.store.data.routes.some((route) => route.id === raw.id);
-    const route: Route = {
-      id: known ? (raw.id as string) : randomUUID(),
-      name,
-      sensors,
-      walkMs,
-      bothWays: raw.bothWays !== false,
-    };
-
-    this.deps.store.update((state) => {
-      const at = state.routes.findIndex((existing) => existing.id === route.id);
-      if (at >= 0) {
-        state.routes[at] = route;
-      } else {
-        state.routes.push(route);
-      }
-    });
-    this.broadcast({ type: 'devices' });
-    return send(response, 200, { route });
-  }
-
-  /**
-   * Deletes a route. Rules it set off are left as they are, the way they are
-   * when a device leaves: they say what is missing rather than vanish.
-   */
-  private deleteRoute(id: string, response: ServerResponse): void {
-    if (!this.deps.store.data.routes.some((route) => route.id === id)) {
-      return send(response, 404, { error: 'No such route' });
-    }
-    this.deps.store.update((state) => {
-      state.routes = state.routes.filter((route) => route.id !== id);
-    });
-    this.broadcast({ type: 'devices' });
-    return send(response, 200, { ok: true });
-  }
-
-  /**
    * Forgets what was set for a device: its name, room, kind and tiles.
    *
    * Nothing stops it coming back. A source that lists what it has, as
@@ -467,10 +385,10 @@ export class WebServer {
 
   private async createToggle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!this.deps.states) {
-      return send(response, 501, { error: 'No internal states here' });
+      return send(response, 501, { error: 'No states here' });
     }
     const body = await readJson(request);
-    const name = toggleName(body?.name) ?? 'New internal state';
+    const name = toggleName(body?.name) ?? 'New state';
     const type = STATE_TYPES.includes(body?.type as StateType) ? (body?.type as StateType) : 'boolean';
     const toggle = this.deps.states.create(name, type);
     return send(response, 200, { id: toggle.id });
@@ -484,7 +402,7 @@ export class WebServer {
     const toggles = this.deps.states;
     const current = toggles?.find(id);
     if (!toggles || !current) {
-      return send(response, 404, { error: 'No such internal state' });
+      return send(response, 404, { error: 'No such state' });
     }
     const body = await readJson(request);
 
@@ -492,10 +410,10 @@ export class WebServer {
     // the state as it was rather than renamed and not set.
     const name = body?.name === undefined ? undefined : toggleName(body.name);
     if (body?.name !== undefined && !name) {
-      return send(response, 400, { error: 'An internal state needs a name' });
+      return send(response, 400, { error: 'A state needs a name' });
     }
     if (body?.type !== undefined && !STATE_TYPES.includes(body.type as StateType)) {
-      return send(response, 400, { error: 'An internal state is a boolean, text or a number' });
+      return send(response, 400, { error: 'A state is a boolean or a number' });
     }
     const type = (body?.type as StateType | undefined) ?? current.type;
     const value = body?.value;
@@ -511,14 +429,14 @@ export class WebServer {
     }
     toggles.retype(id, type);
     if (value !== undefined) {
-      toggles.set(id, typeof value === 'string' ? value.trim() : value, true);
+      toggles.set(id, value, true);
     }
     return send(response, 200, { ok: true });
   }
 
   private deleteToggle(id: string, response: ServerResponse): void {
     if (!this.deps.states?.remove(id)) {
-      return send(response, 404, { error: 'No such internal state' });
+      return send(response, 404, { error: 'No such state' });
     }
     return send(response, 200, { ok: true });
   }
@@ -607,7 +525,7 @@ export class WebServer {
         reportedLastSeen: this.deps.catalog.getReportedLastSeen(device.sourceId, device.deviceId),
         exposure:
           device.sourceId === STATES_SOURCE
-            ? toggleExposure(this.deps.store.getExposure(key)?.room)
+            ? toggleExposure()
             : (this.deps.store.getExposure(key) ?? { properties: [] }),
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
       };
@@ -616,7 +534,6 @@ export class WebServer {
     return {
       devices,
       rooms: this.deps.store.data.rooms,
-      routes: this.deps.store.data.routes,
       tileTypes: TILE_TYPES,
       links: { zigbee2mqtt: this.deps.config.zigbee2mqttUrl },
       hasLocation: this.deps.hasLocation === true,
@@ -761,17 +678,14 @@ function describeButtons(property: NormalisedProperty): unknown {
  * Its kind is not stored, since nothing could ever change it: it is said here
  * so the interface groups and draws a toggle like any other kind.
  */
-function toggleExposure(room: string | undefined): unknown {
-  return { properties: [], ...(room ? { room } : {}), type: 'state' };
+function toggleExposure(): unknown {
+  return { properties: [], type: 'state' };
 }
 
-/** Why a value is not one an internal state of this type can hold, if it is not. */
+/** Why a value is not one a state of this type can hold, if it is not. */
 function valueProblem(type: StateType, value: unknown): string | undefined {
   if (type === 'boolean' && typeof value !== 'boolean') {
     return 'A boolean is true or false';
-  }
-  if (type === 'text' && (typeof value !== 'string' || !TEXT_PATTERN.test(value.trim()))) {
-    return 'Text is up to 12 of a to z, 0 to 9, - and _';
   }
   if (type === 'number' && !Number.isInteger(value)) {
     return 'A number is a whole number';

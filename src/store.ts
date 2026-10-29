@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 
 import type { Logger } from './logger.js';
 import type { AnyRule } from './rules/types.js';
+import { STATES_SOURCE } from './states.js';
 
 /** Bumped when the shape changes in a way that needs migrating. */
 export const STORE_VERSION = 1;
@@ -91,25 +92,23 @@ export interface DeviceExposure {
 }
 
 
-/** What an internal state holds: a truth, a short word, or a whole number. */
-export type StateType = 'boolean' | 'text' | 'number';
+/** What a state holds: a truth, or a whole number. */
+export type StateType = 'boolean' | 'number';
 
-export const STATE_TYPES: StateType[] = ['boolean', 'text', 'number'];
+export const STATE_TYPES: StateType[] = ['boolean', 'number'];
 
 /**
- * A value the plugin keeps itself, for rules to set and read: an internal
- * state.
+ * A value the plugin keeps itself, for rules to set and read: a state.
  *
  * Away, guests, movie night: what the house is doing rather than what any
- * one device is. Its room is kept with every other device's, in `exposures`.
- * Called a state toggle when it could only be true or false, which is what
- * one stored then still is.
+ * one device is, so it is in no room. Called a state toggle when it could
+ * only be true or false, which is what one stored then still is.
  */
 export interface StateToggle {
   id: string;
   name: string;
   type: StateType;
-  value: boolean | string | number;
+  value: boolean | number;
 }
 
 /** The rooms a house starts with, before anybody has said which it has. */
@@ -120,21 +119,6 @@ export function sortRooms(rooms: string[]): string[] {
   return [...rooms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
-/**
- * A way through the house, as the sensors along it notice somebody: the
- * bedroom to the living room past four of them.
- */
-export interface Route {
-  id: string;
-  name: string;
-  /** In the order somebody walking it passes them. */
-  sensors: { sourceId: string; deviceId: string }[];
-  /** How long from the first sensor to the last, at most, for it to be walked. */
-  walkMs: number;
-  /** Whether it is walked back the other way as well. */
-  bothWays: boolean;
-}
-
 export interface PersistedState {
   version: number;
   /** Keyed `sourceId:deviceId`. */
@@ -143,7 +127,6 @@ export interface PersistedState {
   states: StateToggle[];
   /** The rooms a device can be put in, A to Z. */
   rooms: string[];
-  routes: Route[];
   /** Signs web session cookies. Generated on first run so logins survive restarts. */
   sessionSecret?: string;
 }
@@ -155,7 +138,6 @@ function emptyState(): PersistedState {
     rules: [],
     states: [],
     rooms: sortRooms(DEFAULT_ROOMS),
-    routes: [],
   };
 }
 
@@ -432,6 +414,15 @@ function migrate(parsed: unknown): PersistedState {
     }
   }
 
+  // States are in no room, so nothing about one is kept beside the devices.
+  for (const key of Object.keys(exposures)) {
+    if (key.startsWith(`${STATES_SOURCE}:`)) {
+      delete exposures[key];
+    }
+  }
+  const states = (Array.isArray(state.states) ? state.states : []).flatMap(readToggle);
+  const truths = new Set(states.filter((one) => one.type === 'boolean').map((one) => one.id));
+
   return {
     version: STORE_VERSION,
     exposures,
@@ -441,23 +432,28 @@ function migrate(parsed: unknown): PersistedState {
     // draws it, and leaving it would only be a rule that never fires.
     rules: (state.rules ?? [])
       .filter((rule) => (rule as { kind?: string } | undefined)?.kind !== 'timer')
-      .map(withoutRoutes),
-    states: (Array.isArray(state.states) ? state.states : []).flatMap(readToggle),
-    // One from a test build has a gap between sensors rather than a time for
-    // the whole walk, and is not one of these.
-    routes: (Array.isArray(state.routes) ? state.routes : []).filter(isRoute),
+      .map(withoutRoutes)
+      .map((rule) => askingTruthsPlainly(rule, truths)),
+    states,
     sessionSecret: state.sessionSecret,
   };
 }
 
 /**
- * A rule without the routes a test build let its conditions ask about.
- * Routes set a rule off now, and are never asked about.
+ * A rule without the routes there used to be.
  *
- * The question goes, and a rule that asked one is switched off: the route
- * was holding it back, and running it without that is for somebody to decide.
+ * A walk along one setting it off goes, and the rule runs on whatever else
+ * does; with nothing else it is a rule waiting for a trigger. A question a
+ * test build let its conditions ask about one goes too, and that rule is
+ * switched off: the route was holding it back, and running it without that
+ * is for somebody to decide.
  */
 function withoutRoutes(rule: AnyRule): AnyRule {
+  const isRoute = (node: unknown) => (node as { kind?: string } | undefined)?.kind === 'route';
+  const triggers = (rule as { triggers?: unknown[] }).triggers;
+  if (Array.isArray(triggers) && triggers.some(isRoute)) {
+    rule = { ...rule, triggers: triggers.filter((trigger) => !isRoute(trigger)) } as AnyRule;
+  }
   const branches = (rule as { branches?: { when?: unknown }[] }).branches;
   if (!Array.isArray(branches)) {
     return rule;
@@ -465,7 +461,7 @@ function withoutRoutes(rule: AnyRule): AnyRule {
   let asked = false;
   const prune = (node: unknown): unknown => {
     const { kind } = (node ?? {}) as { kind?: string };
-    if (kind === 'route') {
+    if (isRoute(node)) {
       asked = true;
       return undefined;
     }
@@ -490,41 +486,104 @@ function withoutRoutes(rule: AnyRule): AnyRule {
   return asked ? ({ ...rule, enabled: false, branches: pruned } as AnyRule) : rule;
 }
 
-/** One stored state, or nothing for one that is not; one from before types is a truth. */
+/**
+ * One stored state, or nothing for one that is not; one from before types is
+ * a truth. A Text state is nothing now: rules that used one say what is
+ * missing, as they do for a deleted device.
+ */
 function readToggle(value: unknown): StateToggle[] {
-  const toggle = value as Partial<StateToggle> | undefined;
+  const toggle = value as { id?: unknown; name?: unknown; type?: unknown; value?: unknown };
   if (typeof toggle?.id !== 'string' || typeof toggle.name !== 'string') {
     return [];
   }
   const type = toggle.type ?? 'boolean';
-  const fits =
-    (type === 'boolean' && typeof toggle.value === 'boolean') ||
-    (type === 'text' && typeof toggle.value === 'string') ||
-    (type === 'number' && Number.isInteger(toggle.value));
-  return fits ? [{ id: toggle.id, name: toggle.name, type, value: toggle.value as never }] : [];
+  if (type === 'boolean' && typeof toggle.value === 'boolean') {
+    return [{ id: toggle.id, name: toggle.name, type, value: toggle.value }];
+  }
+  if (type === 'number' && typeof toggle.value === 'number' && Number.isInteger(toggle.value)) {
+    return [{ id: toggle.id, name: toggle.name, type, value: toggle.value }];
+  }
+  return [];
 }
 
-function isRoute(value: unknown): value is Route {
-  const route = value as Partial<Route> | undefined;
-  return (
-    typeof route?.id === 'string' &&
-    typeof route.name === 'string' &&
-    Array.isArray(route.sensors) &&
-    route.sensors.every(
-      (sensor) => typeof sensor?.sourceId === 'string' && typeof sensor.deviceId === 'string',
-    ) &&
-    typeof route.walkMs === 'number' &&
-    typeof route.bothWays === 'boolean'
-  );
+/**
+ * A rule asking a truth only what a truth is offered: becomes or changes to
+ * set it off, is to be asked. What it asked before is said that way where it
+ * means the same, which a state that only reports a change always does: `is
+ * true` sets a rule off when it becomes true, and `is not true` is `is false`.
+ * A condition asking whether one changes, or an action matching the trigger,
+ * has no such twin and is left as it is.
+ */
+function askingTruthsPlainly(rule: AnyRule, truths: Set<string>): AnyRule {
+  const isTruth = (ref: unknown) => {
+    const { sourceId, deviceId } = (ref ?? {}) as { sourceId?: unknown; deviceId?: unknown };
+    return sourceId === STATES_SOURCE && typeof deviceId === 'string' && truths.has(deviceId);
+  };
+  const other = (value: unknown) =>
+    typeof value === 'boolean' ? !value : String(String(value).toLowerCase() !== 'true');
+  const said = <T extends { match?: { kind?: string; value?: unknown } }>(
+    ref: T,
+    as: 'trigger' | 'condition',
+  ): T => {
+    const match = ref.match;
+    if (!isTruth(ref) || !match) {
+      return ref;
+    }
+    if (as === 'trigger' && match.kind === 'equals') {
+      return { ...ref, match: { kind: 'changedTo', value: match.value } };
+    }
+    if (as === 'trigger' && match.kind === 'notEquals') {
+      return { ...ref, match: { kind: 'changedTo', value: other(match.value) } };
+    }
+    if (as === 'condition' && match.kind === 'notEquals') {
+      return { ...ref, match: { kind: 'equals', value: other(match.value) } };
+    }
+    if (as === 'condition' && match.kind === 'changedTo') {
+      return { ...ref, match: { kind: 'equals', value: match.value } };
+    }
+    return ref;
+  };
+  const asked = (node: unknown): unknown => {
+    const shaped = node as { kind?: string; node?: unknown; nodes?: unknown[] };
+    if (shaped?.kind === 'not') {
+      return { ...shaped, node: asked(shaped.node) };
+    }
+    if (shaped?.kind === 'all' || shaped?.kind === 'any') {
+      return { ...shaped, nodes: (shaped.nodes ?? []).map(asked) };
+    }
+    return shaped?.kind === 'test' ? said(shaped as never, 'condition') : node;
+  };
+
+  const raw = rule as {
+    trigger?: unknown;
+    triggers?: unknown[];
+    conditions?: unknown[];
+    branches?: { when?: unknown }[];
+  };
+  if (!raw.trigger && !raw.triggers && !raw.branches && !raw.conditions) {
+    return rule;
+  }
+  return {
+    ...rule,
+    ...(raw.trigger ? { trigger: said(raw.trigger as never, 'trigger') } : {}),
+    ...(raw.triggers ? { triggers: raw.triggers.map((one) => said(one as never, 'trigger')) } : {}),
+    ...(raw.conditions
+      ? { conditions: raw.conditions.map((one) => said(one as never, 'condition')) }
+      : {}),
+    ...(raw.branches
+      ? {
+          branches: raw.branches.map((branch) =>
+            branch.when === undefined ? branch : { ...branch, when: asked(branch.when) },
+          ),
+        }
+      : {}),
+  } as AnyRule;
 }
 
 /** Whether there is anything in it somebody would miss. */
 function hasAnything(state: PersistedState): boolean {
   return (
-    Object.keys(state.exposures).length > 0 ||
-    state.rules.length > 0 ||
-    state.states.length > 0 ||
-    state.routes.length > 0
+    Object.keys(state.exposures).length > 0 || state.rules.length > 0 || state.states.length > 0
   );
 }
 

@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.0.0] - 2026-10-29
+
+### Changed
+
+- States are under Home, in no room, and picked from States in a rule
+- A Boolean state is offered only true, false, changes and toggle
+- A device is labelled only with how many of its functions reach HomeKit, and not at all when none do
+- A rule in two rooms names both, and under a room heading that room comes first
+
+### Removed
+
+- Text states
+- Routes, and rule triggers that were a walk along one
+
 ## [2.7.1] - 2026-10-27
 
 ### Changed

@@ -49,7 +49,7 @@ const state = {
    * somewhere down the page under the name it has not been given yet.
    */
   pinned: undefined,
-  /** An internal state just added and not saved yet, which can go without asking. */
+  /** A state just added and not saved yet, which can go without asking. */
   freshToggle: undefined,
   /**
    * Which sections of which lists are open, keyed `list|heading`.
@@ -82,13 +82,6 @@ const state = {
    * Each says what it was called when editing began, unless it is new.
    */
   roomsDraft: undefined,
-  /** The routes as the server keeps them. */
-  routes: [],
-  /** Routes being edited, by id, and which panels are open. */
-  routeDrafts: new Map(),
-  openRoutes: new Set(),
-  /** A route added and not saved yet, shown above the rest. */
-  newRoute: undefined,
   rules: [],
   openRules: new Set(),
   log: [],
@@ -144,10 +137,9 @@ const el = {
   homePageMap: document.getElementById('home-page-map'),
   rooms: document.getElementById('rooms'),
   roomsButtons: document.getElementById('rooms-buttons'),
-  homeRoutes: document.getElementById('home-routes'),
-  homePageRoutes: document.getElementById('home-page-routes'),
-  routes: document.getElementById('routes'),
-  addRoute: document.getElementById('add-route'),
+  homeStates: document.getElementById('home-states'),
+  homePageStates: document.getElementById('home-page-states'),
+  states: document.getElementById('states'),
   map: document.getElementById('map'),
   mapStatus: document.getElementById('map-status'),
   scanMap: document.getElementById('scan-map'),
@@ -168,19 +160,18 @@ const el = {
 
 const key = (device) => `${device.sourceId}:${device.deviceId}`;
 
-/** Where the internal states come from: the plugin itself, not a source on the broker. */
+/** Where the states come from: the plugin itself, not a source on the broker. */
 const STATES = 'states';
 
-/** A true or false the plugin keeps, rather than a device on the network. */
+/** A value the plugin keeps, rather than a device on the network. */
 const isToggle = (device) => device?.sourceId === STATES;
 
-/** What an internal state holds, read off its one function. */
+/** What a state holds, read off its one function. */
 function stateTypeOf(device) {
-  const type = device?.properties[0]?.type;
-  return type === 'binary' ? 'boolean' : type === 'numeric' ? 'number' : 'text';
+  return device?.properties[0]?.type === 'binary' ? 'boolean' : 'number';
 }
 
-/** What a row points at holds, when it is an internal state, or nothing for a device. */
+/** What a row points at holds, when it is a state, or nothing for a device. */
 const internalType = (ref) => {
   const device = findDevice(ref);
   return isToggle(device) ? stateTypeOf(device) : undefined;
@@ -188,20 +179,15 @@ const internalType = (ref) => {
 
 const STATE_TYPE_NAMES = [
   ['boolean', 'Boolean'],
-  ['text', 'Text'],
   ['number', 'Number'],
 ];
 
 /** What a state starts at, and goes back to when its type changes. */
-const STATE_STARTS_AT = { boolean: false, text: '', number: 0 };
-
-/** Text as a Text state can hold it: anything else dropped, and twelve at most. */
-const cleanText = (text) => String(text).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+const STATE_STARTS_AT = { boolean: false, number: 0 };
 
 /**
  * A box for a value of one type, keeping to what that type can hold as it is
- * typed in: a truth from a list, text that loses what it cannot hold, a
- * whole number.
+ * typed in: a truth from a list, or a whole number.
  */
 function stateValueInput(type, value, onChange) {
   if (type === 'boolean') {
@@ -217,31 +203,17 @@ function stateValueInput(type, value, onChange) {
     return select;
   }
   const input = document.createElement('input');
-  if (type === 'number') {
-    input.type = 'number';
-    input.step = 1;
-    input.value = String(value ?? 0);
-    input.addEventListener('input', () => {
-      const number = Math.trunc(Number(input.value));
-      onChange(Number.isFinite(number) ? number : 0);
-    });
-    // Settled once typing stops, so a fraction cannot stay on screen.
-    input.addEventListener('change', () => {
-      const number = Math.trunc(Number(input.value));
-      input.value = String(Number.isFinite(number) ? number : 0);
-    });
-    return input;
-  }
-  input.type = 'text';
-  input.maxLength = 12;
-  input.placeholder = 'a-z 0-9 - _';
-  input.value = String(value ?? '');
+  input.type = 'number';
+  input.step = 1;
+  input.value = String(value ?? 0);
   input.addEventListener('input', () => {
-    const cleaned = cleanText(input.value);
-    if (cleaned !== input.value) {
-      input.value = cleaned;
-    }
-    onChange(cleaned);
+    const number = Math.trunc(Number(input.value));
+    onChange(Number.isFinite(number) ? number : 0);
+  });
+  // Settled once typing stops, so a fraction cannot stay on screen.
+  input.addEventListener('change', () => {
+    const number = Math.trunc(Number(input.value));
+    input.value = String(Number.isFinite(number) ? number : 0);
   });
   return input;
 }
@@ -300,10 +272,10 @@ const DEVICE_TYPES = (() => {
 /**
  * Every kind there is, for naming and drawing one.
  *
- * An internal state is a kind of its own that nothing else can be, so it
+ * A state is a kind of its own that nothing else can be, so it
  * is here and never in the picker.
  */
-const KINDS = [...DEVICE_TYPES, ['state', 'Internal state']];
+const KINDS = [...DEVICE_TYPES, ['state', 'State']];
 
 /**
  * A small drawing for the kind of thing a device is.
@@ -542,7 +514,6 @@ async function load() {
   const snapshot = await api('/api/state');
   state.devices = snapshot.devices;
   state.rooms = snapshot.rooms ?? [];
-  state.routes = snapshot.routes ?? [];
   state.tileTypes = snapshot.tileTypes;
   state.hasLocation = snapshot.hasLocation === true;
   state.canNotify = snapshot.canNotify === true;
@@ -624,7 +595,7 @@ function listen() {
       // Followed in its panel only while nothing there has been changed: a
       // value somebody has picked and not saved yet is theirs.
       if (isToggle(device) && !state.deviceDrafts.has(key(device))) {
-        const choice = el.devices.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
+        const choice = el.states.querySelector(`[data-toggle="${CSS.escape(key(device))}"]`);
         if (choice) {
           choice.value = String(device.state.state);
         }
@@ -648,7 +619,8 @@ function listen() {
 
 /** Patches one value in place, so typing in a field is never interrupted. */
 function updateValue(device, propertyKey) {
-  const node = el.devices.querySelector(
+  // A state's panel is under Home rather than among the devices.
+  const node = (isToggle(device) ? el.states : el.devices).querySelector(
     `[data-value="${CSS.escape(key(device))}|${CSS.escape(propertyKey)}"]`,
   );
   if (node) {
@@ -762,15 +734,12 @@ function exposedCount(device) {
 }
 
 function paintBadge(badge, device) {
-  if (device.rulesOnly) {
-    // Not "none": this device is doing its job, it just does it in rules.
-    badge.textContent = 'rules only';
-    badge.className = 'badge rules';
-    return;
-  }
+  // Only what reaches HomeKit is worth a word. A device that reaches nothing
+  // there, a state among them, is doing its job in rules and needs no label.
   const count = exposedCount(device);
-  badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
-  badge.className = count === 0 ? 'badge none' : 'badge';
+  badge.textContent = count === 0 ? '' : `${count} in HomeKit`;
+  badge.className = 'badge';
+  badge.hidden = count === 0;
 }
 
 /** What each ordering compares, other than last seen which is a number. */
@@ -982,15 +951,15 @@ const KNOWN_DEVICES = 'Known Devices';
 
 function render() {
   drawDevices();
+  renderStates();
   settleLink('devices', el.devices);
 }
 
 function drawDevices() {
   const term = currentFilter();
+  // States are on a page of their own, under Home.
   const visible = sortDevices(
-    state.devices.filter(
-      (device) => matchesFilter(device, term),
-    ),
+    state.devices.filter((device) => !isToggle(device) && matchesFilter(device, term)),
   );
 
   el.devices.replaceChildren();
@@ -998,8 +967,9 @@ function drawDevices() {
   if (visible.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent =
-      state.devices.length === 0 ? 'No devices discovered yet.' : 'No matches.';
+    empty.textContent = state.devices.some((device) => !isToggle(device))
+      ? 'No matches.'
+      : 'No devices discovered yet.';
     el.devices.append(empty);
     return;
   }
@@ -1181,7 +1151,6 @@ function isDeviceDirty(given) {
   if (isToggle(device)) {
     return (
       draft.name.trim() !== device.name ||
-      draft.room.trim() !== (device.exposure.room ?? '') ||
       draft.type !== draft.wasType ||
       draft.value !== draft.was
     );
@@ -1192,10 +1161,12 @@ function isDeviceDirty(given) {
 /** Puts the `*` and the Revert button right after something in a panel changed. */
 function paintDirty(device) {
   const dirty = isDeviceDirty(device);
-  for (const name of el.devices.querySelectorAll(`[data-name="${CSS.escape(key(device))}"]`)) {
+  // A state's panel is under Home rather than among the devices.
+  const list = isToggle(device) ? el.states : el.devices;
+  for (const name of list.querySelectorAll(`[data-name="${CSS.escape(key(device))}"]`)) {
     name.textContent = `${dirty ? '* ' : ''}${name.dataset.base}`;
   }
-  for (const revert of el.devices.querySelectorAll(`[data-revert="${CSS.escape(key(device))}"]`)) {
+  for (const revert of list.querySelectorAll(`[data-revert="${CSS.escape(key(device))}"]`)) {
     revert.hidden = !dirty;
   }
 }
@@ -1278,8 +1249,7 @@ function deleteDevice(device) {
 }
 
 /**
- * An internal state: what it is called, where it is, what it holds and what
- * it is now.
+ * A state: what it is called, what it holds and what it is now.
  *
  * Nothing about HomeKit, which never sees one, and nothing about where it
  * came from, since that is here. Like every panel, nothing in it is kept
@@ -1296,7 +1266,6 @@ function renderToggle(device) {
   // in the meantime is not undone by saving a new name.
   const draft = state.deviceDrafts.get(key(device)) ?? {
     name: device.name,
-    room: device.exposure.room ?? '',
     type: stateTypeOf(device),
     wasType: stateTypeOf(device),
     value: device.state.state,
@@ -1321,11 +1290,6 @@ function renderToggle(device) {
   name.dataset.toggleName = key(device);
   name.addEventListener('input', () => {
     draft.name = name.value;
-    keep();
-  });
-
-  const room = roomSelect(draft.room, (picked) => {
-    draft.room = picked;
     keep();
   });
 
@@ -1358,7 +1322,7 @@ function renderToggle(device) {
     keep();
   });
 
-  row.append(field('Name', name), field('Room', room), field('Type', type), valueField);
+  row.append(field('Name', name), field('Type', type), valueField);
 
   const footer = document.createElement('div');
   footer.className = 'rule-footer';
@@ -1385,14 +1349,6 @@ function renderToggle(device) {
           name: given,
           ...(retyped ? { type: draft.type } : {}),
           ...(retyped || draft.value !== draft.was ? { value: draft.value } : {}),
-        }),
-      });
-      await api('/api/exposure', {
-        method: 'PUT',
-        body: JSON.stringify({
-          sourceId: device.sourceId,
-          deviceId: device.deviceId,
-          exposure: { properties: [], room: draft.room.trim() || undefined },
         }),
       });
       state.deviceDrafts.delete(key(device));
@@ -2054,8 +2010,7 @@ function anythingUnsaved() {
   return (
     state.devices.some((device) => isDeviceDirty(device)) ||
     [...state.ruleDrafts.keys()].some((id) => isRuleDirty(id)) ||
-    roomsDirty() ||
-    [...(state.newRoute ? [state.newRoute] : []), ...state.routes].some(isRouteDirty)
+    roomsDirty()
   );
 }
 
@@ -2103,16 +2058,24 @@ const MATCH_KINDS = [
   { kind: 'below', label: 'falls below', conditionLabel: 'is below' },
 ];
 
-/** What a Text state can be asked: the whole of it, or a piece, either case. */
-const TEXT_MATCH_KINDS = [
+/**
+ * What a Boolean state can set a rule off by, and be asked. It only ever says
+ * anything when it changes, so being true and becoming true are one and the
+ * same to a trigger, and a condition asks only which it is.
+ */
+const TRUTH_TRIGGER_KINDS = [
   { kind: 'changedTo', label: 'becomes' },
-  { kind: 'equals', label: 'matches' },
-  { kind: 'contains', label: 'contains' },
   { kind: 'changed', label: 'changes' },
 ];
+const TRUTH_CONDITION_KINDS = [{ kind: 'equals', label: 'is' }];
 
-/** The tests a row offers, for what it points at. */
-const matchKindsFor = (ref) => (internalType(ref) === 'text' ? TEXT_MATCH_KINDS : MATCH_KINDS);
+/** The tests a row offers, for what it points at and whether it is asked. */
+const matchKindsFor = (ref, asCondition = false) =>
+  internalType(ref) === 'boolean'
+    ? asCondition
+      ? TRUTH_CONDITION_KINDS
+      : TRUTH_TRIGGER_KINDS
+    : MATCH_KINDS;
 
 const OUTCOME_LABELS = {
   fired: 'ran',
@@ -2213,17 +2176,6 @@ function logParts(entry) {
     chunk.append(
       clockIcon(),
       document.createTextNode(`${describeTimeOfDay(entry.firedAt.at, entry.firedAt.offset)} →`),
-    );
-    parts.push(phrase(chunk), words(' '));
-  } else if (entry.walked) {
-    // A route reads the way the clock does: its name, and which way.
-    const route = state.routes.find((candidate) => candidate.id === entry.walked.routeId);
-    const towards = route ? ` towards ${towardsName(route, entry.walked.direction)}` : '';
-    const chunk = document.createElement('span');
-    chunk.className = 'chunk';
-    chunk.append(
-      routeIcon(),
-      document.createTextNode(`${route?.name ?? entry.walked.routeName}: walked${towards} →`),
     );
     parts.push(phrase(chunk), words(' '));
   }
@@ -2397,27 +2349,6 @@ const GESTURES = [
 const SVG = 'http://www.w3.org/2000/svg';
 
 const CLOCK_PATHS = ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 7v5l3.5 2'];
-
-/** A way from one end to the other, for a route the way a clock is for a time. */
-const ROUTE_PATHS = [
-  'M3 19a3 3 0 1 0 6 0 3 3 0 1 0-6 0Z',
-  'M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15',
-  'M15 5a3 3 0 1 0 6 0 3 3 0 1 0-6 0Z',
-];
-
-function routeIcon() {
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  // Drawn the way the clock is: lines, not shapes.
-  svg.setAttribute('class', 'type-icon clock');
-  svg.setAttribute('aria-hidden', 'true');
-  for (const drawing of ROUTE_PATHS) {
-    const path = document.createElementNS(SVG, 'path');
-    path.setAttribute('d', drawing);
-    svg.append(path);
-  }
-  return svg;
-}
 
 function clockIcon() {
   const svg = document.createElementNS(SVG, 'svg');
@@ -2746,7 +2677,7 @@ function ruleSides(rule) {
  * where what sets it off is as well as where it acts. A button in the hall
  * turning on a lamp in the study is a hall rule and a study rule.
  *
- * Only devices: a time or a route set it off from nowhere in particular.
+ * Only devices: the clock sets it off from nowhere in particular.
  */
 function affectedRooms(rule) {
   const rooms = new Set();
@@ -2762,32 +2693,39 @@ function affectedRooms(rule) {
 /**
  * A rule's name, said with where it reaches in front of it.
  *
- * Left off under a room heading, which has already said it, and off entirely
- * for a rule that reaches nowhere named.
+ * `inRoom` is the room heading it is listed under, when the list is sorted
+ * by room. Left off there when the heading has said all of it, and off
+ * entirely for a rule that reaches nowhere named.
  */
-function ruleTitle(rule, grouped = false) {
+function ruleTitle(rule, inRoom) {
   const rooms = affectedRooms(rule);
-  // Left off only when the heading has said all of it. A rule reaching two
-  // rooms still says so under either, since the other room is news.
-  if (rooms.length === 0 || (grouped && rooms.length === 1)) {
+  if (rooms.length === 0 || (inRoom && rooms.length === 1 && rooms[0] === inRoom)) {
     return rule.name;
   }
-  return `${roomsSaid(rooms)}: ${rule.name}`;
+  return `${roomsSaid(rooms, inRoom)}: ${rule.name}`;
 }
 
 /**
- * Where a rule reaches, short: one room by its name, every room that has a
- * device in it as the whole house, and otherwise how many. A list of rooms
- * soon says more than the rule's own name does.
+ * Where a rule reaches, short. One or two rooms by name; more than that is
+ * the whole house when it is every room with a device in it, and otherwise
+ * how many. Under a room heading that room comes first and the rest are
+ * counted, since the heading is where somebody is reading from: `Kitchen
+ * and Hall` under the kitchen, `Hall and Kitchen` under the hall.
  */
-function roomsSaid(rooms) {
-  if (rooms.length === 1) {
-    return rooms[0];
+function roomsSaid(rooms, inRoom) {
+  const first = inRoom && rooms.includes(inRoom) ? inRoom : rooms[0];
+  const others = rooms.filter((room) => room !== first);
+  if (others.length === 0) {
+    return first;
+  }
+  if (others.length === 1) {
+    return `${first} and ${others[0]}`;
   }
   const lived = new Set(state.devices.map((device) => device.exposure?.room?.trim()).filter(Boolean));
-  return rooms.every((room) => lived.has(room)) && rooms.length >= lived.size
-    ? 'Whole house'
-    : `${rooms.length} Rooms`;
+  if (rooms.every((room) => lived.has(room)) && rooms.length >= lived.size) {
+    return 'Whole house';
+  }
+  return inRoom ? `${first} and ${others.length} more` : `${rooms.length} Rooms`;
 }
 
 function ruleSortKey(rule, sort) {
@@ -2928,12 +2866,11 @@ function describeTrigger(trigger) {
   if (isTime(trigger)) {
     return `Time is ${describeTimeOfDay(trigger.at, trigger.offset)}`;
   }
-  if (isRouteRef(trigger)) {
-    return describeWalk(trigger);
-  }
   const property = findProperty(trigger);
   const label = property?.label ?? trigger.propertyKey ?? 'something';
-  const verb = matchKindsFor(trigger).find((entry) => entry.kind === trigger.match?.kind)?.label ?? '';
+  const verb =
+    [...matchKindsFor(trigger), ...MATCH_KINDS].find((entry) => entry.kind === trigger.match?.kind)
+      ?.label ?? '';
   const value = trigger.match?.value;
   const hasValue = value !== undefined && value !== '';
   const said =
@@ -2966,28 +2903,12 @@ function renderByTrigger(container, rules) {
       // a device that has gone missing either, which is what the last group
       // is for.
       const clock = isTime(trigger);
-      // A route is a heading of its own as well, by its name.
-      const route = isRouteRef(trigger)
-        ? state.routes.find((candidate) => candidate.id === trigger.routeId)
-        : undefined;
-      const device = !clock && !route && trigger ? findDevice(trigger) : undefined;
-      const key = clock
-        ? TIME_PICK
-        : route
-          ? `${ROUTE_PICK}|${route.id}`
-          : device
-            ? `${device.sourceId}|${device.deviceId}`
-            : '';
+      const device = !clock && trigger ? findDevice(trigger) : undefined;
+      const key = clock ? TIME_PICK : device ? `${device.sourceId}|${device.deviceId}` : '';
       if (!groups.has(key)) {
         groups.set(key, {
-          name: clock
-            ? 'Current time'
-            : route
-              ? route.name
-              : device
-                ? displayName(device)
-                : 'No device',
-          known: clock || Boolean(route) || Boolean(device),
+          name: clock ? 'Current time' : device ? displayName(device) : 'No device',
+          known: clock || Boolean(device),
           entries: [],
         });
       }
@@ -3055,7 +2976,7 @@ function renderRule(rule, occurrence, inRoom) {
   // sets a rule off has said nothing about where the rule acts. Marked while
   // its panel holds changes that are not saved.
   name.dataset.ruleName = rule.id;
-  name.dataset.base = ruleTitle(rule, inRoom !== undefined);
+  name.dataset.base = ruleTitle(rule, inRoom || undefined);
   name.textContent = `${isRuleDirty(rule.id) ? '* ' : ''}${name.dataset.base}`;
   const detail = document.createElement('span');
   detail.className = 'device-meta';
@@ -3095,17 +3016,6 @@ function renderRule(rule, occurrence, inRoom) {
  */
 function triggerParts(triggers, inRoom) {
   const first = triggers[0];
-  if (isRouteRef(first)) {
-    const route = state.routes.find((candidate) => candidate.id === first.routeId);
-    const chunk = document.createElement('span');
-    chunk.className = 'chunk';
-    const rest = triggers.length - 1;
-    chunk.append(
-      routeIcon(),
-      document.createTextNode(`${route?.name ?? 'a removed route'}${rest > 0 ? ` +${rest}` : ''} →`),
-    );
-    return [chunk];
-  }
   if (!isTime(first)) {
     return deviceParts(first, `${andMore(distinctDevices(triggers))} →`, inRoom);
   }
@@ -3517,7 +3427,6 @@ function drawWhenThen(body, draft) {
           ruleId: draft.id,
           // Only here: a mirror and a slider are driven by their devices.
           allowTime: true,
-          allowRoutes: true,
           redraw: drawTriggers,
           // Any of them fires the rule, so the last one cannot be removed.
           onRemove:
@@ -3902,7 +3811,7 @@ function drawSlider(body, draft) {
         const last = index === triggers.length - 1;
         buttons.append(
           refRow(trigger, {
-            // Text and Number states are for automations.
+            // Number states are for automations.
             pick: (device) =>
               isToggle(device) && stateTypeOf(device) !== 'boolean' ? [] : watchable(device),
             withMatch: true,
@@ -3936,7 +3845,7 @@ function drawMirror(body, draft) {
   const devices = document.createElement('div');
   devices.className = 'mirror-devices';
 
-  // Text and Number states are for automations; a truth mirrors like any switch.
+  // Number states are for automations; a truth mirrors like any switch.
   const candidates = byName(
     state.devices.filter(
       (device) =>
@@ -4496,87 +4405,8 @@ const NOTIFY_PICK = '__notify';
 
 const isNotifyRef = (ref) => ref?.kind === 'notify';
 
-/** The picker's value for a route, which names no room or device of its own. */
-const ROUTE_PICK = '__route';
-
-const isRouteRef = (ref) => ref?.kind === 'route';
-
-/** Turns a trigger row into a route walked: the first route, either way. */
-function becomeRoute(ref) {
-  for (const key of Object.keys(ref)) {
-    delete ref[key];
-  }
-  ref.kind = 'route';
-  ref.routeId = byNameOf(state.routes)[0]?.id ?? '';
-}
-
-/**
- * Which route, and which way along it: either, or towards the room at one
- * end. A route that goes one way has only the one, so nothing to pick.
- */
-function routeParts(ref, options) {
-  const route = state.routes.find((candidate) => candidate.id === ref.routeId);
-
-  const routes = document.createElement('select');
-  routes.className = 'route-pick';
-  const listed =
-    route || !ref.routeId
-      ? byNameOf(state.routes)
-      : [...byNameOf(state.routes), { id: ref.routeId, name: 'a route that has gone' }];
-  for (const candidate of listed) {
-    const choice = document.createElement('option');
-    choice.value = candidate.id;
-    choice.textContent = candidate.name;
-    routes.append(choice);
-  }
-  routes.value = ref.routeId;
-  routes.addEventListener('change', () => {
-    ref.routeId = routes.value;
-    delete ref.direction;
-    options.onChange?.();
-    options.redraw?.();
-  });
-
-  const parts = [routes];
-  if (route?.bothWays) {
-    // Named by the room at that end, since that is where somebody is going.
-    const direction = document.createElement('select');
-    direction.className = 'route-way';
-    for (const [way, text] of [
-      ['', 'either way'],
-      ['forward', `towards ${towardsName(route, 'forward')}`],
-      ['back', `towards ${towardsName(route, 'back')}`],
-    ]) {
-      const choice = document.createElement('option');
-      choice.value = way;
-      choice.textContent = text;
-      direction.append(choice);
-    }
-    direction.value = ref.direction ?? '';
-    direction.addEventListener('change', () => {
-      if (direction.value) {
-        ref.direction = direction.value;
-      } else {
-        delete ref.direction;
-      }
-      options.onChange?.();
-    });
-    parts.push(direction);
-  }
-  return parts;
-}
-
-/** A route trigger as a phrase: `Walked towards Study`. */
-function describeWalk(ref) {
-  const route = state.routes.find((candidate) => candidate.id === ref.routeId);
-  if (!route) {
-    return 'Walked';
-  }
-  if (ref.direction || !route.bothWays) {
-    return `Walked towards ${towardsName(route, ref.direction ?? 'forward')}`;
-  }
-  return 'Walked either way';
-}
+/** The picker's value for the states, which are in no room. */
+const STATE_PICK = '__states';
 
 /** The picker's value for doing nothing, which stops the rule at its outcome. */
 const IGNORE_PICK = '__ignore';
@@ -4806,7 +4636,9 @@ function refRow(ref, options) {
   // A house of sixty devices is a long list to read for one name, and the
   // room is the first thing anybody knows about the device they want.
   const candidates = state.devices.filter((candidate) => options.pick(candidate).length > 0);
-  const roomOfDevice = (device) => device.exposure.room?.trim() || UNROOMED;
+  // A state is in no room, and is picked from States instead.
+  const roomOfDevice = (device) =>
+    isToggle(device) ? STATE_PICK : device.exposure.room?.trim() || UNROOMED;
 
   const rooms = document.createElement('select');
   rooms.className = 'room-picker';
@@ -4820,7 +4652,9 @@ function refRow(ref, options) {
   // Shown until a room is picked, and never picked itself.
   const prompt = offer(rooms, '', 'Room');
   prompt.disabled = true;
-  const named = [...new Set(candidates.map(roomOfDevice))].filter((room) => room !== UNROOMED);
+  const named = [...new Set(candidates.map(roomOfDevice))].filter(
+    (room) => room !== UNROOMED && room !== STATE_PICK,
+  );
   for (const room of named.sort(compareNames)) {
     offer(rooms, room, room);
   }
@@ -4828,11 +4662,12 @@ function refRow(ref, options) {
   if (candidates.some((device) => roomOfDevice(device) === UNROOMED)) {
     offer(rooms, UNROOMED, UNGROUPED);
   }
-  // Under the rooms rather than among them: neither is a place. Routes come
-  // first, once there are any, and only where something sets a rule off.
-  if (options.allowRoutes && (state.routes.length > 0 || isRouteRef(ref))) {
-    offer(rooms, ROUTE_PICK, 'Routes');
+  // Then the states, which are no place either, ahead of what is not a
+  // device at all.
+  if (candidates.some(isToggle)) {
+    offer(rooms, STATE_PICK, 'States');
   }
+  // Under the rooms rather than among them: neither is a place.
   if (options.allowTime) {
     // `Current time`, not `Time`: what it offers is the clock as it stands
     // rather than a time in the abstract.
@@ -4857,8 +4692,7 @@ function refRow(ref, options) {
   /** Fills the second dropdown with the room's devices, or empties and stops it. */
   const fillDevices = (room) => {
     devices.replaceChildren();
-    const inRoom =
-      room && room !== TIME_PICK && room !== NOTIFY_PICK && room !== IGNORE_PICK && room !== ROUTE_PICK;
+    const inRoom = room && room !== TIME_PICK && room !== NOTIFY_PICK && room !== IGNORE_PICK;
     devices.disabled = !inRoom;
     if (!inRoom) {
       return;
@@ -4871,9 +4705,7 @@ function refRow(ref, options) {
   };
 
   const current = findDevice(ref);
-  rooms.value = isRouteRef(ref)
-    ? ROUTE_PICK
-    : isTime(ref)
+  rooms.value = isTime(ref)
     ? TIME_PICK
     : isNotifyRef(ref)
       ? NOTIFY_PICK
@@ -4897,8 +4729,7 @@ function refRow(ref, options) {
    */
   const backToDevice = (room) => {
     const device = firstIn(room);
-    const keys = ['kind', 'at', 'offset', 'days', 'side', 'title', 'message'];
-    for (const key of [...keys, 'routeId', 'direction']) {
+    for (const key of ['kind', 'at', 'offset', 'days', 'side', 'title', 'message']) {
       delete ref[key];
     }
     // A condition row is a test of a device, said as such, or the rule is
@@ -4920,40 +4751,6 @@ function refRow(ref, options) {
     options.onChange?.();
     options.redraw?.();
   };
-
-  /** A route walked instead, redrawn as one. */
-  const routeInstead = () => {
-    becomeRoute(ref);
-    options.onChange?.();
-    options.redraw?.();
-  };
-
-  // A route names no device either: which route, and which way along it.
-  if (isRouteRef(ref)) {
-    rooms.addEventListener('change', () => {
-      if (rooms.value === TIME_PICK) {
-        for (const key of ['routeId', 'direction']) {
-          delete ref[key];
-        }
-        becomeTime(ref, options.asCondition === true);
-        options.onChange?.();
-        options.redraw?.();
-      } else if (rooms.value !== ROUTE_PICK) {
-        backToDevice(rooms.value);
-      }
-    });
-    row.append(rooms, ...routeParts(ref, options));
-    if (options.onRemove) {
-      row.append(addButton('\u2715', options.onRemove));
-    }
-    if (options.joiner) {
-      row.append(joinerOf(options.joiner));
-    }
-    if (options.trailing) {
-      row.append(options.trailing);
-    }
-    return row;
-  }
 
   /** The outcome stopping here: this row is the whole of it, and redrawn as such. */
   const ignoreInstead = () => {
@@ -4997,9 +4794,7 @@ function refRow(ref, options) {
   // rather than a property and a match.
   if (isTime(ref)) {
     rooms.addEventListener('change', () => {
-      if (rooms.value === ROUTE_PICK) {
-        routeInstead();
-      } else if (rooms.value !== TIME_PICK) {
+      if (rooms.value !== TIME_PICK) {
         backToDevice(rooms.value);
       }
     });
@@ -5049,10 +4844,6 @@ function refRow(ref, options) {
       becomeTime(ref, options.asCondition === true);
       options.onChange?.();
       options.redraw?.();
-      return;
-    }
-    if (rooms.value === ROUTE_PICK) {
-      routeInstead();
       return;
     }
     if (rooms.value === NOTIFY_PICK) {
@@ -5110,15 +4901,20 @@ function refRow(ref, options) {
 
     if (pointed && options.withMatch) {
       const kinds = document.createElement('select');
-      const offered = matchKindsFor(ref);
-      for (const entry of offered) {
+      const offered = matchKindsFor(ref, options.asCondition === true);
+      // A test saved before it stopped being offered stays listed while it is
+      // the one picked, so opening a rule cannot quietly rewrite it.
+      const listed = offered.some((entry) => entry.kind === ref.match.kind)
+        ? offered
+        : [...offered, ...MATCH_KINDS.filter((entry) => entry.kind === ref.match.kind)];
+      for (const entry of listed) {
         const choice = document.createElement('option');
         choice.value = entry.kind;
         choice.textContent = (options.asCondition && entry.conditionLabel) || entry.label;
         kinds.append(choice);
       }
-      // A state whose type changed since may hold a test it no longer has.
-      if (!offered.some((entry) => entry.kind === ref.match.kind)) {
+      // One no test here knows, which nothing could have saved, starts over.
+      if (!listed.some((entry) => entry.kind === ref.match.kind)) {
         ref.match = { kind: offered[0].kind, value: '' };
       }
       kinds.value = ref.match.kind;
@@ -5142,10 +4938,7 @@ function refRow(ref, options) {
             },
             // Only where this row is what sets a rule off. A condition asks
             // what a device is doing, which any number of rules may ask.
-            {
-              ...(options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {}),
-              clean: internalType(ref) === 'text',
-            },
+            options.starts ? { taken: boundElsewhere(ref, options.ruleId) } : {},
           ),
         );
       }
@@ -5160,21 +4953,21 @@ function refRow(ref, options) {
         { kind: 'add', label: 'increase by' },
         { kind: 'subtract', label: 'decrease by' },
       ];
-      // A Text state is only ever set, and a Number set or counted; neither
-      // copies what set the rule off. A truth is as any device's on or off.
+      const matching = { kind: 'trigger', label: 'match the trigger' };
+      // A Boolean state is set, to true, false or the other one, and copies
+      // nothing; one saved copying the trigger stays listed while it does. A
+      // Number state is as any other number.
       const modes =
-        internal === 'text'
-          ? [set]
-          : internal === 'number'
-            ? [set, ...moves]
-            : [
-                set,
-                { kind: 'trigger', label: 'match the trigger' },
-                // Only where there is a number to move. One already set stays
-                // listed whatever the device says now, so opening a rule
-                // cannot rewrite it.
-                ...(property?.type === 'numeric' || moving ? moves : []),
-              ];
+        internal === 'boolean'
+          ? [set, ...(ref.valueFrom?.kind === 'trigger' ? [matching] : [])]
+          : [
+              set,
+              matching,
+              // Only where there is a number to move. One already set stays
+              // listed whatever the device says now, so opening a rule
+              // cannot rewrite it.
+              ...(property?.type === 'numeric' || moving ? moves : []),
+            ];
       if (!modes.some((entry) => entry.kind === (ref.valueFrom?.kind ?? 'literal'))) {
         delete ref.valueFrom;
       }
@@ -5337,19 +5130,8 @@ function valueInput(property, current, onChange, options = {}) {
   if (property?.step !== undefined) {
     input.step = property.step;
   }
-  // What a Text state can hold, and nothing it cannot, as it is typed.
-  if (options.clean) {
-    input.maxLength = 12;
-    input.placeholder = 'a-z 0-9 - _';
-  }
   input.value = current ?? '';
   input.addEventListener('input', () => {
-    if (options.clean) {
-      const cleaned = cleanText(input.value);
-      if (cleaned !== input.value) {
-        input.value = cleaned;
-      }
-    }
     onChange(input.type === 'number' ? Number(input.value) : input.value);
   });
   return input;
@@ -5360,7 +5142,7 @@ const KIND_LABELS = {
   mirror: 'mirror',
   slider: 'slider',
   action: 'action',
-  state: 'internal state',
+  state: 'state',
 };
 
 function renderLog() {
@@ -5430,7 +5212,7 @@ function logRefs(entry) {
     entry.copy?.from,
     ...(entry.copy?.to ?? []),
     ...(rule ? ruleRefs(rule) : []),
-    // A press or an internal state on a line of its own is named by its key.
+    // A press or a state on a line of its own is named by its key.
     ...(entry.ruleKind === 'action' || entry.ruleKind === 'state' ? [refOf(entry.ruleId)] : []),
   ].filter(Boolean);
 }
@@ -6036,7 +5818,7 @@ const SLUGS = {
 };
 
 /** And of each page of Home. */
-const HOME_SLUGS = { rooms: 'rooms', routes: 'routes', map: 'zigbee-map' };
+const HOME_SLUGS = { rooms: 'rooms', states: 'states', map: 'zigbee-map' };
 
 /** The tab a rule is kept on. */
 const viewOfRule = (rule) =>
@@ -6218,16 +6000,16 @@ function drawHome() {
   const page = state.homePage;
   el.tabSelect.value = pickedOption();
   el.homeRooms.classList.toggle('active', page === 'rooms');
-  el.homeRoutes.classList.toggle('active', page === 'routes');
+  el.homeStates.classList.toggle('active', page === 'states');
   el.homeMap.classList.toggle('active', page === 'map');
   el.homePageRooms.hidden = page !== 'rooms';
-  el.homePageRoutes.hidden = page !== 'routes';
+  el.homePageStates.hidden = page !== 'states';
   el.homePageMap.hidden = page !== 'map';
   if (page === 'map') {
     // Nothing to fetch: a scan is slow enough that it only happens on asking.
     drawMap();
-  } else if (page === 'routes') {
-    renderRoutes();
+  } else if (page === 'states') {
+    renderStates();
   } else {
     renderRooms();
   }
@@ -6241,7 +6023,7 @@ function openHomePage(page) {
 }
 
 el.homeRooms.addEventListener('click', () => openHomePage('rooms'));
-el.homeRoutes.addEventListener('click', () => openHomePage('routes'));
+el.homeStates.addEventListener('click', () => openHomePage('states'));
 el.homeMap.addEventListener('click', () => openHomePage('map'));
 
 /**
@@ -6378,318 +6160,25 @@ function roomsDirty() {
 }
 
 /**
- * The devices that can be on a route: those that notice somebody by motion
- * or by presence, and say when they no longer do.
+ * The states, a panel each by name, the same panel they had among the
+ * devices. One just added stays at the top until it is saved.
  */
-const isSensor = (device) =>
-  device.properties.some((property) => ['motion', 'occupancy'].includes(property.role));
-
-const sensorKey = (ref) => `${ref.sourceId}|${ref.deviceId}`;
-
-/** A sensor on a route as the interface calls it, or what is left of one that went. */
-const sensorName = (ref) => {
-  const device = findDevice(ref);
-  return device ? displayName(device) : ref.deviceId;
-};
-
-/**
- * The room a route heads towards one way along it: the room of its last
- * sensor that way, or the sensor's own name where it has no room.
- */
-function towardsName(route, direction) {
-  const end = direction === 'back' ? route.sensors[0] : route.sensors.at(-1);
-  if (!end) {
-    return '';
-  }
-  return findDevice(end)?.exposure.room || sensorName(end);
-}
-
-/** A route as its panel shows it: what was changed there, or else what is saved. */
-function routeDraft(route) {
-  if (!state.routeDrafts.has(route.id)) {
-    state.routeDrafts.set(route.id, structuredClone(route));
-  }
-  return state.routeDrafts.get(route.id);
-}
-
-function isRouteDirty(route) {
-  const draft = state.routeDrafts.get(route.id);
-  return Boolean(draft) && (route.fresh || canonical(draft) !== canonical(route));
-}
-
-/**
- * The routes, a panel each, opened to be edited like a rule and saved with
- * its own Save. One added is a panel of its own at the top, kept only once
- * it is saved.
- */
-function renderRoutes() {
-  el.routes.replaceChildren();
-  const routes = [...(state.newRoute ? [state.newRoute] : []), ...byNameOf(state.routes)];
-  if (routes.length === 0) {
+function renderStates() {
+  el.states.replaceChildren();
+  const states = byName(state.devices.filter(isToggle)).sort(
+    (a, b) => Number(key(b) === state.freshToggle) - Number(key(a) === state.freshToggle),
+  );
+  if (states.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = 'No routes yet.';
-    el.routes.append(empty);
+    empty.textContent = 'No states yet.';
+    el.states.append(empty);
     return;
   }
-  for (const route of routes) {
-    el.routes.append(renderRoute(route));
+  for (const device of states) {
+    el.states.append(renderDevice(device));
   }
 }
-
-const byNameOf = (routes) => [...routes].sort((a, b) => compareNames(a.name, b.name));
-
-function renderRoute(route) {
-  const card = document.createElement('details');
-  card.className = 'device route';
-  card.open = state.openRoutes.has(route.id);
-  card.addEventListener('toggle', () => {
-    if (card.open) {
-      state.openRoutes.add(route.id);
-    } else {
-      state.openRoutes.delete(route.id);
-    }
-  });
-
-  const summary = document.createElement('summary');
-  const name = document.createElement('span');
-  name.className = 'device-name';
-  const meta = document.createElement('span');
-  meta.className = 'device-meta';
-  const paint = () => {
-    name.textContent = `${isRouteDirty(route) ? '* ' : ''}${route.name || 'New route'}`;
-    const count = route.sensors.length;
-    meta.textContent = `${count} sensor${count === 1 ? '' : 's'} · ${route.bothWays ? 'both ways' : 'one way'}`;
-  };
-  paint();
-  summary.append(name, meta);
-  card.append(summary);
-
-  const body = document.createElement('div');
-  body.className = 'device-body';
-  const draft = routeDraft(route);
-  const touched = () => {
-    paint();
-    revert.hidden = !isRouteDirty(route);
-  };
-
-  const fields = document.createElement('div');
-  fields.className = 'device-info';
-  const field = (label, control) => {
-    const holder = document.createElement('label');
-    holder.className = 'device-field';
-    holder.append(document.createTextNode(label), control);
-    return holder;
-  };
-
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.maxLength = 64;
-  nameInput.placeholder = 'Bedroom to living room';
-  nameInput.value = draft.name;
-  nameInput.addEventListener('input', () => {
-    draft.name = nameInput.value;
-    touched();
-  });
-
-  const walk = document.createElement('input');
-  walk.type = 'number';
-  walk.className = 'delay';
-  walk.min = 1;
-  walk.max = 600;
-  walk.value = String(Math.round(draft.walkMs / 1000));
-  walk.title = 'From the first sensor to the last, at most';
-  walk.addEventListener('input', () => {
-    const seconds = Number(walk.value);
-    draft.walkMs =
-      Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : draft.walkMs;
-    touched();
-  });
-
-  const both = document.createElement('input');
-  both.type = 'checkbox';
-  both.checked = draft.bothWays;
-  both.addEventListener('change', () => {
-    draft.bothWays = both.checked;
-    touched();
-  });
-  const bothLabel = document.createElement('label');
-  bothLabel.className = 'toggle';
-  bothLabel.append(both, document.createTextNode('Both ways'));
-
-  fields.append(field('Name', nameInput), field('Walk time (s)', walk), bothLabel);
-  body.append(fields);
-
-  const heading = document.createElement('p');
-  heading.className = 'group-title';
-  heading.textContent = 'Sensors, in the order they are passed';
-  body.append(heading);
-
-  const list = document.createElement('div');
-  list.className = 'route-sensors';
-  const sensors = byName(state.devices.filter(isSensor));
-  const drawSensors = () => {
-    list.replaceChildren();
-    draft.sensors.forEach((ref, index) => {
-      const row = document.createElement('div');
-      row.className = 'rule-row';
-      const step = document.createElement('span');
-      step.className = 'device-meta route-step';
-      step.textContent = String(index + 1);
-
-      const pick = document.createElement('select');
-      pick.className = 'route-sensor';
-      const offered = sensors.some((device) => sensorKey(device) === sensorKey(ref))
-        ? sensors
-        : [...sensors, { ...ref, gone: true }];
-      for (const device of offered) {
-        const choice = document.createElement('option');
-        choice.value = sensorKey(device);
-        // One still here but not a motion sensor, a door from before they
-        // were left out, says so rather than that it has gone.
-        const here = device.gone && findDevice(ref);
-        choice.textContent = here
-          ? `${displayName(here)} (not a motion sensor)`
-          : device.gone
-            ? `${ref.deviceId} (gone)`
-            : displayName(device);
-        pick.append(choice);
-      }
-      pick.value = sensorKey(ref);
-      pick.addEventListener('change', () => {
-        const [sourceId, deviceId] = pick.value.split('|');
-        draft.sensors[index] = { sourceId, deviceId };
-        touched();
-      });
-
-      const move = (by) => () => {
-        const [moved] = draft.sensors.splice(index, 1);
-        draft.sensors.splice(index + by, 0, moved);
-        drawSensors();
-        touched();
-      };
-      const up = addButton('▲', move(-1));
-      up.title = 'Earlier';
-      up.disabled = index === 0;
-      const down = addButton('▼', move(1));
-      down.title = 'Later';
-      down.disabled = index === draft.sensors.length - 1;
-      const remove = addButton('✕', () => {
-        draft.sensors.splice(index, 1);
-        drawSensors();
-        touched();
-      });
-      remove.title = 'Remove';
-
-      row.append(step, pick, up, down, remove);
-      list.append(row);
-    });
-
-    // The first sensor not on the route yet, which is what is added.
-    const next = sensors.find(
-      (device) => !draft.sensors.some((ref) => sensorKey(ref) === sensorKey(device)),
-    );
-    if (next) {
-      list.append(
-        addButton('+ sensor', () => {
-          draft.sensors.push({ sourceId: next.sourceId, deviceId: next.deviceId });
-          drawSensors();
-          touched();
-        }),
-      );
-    } else if (sensors.length === 0) {
-      const none = document.createElement('p');
-      none.className = 'empty';
-      none.textContent = 'Nothing here notices somebody: no motion or presence sensor.';
-      list.append(none);
-    }
-  };
-  drawSensors();
-  body.append(list);
-
-  const footer = document.createElement('div');
-  footer.className = 'rule-footer';
-  const error = document.createElement('span');
-  error.className = 'error';
-
-  const save = document.createElement('button');
-  save.type = 'button';
-  save.className = 'primary';
-  save.textContent = 'Save';
-  save.addEventListener('click', async () => {
-    error.textContent = '';
-    try {
-      const { fresh: _fresh, ...wanted } = draft;
-      const saved = await api('/api/routes', {
-        method: 'PUT',
-        body: JSON.stringify({ route: route.fresh ? { ...wanted, id: undefined } : wanted }),
-      });
-      state.routeDrafts.delete(route.id);
-      if (route.fresh) {
-        state.newRoute = undefined;
-        state.openRoutes.add(saved.route.id);
-      }
-      await load();
-      renderRoutes();
-    } catch (problem) {
-      error.textContent = problem.message;
-    }
-  });
-
-  const revert = document.createElement('button');
-  revert.type = 'button';
-  revert.textContent = 'Revert';
-  revert.hidden = !isRouteDirty(route);
-  revert.addEventListener('click', () => {
-    state.routeDrafts.delete(route.id);
-    renderRoutes();
-  });
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'danger';
-  remove.textContent = 'Delete';
-  const erase = async () => {
-    state.routeDrafts.delete(route.id);
-    if (route.fresh) {
-      state.newRoute = undefined;
-      renderRoutes();
-      return;
-    }
-    await api(`/api/routes/${encodeURIComponent(route.id)}`, { method: 'DELETE' }).catch(
-      (problem) => setStatus(problem.message, 'lost'),
-    );
-    await load();
-    renderRoutes();
-  };
-  // One only just added and never saved is nothing to ask twice about.
-  if (route.fresh) {
-    remove.addEventListener('click', erase);
-  } else {
-    armDelete(remove, erase);
-  }
-
-  footer.append(save, revert, error, remove);
-  body.append(footer);
-  card.append(body);
-  return card;
-}
-
-el.addRoute.addEventListener('click', () => {
-  if (!state.newRoute) {
-    state.newRoute = {
-      id: 'new-route',
-      fresh: true,
-      name: '',
-      sensors: [],
-      walkMs: 30_000,
-      bothWays: true,
-    };
-    state.openRoutes.add('new-route');
-  }
-  renderRoutes();
-  el.routes.querySelector('details.route input')?.focus();
-});
 
 const showsRules = () =>
   state.view === 'controllers' ||
@@ -6713,7 +6202,7 @@ const TAB_OPTIONS = [
   ['sliders', 'Sliders'],
   // Home's pages, since the menu that picks them has no room here.
   ['home:rooms', 'Home / Rooms'],
-  ['home:routes', 'Home / Routes'],
+  ['home:states', 'Home / States'],
   ['home:map', 'Home / Zigbee map'],
   ['activity', 'Log'],
   ['controllers', 'Guide'],
@@ -6819,8 +6308,8 @@ el.addState.addEventListener('click', async () => {
     state.open.add(added);
     state.freshToggle = added;
     await load();
-    // Named first, since `New internal state` is nobody's name for anything.
-    const name = el.devices.querySelector(`[data-toggle-name="${CSS.escape(added)}"]`);
+    // Named first, since `New state` is nobody's name for anything.
+    const name = el.states.querySelector(`[data-toggle-name="${CSS.escape(added)}"]`);
     name?.focus();
     name?.select();
   } catch (problem) {

@@ -1,4 +1,4 @@
-# MQ77 Customizer 2.7.1
+# MQ77 Customizer 3.0.0
 
 **This Homebridge plugin has been 100% vibe coded using Claude Code.**
 
@@ -117,13 +117,18 @@ Whether messages are retained is read from Zigbee2MQTT's own configuration, wher
 
 The Guide tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks say which of those lines are wanted, Unused buttons off to begin with, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
-### Routes
+### States
 
-Under Home, Routes are ways through the house, as the motion and presence sensors along them notice somebody: bedroom to living room, past four of them. Each has a name, its sensors in the order they are passed, a walk time, thirty seconds to begin with, and Both ways, on to begin with.
+Under Home, States are values the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ state** adds one, with a name, a type and a value. A state is in no room and has nothing for HomeKit.
 
-A walk is set out on when a sensor after the first notices somebody while the first still reads occupied: somebody leaving where the route starts, however long they stood there. The walk time counts from then. The route is walked once the last sensor is reached within it and is occupied while every other sensor on the route reads unoccupied, at once or as soon as the one just left behind clears. The last one clearing first is nobody arriving, and no walk. Sensors in between may be missed, the second one too, since a motion sensor still reading occupied does not report anybody new, but none may come out of order: one already passed noticing somebody, the first included, calls the walk off. A sensor counts when it comes on, not while it stays on. With Both ways the route is walked back the same way, as a walk of its own. A restart forgets any walk under way.
+| Type | Holds | Sets a rule off when it | A condition asks whether it | An action can |
+| --- | --- | --- | --- | --- |
+| Boolean | true or false | becomes true, becomes false or changes | is true or is false | set it to true or false, or flip it |
+| Number | a whole number | becomes, is, is not, rises above, falls below or changes | is, is not, is above or is below | set it, increase or decrease it, or match the trigger |
 
-A walk sets a rule off, from Routes above Current time in a trigger's room picker: either way, or towards the room at one end. The rule list and the log carry the route where a device carries its kind, and a notification's `<trigger>` is the route's name.
+Changing the type starts the value again from false or 0.
+
+A state is picked in a rule from States, under the rooms in a row's first dropdown. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
 
 ### Zigbee map
 
@@ -144,7 +149,7 @@ Across all four:
 - anything readable can set a rule off, including functions that never reach HomeKit, and anything writable can be acted on
 - a number sets a rule off when it rises above or falls below a value, once each time it crosses it. A condition asks whether it is above or below the value now
 - a device is picked in two steps, its room and then the device in it. Devices without a room are under Unknown
-- a rule's name is shown with its rooms in front of it, where its trigger device is and where it acts: one room by name, `<n> Rooms` for several, or `Whole house` for every room with a device in it. Sorted by room, a rule is listed under each of them
+- a rule's name is shown with its rooms in front of it, where its trigger device is and where it acts: one or two by name, `Whole house` for more when that is every room with a device in it, and `<n> Rooms` otherwise. Sorted by room, a rule is listed under each of them, with that room first: `Kitchen and Hall`, or `Kitchen and 2 more`
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
 - an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
 - a rule with several outcomes runs the first whose condition holds and skips the rest
@@ -214,20 +219,6 @@ Coming on from off lands where the device says it should, which Zigbee2MQTT keep
 Cycle is one button for the whole range: up to the top, back down to off, and up again from there. It starts upward whenever the level was last set by something other than the slider, and ignores a second press within a second, since it is a button to press rather than to hold.
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
-
-### Internal states
-
-A value the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ internal state** above the device list adds one, with a name, a room, a type and a value, and nothing for HomeKit.
-
-| Type | Holds | An action can | A rule can ask whether it |
-| --- | --- | --- | --- |
-| Boolean | true or false | set it, or flip it | becomes, is, is not, changes |
-| Text | up to 12 of a to z, 0 to 9, `-` and `_` | set it | becomes, matches, contains, changes |
-| Number | a whole number | set it, increase or decrease it | becomes, is, rises above, falls below, changes |
-
-Text is matched ignoring case, and anything it cannot hold is dropped as it is typed. Changing the type starts the value again from false, empty or 0.
-
-An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 
