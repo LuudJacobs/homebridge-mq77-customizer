@@ -77,7 +77,7 @@
           </label>
           <label class="toggle" for="kind-state">
             <input id="kind-state" type="checkbox" checked />
-            Internal state
+            State
           </label>
           <label class="toggle" for="kind-action">
             <input id="kind-action" type="checkbox" />
@@ -101,10 +101,9 @@
       </div>
 
       <section id="view-devices">
+        <!-- The line the sort and filter sit on, with no button of its own. -->
         <div class="rules-actions">
-          <span class="tab-buttons">
-            <button id="add-state" type="button">+ internal state</button>
-          </span>
+          <span class="tab-buttons"></span>
         </div>
         <main id="devices"></main>
       </section>
@@ -141,6 +140,7 @@
         <div class="home">
           <nav class="home-menu">
             <button id="home-rooms" type="button" class="home-link">Rooms</button>
+            <button id="home-states" type="button" class="home-link">States</button>
             <button id="home-routes" type="button" class="home-link">Routes</button>
             <button id="home-map" type="button" class="home-link">Zigbee map</button>
           </nav>
@@ -150,6 +150,14 @@
                 <span id="rooms-buttons" class="tab-buttons"></span>
               </div>
               <div id="rooms" class="rooms"></div>
+            </div>
+            <div id="home-page-states" class="home-page" hidden>
+              <div class="rules-actions">
+                <span class="tab-buttons">
+                  <button id="add-state" type="button">+ state</button>
+                </span>
+              </div>
+              <div id="states" class="states"></div>
             </div>
             <div id="home-page-routes" class="home-page" hidden>
               <div class="rules-actions">

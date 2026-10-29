@@ -117,6 +117,19 @@ Whether messages are retained is read from Zigbee2MQTT's own configuration, wher
 
 The Guide tab lists every device marked as a Controller, one table per remote, saying what each of its buttons sets off. A button no rule answers reads as `none`, or `In HomeKit` where the press reaches HomeKit as well, said under any rules it does answer. The Unused buttons and HomeKit buttons ticks say which of those lines are wanted, Unused buttons off to begin with, and a button neither tick keeps is left out. Download writes the whole overview to `controller-config.md`, which follows the tick: hidden buttons are left out of the file too.
 
+### States
+
+Under Home, States are values the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ state** adds one, with a name, a type and a value. A state is in no room and has nothing for HomeKit.
+
+| Type | Holds | Sets a rule off when it | A condition asks whether it | An action can |
+| --- | --- | --- | --- | --- |
+| Boolean | true or false | becomes true, becomes false or changes | is true or is false | set it to true or false, or flip it |
+| Number | a whole number | becomes, is, is not, rises above, falls below or changes | is, is not, is above or is below | set it, increase or decrease it, or match the trigger |
+
+Changing the type starts the value again from false or 0.
+
+A state is picked in a rule from States, under the rooms in a row's first dropdown. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
+
 ### Routes
 
 Under Home, Routes are ways through the house, as the motion and presence sensors along them notice somebody: bedroom to living room, past four of them. Each has a name, its sensors in the order they are passed, a walk time, thirty seconds to begin with, and Both ways, on to begin with.
@@ -214,20 +227,6 @@ Coming on from off lands where the device says it should, which Zigbee2MQTT keep
 Cycle is one button for the whole range: up to the top, back down to off, and up again from there. It starts upward whenever the level was last set by something other than the slider, and ignores a second press within a second, since it is a button to press rather than to hold.
 
 Each button takes several triggers, so one slider can be driven by more than one remote. Stepping counts from what the slider last sent for a couple of seconds rather than from what the device last reported, so a held button that sends faster than the light can answer still climbs.
-
-### Internal states
-
-A value the plugin keeps itself, for what the house is doing rather than what any one device is: away, guests, movie night. **+ internal state** above the device list adds one, with a name, a room, a type and a value, and nothing for HomeKit.
-
-| Type | Holds | An action can | A rule can ask whether it |
-| --- | --- | --- | --- |
-| Boolean | true or false | set it, or flip it | becomes, is, is not, changes |
-| Text | up to 12 of a to z, 0 to 9, `-` and `_` | set it | becomes, matches, contains, changes |
-| Number | a whole number | set it, increase or decrease it | becomes, is, rises above, falls below, changes |
-
-Text is matched ignoring case, and anything it cannot hold is dropped as it is typed. Changing the type starts the value again from false, empty or 0.
-
-An internal state is used in rules like any device, listed under its room: it can set a rule off, be asked in a condition and be set by an action. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
 
 ## Backup settings
 
