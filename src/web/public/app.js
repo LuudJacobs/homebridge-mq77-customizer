@@ -746,15 +746,12 @@ function exposedCount(device) {
 }
 
 function paintBadge(badge, device) {
-  if (device.rulesOnly) {
-    // Not "none": this device is doing its job, it just does it in rules.
-    badge.textContent = 'rules only';
-    badge.className = 'badge rules';
-    return;
-  }
+  // Only what reaches HomeKit is worth a word. A device that reaches nothing
+  // there, a state among them, is doing its job in rules and needs no label.
   const count = exposedCount(device);
-  badge.textContent = count === 0 ? 'not in HomeKit' : `${count} in HomeKit`;
-  badge.className = count === 0 ? 'badge none' : 'badge';
+  badge.textContent = count === 0 ? '' : `${count} in HomeKit`;
+  badge.className = 'badge';
+  badge.hidden = count === 0;
 }
 
 /** What each ordering compares, other than last seen which is a number. */
@@ -2741,32 +2738,39 @@ function affectedRooms(rule) {
 /**
  * A rule's name, said with where it reaches in front of it.
  *
- * Left off under a room heading, which has already said it, and off entirely
- * for a rule that reaches nowhere named.
+ * `inRoom` is the room heading it is listed under, when the list is sorted
+ * by room. Left off there when the heading has said all of it, and off
+ * entirely for a rule that reaches nowhere named.
  */
-function ruleTitle(rule, grouped = false) {
+function ruleTitle(rule, inRoom) {
   const rooms = affectedRooms(rule);
-  // Left off only when the heading has said all of it. A rule reaching two
-  // rooms still says so under either, since the other room is news.
-  if (rooms.length === 0 || (grouped && rooms.length === 1)) {
+  if (rooms.length === 0 || (inRoom && rooms.length === 1 && rooms[0] === inRoom)) {
     return rule.name;
   }
-  return `${roomsSaid(rooms)}: ${rule.name}`;
+  return `${roomsSaid(rooms, inRoom)}: ${rule.name}`;
 }
 
 /**
- * Where a rule reaches, short: one room by its name, every room that has a
- * device in it as the whole house, and otherwise how many. A list of rooms
- * soon says more than the rule's own name does.
+ * Where a rule reaches, short. One or two rooms by name; more than that is
+ * the whole house when it is every room with a device in it, and otherwise
+ * how many. Under a room heading that room comes first and the rest are
+ * counted, since the heading is where somebody is reading from: `Kitchen
+ * and Hall` under the kitchen, `Hall and Kitchen` under the hall.
  */
-function roomsSaid(rooms) {
-  if (rooms.length === 1) {
-    return rooms[0];
+function roomsSaid(rooms, inRoom) {
+  const first = inRoom && rooms.includes(inRoom) ? inRoom : rooms[0];
+  const others = rooms.filter((room) => room !== first);
+  if (others.length === 0) {
+    return first;
+  }
+  if (others.length === 1) {
+    return `${first} and ${others[0]}`;
   }
   const lived = new Set(state.devices.map((device) => device.exposure?.room?.trim()).filter(Boolean));
-  return rooms.every((room) => lived.has(room)) && rooms.length >= lived.size
-    ? 'Whole house'
-    : `${rooms.length} Rooms`;
+  if (rooms.every((room) => lived.has(room)) && rooms.length >= lived.size) {
+    return 'Whole house';
+  }
+  return inRoom ? `${first} and ${others.length} more` : `${rooms.length} Rooms`;
 }
 
 function ruleSortKey(rule, sort) {
@@ -3036,7 +3040,7 @@ function renderRule(rule, occurrence, inRoom) {
   // sets a rule off has said nothing about where the rule acts. Marked while
   // its panel holds changes that are not saved.
   name.dataset.ruleName = rule.id;
-  name.dataset.base = ruleTitle(rule, inRoom !== undefined);
+  name.dataset.base = ruleTitle(rule, inRoom || undefined);
   name.textContent = `${isRuleDirty(rule.id) ? '* ' : ''}${name.dataset.base}`;
   const detail = document.createElement('span');
   detail.className = 'device-meta';

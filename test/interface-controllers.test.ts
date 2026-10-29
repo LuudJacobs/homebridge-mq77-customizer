@@ -129,8 +129,8 @@ describe('what every controller sets off', () => {
     const ui = await openControllers();
 
     expect(table(ui)[0]?.rows).toEqual([
-      ['1 Single', 'Whole house: Dimmen (up)'],
-      ['1 Double', 'Whole house: Dimmen (down)'],
+      ['1 Single', 'Gang and Woonkamer: Dimmen (up)'],
+      ['1 Double', 'Gang and Woonkamer: Dimmen (down)'],
       ['2 Single', 'none'],
     ]);
   });
@@ -217,7 +217,7 @@ describe('the overview as a file', () => {
     expect(markdown).toContain('## Gang Deur');
     expect(markdown).toContain('## Woonkamer Bank');
     const lines = markdown.split('\n').map((line) => line.replace(/\s+\|/g, ' |'));
-    expect(lines).toContain('| 1 Single | Whole house: Dimmen (up) |');
+    expect(lines).toContain('| 1 Single | Gang and Woonkamer: Dimmen (up) |');
     // A button with two answers is written once, and left blank under itself.
     const shared = lines.findIndex((line) => line.includes('Woonkamer: Licht cycle'));
     expect(lines[shared + 1]).toBe('| | Woonkamer: Alles uit |');
@@ -378,7 +378,7 @@ describe('the columns need no naming', () => {
 
     expect(ui.document.querySelectorAll('#controllers th')).toHaveLength(0);
     // The first line of a table is a button, not the word Button.
-    expect(table(ui)[0]?.rows[0]).toEqual(['1 Single', 'Whole house: Dimmen (up)']);
+    expect(table(ui)[0]?.rows[0]).toEqual(['1 Single', 'Gang and Woonkamer: Dimmen (up)']);
   });
 
   it('keeps the heading in the file, which a markdown table cannot do without', async () => {

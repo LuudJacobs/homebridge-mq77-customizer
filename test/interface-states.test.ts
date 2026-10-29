@@ -114,12 +114,12 @@ describe('the states, under Home', () => {
     ).toEqual(['Away', 'Gasten', 'Guests']);
   });
 
-  it('are drawn as their own kind, saying where they stand, rules only', async () => {
+  it('are drawn as their own kind, saying where they stand, with no label', async () => {
     const ui = await openStates();
     const card = cardOf(ui, 'Away');
     expect(card.querySelector('summary svg.type-icon.state title')?.textContent).toBe('State');
     expect(card.querySelector('.device-seen')?.textContent).toBe('false');
-    expect(card.querySelector('summary .badge')?.textContent).toBe('rules only');
+    expect((card.querySelector('summary .badge') as HTMLElement).hidden).toBe(true);
   });
 
   it('open on a name, a type and a value, and no room', async () => {
