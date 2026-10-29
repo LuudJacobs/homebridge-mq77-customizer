@@ -13,28 +13,19 @@ export const STATES_SOURCE = 'states';
 /** What an action sends to flip a toggle rather than set it. */
 export const TOGGLE_VALUE = 'toggle';
 
-/** A Text state's whole alphabet, and how much of it fits. */
-export const TEXT_PATTERN = /^[A-Za-z0-9_-]{0,12}$/;
-
 /** What a state starts at, and goes back to when its type changes. */
-const STARTS_AT: Record<StateType, boolean | string | number> = {
+const STARTS_AT: Record<StateType, boolean | number> = {
   boolean: false,
-  text: '',
   number: 0,
 };
-
-/** Text as a Text state can hold it: anything else dropped, and twelve at most. */
-export function cleanText(raw: string): string {
-  return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
-}
 
 const TOPIC = `${LOCAL_PREFIX}${STATES_SOURCE}`;
 
 /**
- * The internal states, as a source of devices.
+ * The states, as a source of devices.
  *
- * Each one is a device with one function, a truth, a word or a number, that
- * rules can read and write and HomeKit never sees. Written the way any device is: a
+ * Each one is a device with one function, a truth or a number, that rules
+ * can read and write and HomeKit never sees. Written the way any device is: a
  * rule publishes to its set topic, which is a local one, so the publish comes
  * straight back here instead of going to the broker. Nothing else in the
  * plugin needs to know a toggle is not a device.
@@ -219,9 +210,6 @@ function property(toggle: StateToggle): NormalisedProperty {
     setTopic: `${TOPIC}/${toggle.id}/set`,
     extract: ['state'],
   };
-  if (toggle.type === 'text') {
-    return { ...common, type: 'text' };
-  }
   if (toggle.type === 'number') {
     return { ...common, type: 'numeric', step: 1 };
   }
@@ -239,18 +227,14 @@ function property(toggle: StateToggle): NormalisedProperty {
  * What a write asks for, however it was worded.
  *
  * A rule sends `true`, or `"true"` from a value typed in, or whatever a lamp
- * said when a mirror or a copied trigger restates it. Text loses whatever it
- * cannot hold, and a number its fraction.
+ * said when a mirror or a copied trigger restates it. A number loses its
+ * fraction.
  */
 function readValue(
   type: StateType,
   raw: unknown,
-  current: boolean | string | number,
-): boolean | string | number | undefined {
-  if (type === 'text') {
-    const plain = ['string', 'number', 'boolean'].includes(typeof raw);
-    return plain ? cleanText(String(raw)) : undefined;
-  }
+  current: boolean | number,
+): boolean | number | undefined {
   if (type === 'number') {
     const number =
       typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN;
