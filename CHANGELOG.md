@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - States are under Home, in no room, and picked from States in a rule
 - A Boolean state is offered only true, false, changes and toggle; Text states are removed
+
 ## [2.7.1] - 2026-10-27
 
 ### Changed
