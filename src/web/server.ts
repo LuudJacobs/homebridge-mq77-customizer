@@ -28,7 +28,7 @@ import { randomUUID } from 'node:crypto';
 import type { RulesEngine } from '../rules/engine.js';
 import { parseRule } from '../rules/validate.js';
 import { DEFAULT_WALK_MS } from '../routes.js';
-import { STATES_SOURCE, TEXT_PATTERN, type StateToggles } from '../states.js';
+import { STATES_SOURCE, type StateToggles } from '../states.js';
 import { equals, readCookie, Sessions } from './auth.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
@@ -264,14 +264,9 @@ export class WebServer {
       delete exposure.room;
     }
     if (sourceId === STATES_SOURCE) {
-      // A toggle has a room and nothing else: no HomeKit, and a kind that is
-      // always its own.
-      const room = exposure.room;
-      this.deps.store.setExposure(`${sourceId}:${deviceId}`, {
-        properties: [],
-        ...(room ? { room } : {}),
-      });
-      return send(response, 200, { ok: true, exposure: toggleExposure(room) });
+      // A state has nothing to keep here: no HomeKit, no room, and a kind
+      // that is always its own.
+      return send(response, 200, { ok: true, exposure: toggleExposure() });
     }
     this.deps.store.setExposure(`${sourceId}:${deviceId}`, exposure);
     this.deps.onExposureChanged();
@@ -467,10 +462,10 @@ export class WebServer {
 
   private async createToggle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!this.deps.states) {
-      return send(response, 501, { error: 'No internal states here' });
+      return send(response, 501, { error: 'No states here' });
     }
     const body = await readJson(request);
-    const name = toggleName(body?.name) ?? 'New internal state';
+    const name = toggleName(body?.name) ?? 'New state';
     const type = STATE_TYPES.includes(body?.type as StateType) ? (body?.type as StateType) : 'boolean';
     const toggle = this.deps.states.create(name, type);
     return send(response, 200, { id: toggle.id });
@@ -484,7 +479,7 @@ export class WebServer {
     const toggles = this.deps.states;
     const current = toggles?.find(id);
     if (!toggles || !current) {
-      return send(response, 404, { error: 'No such internal state' });
+      return send(response, 404, { error: 'No such state' });
     }
     const body = await readJson(request);
 
@@ -492,10 +487,10 @@ export class WebServer {
     // the state as it was rather than renamed and not set.
     const name = body?.name === undefined ? undefined : toggleName(body.name);
     if (body?.name !== undefined && !name) {
-      return send(response, 400, { error: 'An internal state needs a name' });
+      return send(response, 400, { error: 'A state needs a name' });
     }
     if (body?.type !== undefined && !STATE_TYPES.includes(body.type as StateType)) {
-      return send(response, 400, { error: 'An internal state is a boolean, text or a number' });
+      return send(response, 400, { error: 'A state is a boolean or a number' });
     }
     const type = (body?.type as StateType | undefined) ?? current.type;
     const value = body?.value;
@@ -511,14 +506,14 @@ export class WebServer {
     }
     toggles.retype(id, type);
     if (value !== undefined) {
-      toggles.set(id, typeof value === 'string' ? value.trim() : value, true);
+      toggles.set(id, value, true);
     }
     return send(response, 200, { ok: true });
   }
 
   private deleteToggle(id: string, response: ServerResponse): void {
     if (!this.deps.states?.remove(id)) {
-      return send(response, 404, { error: 'No such internal state' });
+      return send(response, 404, { error: 'No such state' });
     }
     return send(response, 200, { ok: true });
   }
@@ -607,7 +602,7 @@ export class WebServer {
         reportedLastSeen: this.deps.catalog.getReportedLastSeen(device.sourceId, device.deviceId),
         exposure:
           device.sourceId === STATES_SOURCE
-            ? toggleExposure(this.deps.store.getExposure(key)?.room)
+            ? toggleExposure()
             : (this.deps.store.getExposure(key) ?? { properties: [] }),
         state: this.deps.catalog.getState(device.sourceId, device.deviceId) ?? {},
       };
@@ -761,17 +756,14 @@ function describeButtons(property: NormalisedProperty): unknown {
  * Its kind is not stored, since nothing could ever change it: it is said here
  * so the interface groups and draws a toggle like any other kind.
  */
-function toggleExposure(room: string | undefined): unknown {
-  return { properties: [], ...(room ? { room } : {}), type: 'state' };
+function toggleExposure(): unknown {
+  return { properties: [], type: 'state' };
 }
 
-/** Why a value is not one an internal state of this type can hold, if it is not. */
+/** Why a value is not one a state of this type can hold, if it is not. */
 function valueProblem(type: StateType, value: unknown): string | undefined {
   if (type === 'boolean' && typeof value !== 'boolean') {
     return 'A boolean is true or false';
-  }
-  if (type === 'text' && (typeof value !== 'string' || !TEXT_PATTERN.test(value.trim()))) {
-    return 'Text is up to 12 of a to z, 0 to 9, - and _';
   }
   if (type === 'number' && !Number.isInteger(value)) {
     return 'A number is a whole number';
