@@ -29,8 +29,11 @@ const state = {
   /** Hides rules that are switched off. */
   /** Lines that read `ignored`, left out until they are asked for. */
   showIgnored: false,
-  /** Kinds of device whose rules' lines the log leaves out. */
-  hiddenKinds: new Set(),
+  /**
+   * Kinds of device whose rules each tab leaves out, by tab: the log by what
+   * set a line off, the lists by what can set a rule off.
+   */
+  hiddenKinds: {},
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
@@ -869,6 +872,9 @@ function paintControls() {
   const controls = TAB_CONTROLS[view];
 
   el.kindFilters.hidden = view !== 'activity';
+  el.triggerKinds.hidden = !(view in HIDDEN_KINDS_KEYS);
+  el.triggerKinds.open = false;
+  drawTriggerKinds();
   el.unusedFilter.hidden = view !== 'controllers';
   el.homekitFilter.hidden = view !== 'controllers';
 
@@ -893,9 +899,14 @@ function paintControls() {
   // On the open tab's own line, before its buttons, and gone where there is
   // nothing to sort or filter, so no line is drawn in front of the buttons.
   document.querySelector(`#view-${view} .rules-actions`)?.prepend(el.tools);
-  el.tools.hidden = [el.kindFilters, el.unusedFilter, el.homekitFilter, el.sort, el.filter].every(
-    (control) => control.hidden,
-  );
+  el.tools.hidden = [
+    el.kindFilters,
+    el.unusedFilter,
+    el.homekitFilter,
+    el.sort,
+    el.filter,
+    el.triggerKinds,
+  ].every((control) => control.hidden);
 }
 
 const currentFilter = () => (state.filters[state.view] ?? '').trim().toLowerCase();
@@ -1979,31 +1990,39 @@ el.kindIgnored.addEventListener('change', () => {
 });
 
 /**
- * Which kinds of device the log leaves out, kept in this browser.
+ * Which kinds of device each tab leaves out, kept in this browser, a tab
+ * apiece.
  *
  * Kept in a browser rather than with the settings: it is about what one
  * person cares to read, not about what the house does.
  */
-const HIDDEN_KINDS_KEY = 'mq77.log.hiddenKinds';
+const HIDDEN_KINDS_KEYS = {
+  automation: 'mq77.rules.hiddenKinds',
+  mirror: 'mq77.mirrors.hiddenKinds',
+  sliders: 'mq77.sliders.hiddenKinds',
+  activity: 'mq77.log.hiddenKinds',
+};
 
-function readHiddenKinds() {
+function readHiddenKinds(view) {
   try {
-    const kept = JSON.parse(localStorage.getItem(HIDDEN_KINDS_KEY) ?? '[]');
+    const kept = JSON.parse(localStorage.getItem(HIDDEN_KINDS_KEYS[view]) ?? '[]');
     return new Set(Array.isArray(kept) ? kept.filter((kind) => typeof kind === 'string') : []);
   } catch {
     return new Set();
   }
 }
 
-function keepHiddenKinds() {
+function keepHiddenKinds(view) {
   try {
-    localStorage.setItem(HIDDEN_KINDS_KEY, JSON.stringify([...state.hiddenKinds]));
+    localStorage.setItem(HIDDEN_KINDS_KEYS[view], JSON.stringify([...state.hiddenKinds[view]]));
   } catch {
     // A browser that keeps nothing still leaves them out until the page goes.
   }
 }
 
-state.hiddenKinds = readHiddenKinds();
+for (const view of Object.keys(HIDDEN_KINDS_KEYS)) {
+  state.hiddenKinds[view] = readHiddenKinds(view);
+}
 
 // The list is drawn as it opens, so a tick is never redrawn under the pointer.
 el.triggerKinds.addEventListener('toggle', () => {
@@ -2543,6 +2562,7 @@ const kindOf = (rule) => {
 };
 
 function renderRules() {
+  drawTriggerKinds();
   safely(() => renderRuleList('standard', el.automation, 'No rules yet.'));
   safely(() => renderRuleList('mirror', el.mirror, 'No mirrors yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
@@ -2788,6 +2808,7 @@ function renderRuleList(kind, container, emptyText) {
   container.replaceChildren();
   const term = currentFilter();
   const sort = state.sorts[state.view] ?? 'name';
+  const hiding = hiddenKindsIn(viewOfRule({ kind }));
 
   // A rule just added is exempt from both. It is saved the moment it is
   // added, so it starts with a placeholder name and switched off, and a list
@@ -2799,7 +2820,7 @@ function renderRuleList(kind, container, emptyText) {
   // that is doing it n log n times over.
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
-    .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
+    .filter((rule) => justAdded(rule) || (matchesRuleFilter(rule, term) && !leftOutByKind(rule, hiding)))
     .map((rule) => ({ rule, key: ruleSortKey(rule, sort), title: ruleTitle(rule) }))
     .sort(
       (a, b) =>
@@ -5439,7 +5460,8 @@ function renderLog() {
   const container = el.activityLog;
   container.replaceChildren();
   const term = (state.filters.activity ?? '').trim().toLowerCase();
-  const hiding = drawTriggerKinds();
+  const hiding = hiddenKindsIn('activity');
+  drawTriggerKinds();
 
   // Drawn first and matched after, so the filter reads what is on screen.
   const lines = state.log
@@ -5466,23 +5488,54 @@ function kindsWord(kind) {
   return KIND_PLURALS[kind] ?? `${KINDS.find(([value]) => value === kind)?.[1] ?? kind}s`;
 }
 
+/** The kinds of the devices that can set a rule, mirror or slider off. */
+function setOffKinds(rule) {
+  const kinds = new Set();
+  for (const ref of rule.kind === 'mirror' ? ruleRefs(rule) : startsOf(rule)) {
+    const device = ref?.deviceId ? findDevice(ref) : undefined;
+    if (device) {
+      kinds.add(device.exposure.type ?? '');
+    }
+  }
+  return kinds;
+}
+
 /**
- * The kinds of device that set a rule, mirror or slider off, in the order
- * the kinds are listed in. A rule set off by the clock has no device to
- * count.
+ * The kinds of device that set off what a tab lists, in the order the
+ * kinds are listed in: everything for the log, the tab's own for the rest.
+ * A rule set off by the clock has no device to count.
  */
-function triggerKinds() {
+function triggerKinds(view) {
   const found = new Set();
   for (const rule of state.rules) {
-    const refs = rule.kind === 'mirror' ? ruleRefs(rule) : startsOf(rule);
-    for (const ref of refs) {
-      const device = ref?.deviceId ? findDevice(ref) : undefined;
-      if (device) {
-        found.add(device.exposure.type ?? '');
-      }
+    if (view === 'activity' || viewOfRule(rule) === view) {
+      setOffKinds(rule).forEach((kind) => found.add(kind));
     }
   }
   return KINDS.map(([kind]) => kind).filter((kind) => found.has(kind));
+}
+
+/**
+ * The kinds a tab leaves out. Only kinds still setting something off there
+ * count, so a kind left out once and gone since cannot hide anything with no
+ * tick to bring it back.
+ */
+function hiddenKindsIn(view) {
+  const hidden = state.hiddenKinds[view] ?? new Set();
+  return new Set(triggerKinds(view).filter((kind) => hidden.has(kind)));
+}
+
+/**
+ * Whether a list leaves a rule out: only when everything that can set it off
+ * is of a kind left out. A motion sensor or a button stays in with the
+ * button, and so does anything the clock can set off too.
+ */
+function leftOutByKind(rule, hiding) {
+  if (hiding.size === 0 || startsOf(rule).some((start) => start && !start.deviceId)) {
+    return false;
+  }
+  const kinds = setOffKinds(rule);
+  return kinds.size > 0 && [...kinds].every((kind) => hiding.has(kind));
 }
 
 /** The kind of device that set a line off, or undefined for the clock and a hand. */
@@ -5492,26 +5545,28 @@ function setOffByKind(entry) {
   return device ? (device.exposure.type ?? '') : undefined;
 }
 
-/**
- * Says on the dropdown what the log is showing, and hands back the kinds it
- * leaves out. Only kinds still setting something off count, so a kind left
- * out once and gone since cannot hide lines with no tick to bring them back.
- */
+/** Says on the dropdown what the open tab is showing. */
 function drawTriggerKinds() {
-  const kinds = triggerKinds();
-  const shown = kinds.filter((kind) => !state.hiddenKinds.has(kind));
+  const view = state.view;
+  if (!(view in HIDDEN_KINDS_KEYS)) {
+    return;
+  }
+  const kinds = triggerKinds(view);
+  const hiding = hiddenKindsIn(view);
+  const shown = kinds.filter((kind) => !hiding.has(kind));
   el.triggerKindsLabel.textContent =
     shown.length === kinds.length
       ? 'All trigger devices'
       : shown.length === 1
         ? `Only ${kindsWord(shown[0])}`
         : `${shown.length}/${kinds.length} trigger devices`;
-  return new Set(kinds.filter((kind) => state.hiddenKinds.has(kind)));
 }
 
-/** A tick for every kind of device that sets something off. */
+/** A tick for every kind of device that sets something off on the open tab. */
 function drawTriggerKindList() {
-  const kinds = triggerKinds();
+  const view = state.view;
+  const hidden = state.hiddenKinds[view];
+  const kinds = triggerKinds(view);
   if (kinds.length === 0) {
     const none = document.createElement('p');
     none.className = 'hint';
@@ -5525,15 +5580,16 @@ function drawTriggerKindList() {
       label.className = 'toggle';
       const box = document.createElement('input');
       box.type = 'checkbox';
-      box.checked = !state.hiddenKinds.has(kind);
+      box.checked = !hidden.has(kind);
       box.addEventListener('change', () => {
         if (box.checked) {
-          state.hiddenKinds.delete(kind);
+          hidden.delete(kind);
         } else {
-          state.hiddenKinds.add(kind);
+          hidden.add(kind);
         }
-        keepHiddenKinds();
-        renderLog();
+        keepHiddenKinds(view);
+        drawTriggerKinds();
+        repaint();
       });
       label.append(box, kindsWord(kind));
       return label;

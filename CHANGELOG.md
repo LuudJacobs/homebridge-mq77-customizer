@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A later outcome without a condition reads Or else, and only the last outcome can go without one
 - The log says a wait once it is over, as one line: waited 02:00 and ran, or wait called off
 - The log keeps only the Ignored rules filter and no kind column; presses nothing answered count as ignored, state changes are left out, and a line goes to its rule
-- A dropdown in the log leaves out what a kind of trigger device set off, kept in the browser
+- A trigger devices dropdown on Log, Rules, Mirrors and Sliders leaves out what a kind of device sets off, kept per tab in the browser
 
 ## [3.0.0] - 2026-10-29
 
