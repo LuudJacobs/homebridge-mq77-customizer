@@ -49,9 +49,9 @@ const legacyRule = {
   actions: [{ ...ref('0xc'), value: 'ON' }],
 };
 
-/** The line on top of the first outcome, saying how its groups are taken together. */
+/** The line on the first outcome's heading, saying how its groups are taken together. */
 const outcomeLine = (ui: { document: Document }) =>
-  ui.document.querySelector('.branch .conditions > .combination select') as HTMLSelectElement;
+  ui.document.querySelector('.branch .branch-head .combination select') as HTMLSelectElement;
 
 async function openRule(rule: unknown) {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
@@ -120,6 +120,11 @@ describe('the condition editor', () => {
     // groups are taken together.
     expect(ui.byText('button.add-row', '+ condition group', '.conditions')).not.toBeNull();
     expect(outcomeLine(ui).value).toBe('all');
+    // On the heading's own line, beside the title, rather than under it.
+    const heading = ui.document.querySelector('.branch .branch-head-left') as HTMLElement;
+    expect(heading.textContent).toContain('And, optionally');
+    expect(heading.contains(outcomeLine(ui))).toBe(true);
+    expect(ui.document.querySelector('.branch .conditions > .combination')).toBeNull();
   });
 
   it('opens a row with a room picker and then a device picker', async () => {

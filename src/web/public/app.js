@@ -4326,17 +4326,6 @@ function conditionEditor(draft, slot) {
   const draw = () => {
     wrap.replaceChildren();
 
-    // Only once there is something to take together.
-    if (groups.length > 0) {
-      wrap.append(
-        combinationLine(mode, (picked) => {
-          mode = picked;
-          commit();
-          draw();
-        }),
-      );
-    }
-
     groups.forEach((group, index) => {
       if (index > 0) {
         const joiner = document.createElement('p');
@@ -4354,12 +4343,25 @@ function conditionEditor(draft, slot) {
     });
 
     // With no conditions set there is no row to hang the button off, so it
-    // goes up beside the heading instead of alone on a line of its own.
+    // goes up beside the heading instead of alone on a line of its own. Once
+    // there is something to take together, the heading says how instead.
     slot?.replaceChildren();
     if (groups.length === 0 && slot) {
       slot.append(add);
-    } else {
-      wrap.append(add);
+      return;
+    }
+    wrap.append(add);
+    if (groups.length > 0) {
+      const line = combinationLine(mode, (picked) => {
+        mode = picked;
+        commit();
+        draw();
+      });
+      if (slot) {
+        slot.append(line);
+      } else {
+        wrap.prepend(line);
+      }
     }
   };
 

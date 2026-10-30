@@ -1401,25 +1401,29 @@ table.buttons td.in-homekit {
 }
 
 /*
- * `All are true`: a sentence with a dropdown in it, so the dropdown is as
- * narrow as its words and sits on the line rather than across it.
+ * `All are true`, said the way the heading it sits beside is, with a
+ * dropdown in it no taller than the words. A group's own line reads the
+ * same, so the two are plainly one kind of thing.
  */
 .combination {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.4rem;
-  font-size: 0.87rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
 }
 
 .combination select {
   width: auto;
-  height: 2rem;
-  padding-left: 0.5rem;
-  font-size: 0.87rem;
-}
-
-.conditions > .combination {
-  margin: 0.1rem 0 0.35rem;
+  height: 1.6rem;
+  padding: 0 1.3rem 0 0.45rem;
+  background-position: right 0.45rem center;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
 }
 
 /* A wait is a line of its own between outcomes, not an outcome. */
