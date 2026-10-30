@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A condition group, and an outcome's groups, are All, At least 1, None or Not all true, instead of a Not toggle
+- Waits are blocks among the outcomes: one between two outcomes pauses before asking the next
+- Outcomes and waits move up and down with arrows
 ## [3.0.0] - 2026-10-29
 
 ### Changed
