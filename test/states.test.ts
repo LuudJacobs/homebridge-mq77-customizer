@@ -237,24 +237,17 @@ describe('a state toggle in rules', () => {
 });
 
 describe('a state toggle in the activity log', () => {
-  it('has a line for every change, saying when it was by hand', async () => {
+  it('has no line of its own, by hand or not', async () => {
     const { toggles, engine } = await harness();
     const away = toggles.create('Away');
 
     toggles.set(away.id, true, true);
-    // Already true: nothing changed, so nothing to say.
-    toggles.set(away.id, true, true);
     toggles.set(away.id, false);
 
-    const lines = engine.getLog().filter((entry) => entry.ruleKind === 'state');
-    expect(lines.map((entry) => [entry.detail, entry.byHand ?? false])).toEqual([
-      ['Away false', false],
-      ['Away true (by hand)', true],
-    ]);
-    expect(lines[0]?.changed).toEqual({ ...toggle(away.id), value: 'false' });
+    expect(engine.getLog()).toEqual([]);
   });
 
-  it('puts the change under the rule that made it', async () => {
+  it('leaves the rule that changed it as the only line', async () => {
     const { toggles, store, mqtt, engine } = await harness();
     const away = toggles.create('Away');
     store.update((state) => {
@@ -270,8 +263,7 @@ describe('a state toggle in the activity log', () => {
     mqtt.deliver(SOCKET.topic, { state: 'OFF' });
     await settle();
 
-    // Newest first.
-    expect(engine.getLog().map((entry) => entry.ruleName)).toEqual(['Away', 'Weg']);
+    expect(engine.getLog().map((entry) => entry.ruleName)).toEqual(['Weg']);
   });
 });
 
@@ -455,13 +447,12 @@ describe('the two types', () => {
   });
 
   it('starts again from its new type when that changes', async () => {
-    const { toggles, engine } = await harness();
+    const { toggles } = await harness();
     const away = toggles.create('Away');
     toggles.set(away.id, true);
 
     toggles.retype(away.id, 'number');
     expect(toggles.find(away.id)).toMatchObject({ type: 'number', value: 0 });
-    expect(engine.getLog()[0]?.detail).toBe('Away 0');
   });
 
   it('counts up and down by an action', async () => {

@@ -27,10 +27,13 @@ const state = {
   filter: '',
   /** Hides everything that is not currently published to HomeKit. */
   /** Hides rules that are switched off. */
-  /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
   /** Lines that read `ignored`, left out until they are asked for. */
   showIgnored: false,
+  /**
+   * Kinds of device whose rules each tab leaves out, by tab: the log by what
+   * set a line off, the lists by what can set a rule off.
+   */
+  hiddenKinds: {},
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
@@ -98,10 +101,9 @@ const el = {
   status: document.getElementById('status'),
   kindFilters: document.getElementById('kind-filters'),
   tools: document.getElementById('tab-tools'),
-  kindAutomation: document.getElementById('kind-automation'),
-  kindMirror: document.getElementById('kind-mirror'),
-  kindSlider: document.getElementById('kind-slider'),
-  kindAction: document.getElementById('kind-action'),
+  triggerKinds: document.getElementById('trigger-kinds'),
+  triggerKindsLabel: document.getElementById('trigger-kinds-label'),
+  triggerKindsList: document.getElementById('trigger-kinds-list'),
   kindIgnored: document.getElementById('kind-ignored'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
@@ -153,7 +155,6 @@ const el = {
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
   addState: document.getElementById('add-state'),
-  kindState: document.getElementById('kind-state'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
   build: document.getElementById('build'),
 };
@@ -871,6 +872,9 @@ function paintControls() {
   const controls = TAB_CONTROLS[view];
 
   el.kindFilters.hidden = view !== 'activity';
+  el.triggerKinds.hidden = !(view in HIDDEN_KINDS_KEYS);
+  el.triggerKinds.open = false;
+  drawTriggerKinds();
   el.unusedFilter.hidden = view !== 'controllers';
   el.homekitFilter.hidden = view !== 'controllers';
 
@@ -895,9 +899,14 @@ function paintControls() {
   // On the open tab's own line, before its buttons, and gone where there is
   // nothing to sort or filter, so no line is drawn in front of the buttons.
   document.querySelector(`#view-${view} .rules-actions`)?.prepend(el.tools);
-  el.tools.hidden = [el.kindFilters, el.unusedFilter, el.homekitFilter, el.sort, el.filter].every(
-    (control) => control.hidden,
-  );
+  el.tools.hidden = [
+    el.kindFilters,
+    el.unusedFilter,
+    el.homekitFilter,
+    el.sort,
+    el.filter,
+    el.triggerKinds,
+  ].every((control) => control.hidden);
 }
 
 const currentFilter = () => (state.filters[state.view] ?? '').trim().toLowerCase();
@@ -1975,34 +1984,65 @@ el.sort.addEventListener('change', () => {
   repaint();
 });
 
-el.kindAutomation.addEventListener('change', () => {
-  state.activityKinds.standard = el.kindAutomation.checked;
-  renderLog();
-});
-
-el.kindMirror.addEventListener('change', () => {
-  state.activityKinds.mirror = el.kindMirror.checked;
-  renderLog();
-});
-
-el.kindSlider.addEventListener('change', () => {
-  state.activityKinds.slider = el.kindSlider.checked;
-  renderLog();
-});
-
-el.kindAction.addEventListener('change', () => {
-  state.activityKinds.action = el.kindAction.checked;
-  renderLog();
-});
-
-el.kindState.addEventListener('change', () => {
-  state.activityKinds.state = el.kindState.checked;
-  renderLog();
-});
-
 el.kindIgnored.addEventListener('change', () => {
   state.showIgnored = el.kindIgnored.checked;
   renderLog();
+});
+
+/**
+ * Which kinds of device each tab leaves out, kept in this browser, a tab
+ * apiece.
+ *
+ * Kept in a browser rather than with the settings: it is about what one
+ * person cares to read, not about what the house does.
+ */
+const HIDDEN_KINDS_KEYS = {
+  automation: 'mq77.rules.hiddenKinds',
+  mirror: 'mq77.mirrors.hiddenKinds',
+  sliders: 'mq77.sliders.hiddenKinds',
+  activity: 'mq77.log.hiddenKinds',
+};
+
+function readHiddenKinds(view) {
+  try {
+    const kept = JSON.parse(localStorage.getItem(HIDDEN_KINDS_KEYS[view]) ?? '[]');
+    return new Set(Array.isArray(kept) ? kept.filter((kind) => typeof kind === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function keepHiddenKinds(view) {
+  try {
+    localStorage.setItem(HIDDEN_KINDS_KEYS[view], JSON.stringify([...state.hiddenKinds[view]]));
+  } catch {
+    // A browser that keeps nothing still leaves them out until the page goes.
+  }
+}
+
+for (const view of Object.keys(HIDDEN_KINDS_KEYS)) {
+  state.hiddenKinds[view] = readHiddenKinds(view);
+}
+
+// The list is drawn as it opens, so a tick is never redrawn under the pointer.
+el.triggerKinds.addEventListener('toggle', () => {
+  if (el.triggerKinds.open) {
+    drawTriggerKindList();
+  }
+});
+
+// A dropdown, so it goes away when somebody is done with it.
+document.addEventListener('click', (event) => {
+  if (el.triggerKinds.open && !el.triggerKinds.contains(event.target)) {
+    el.triggerKinds.open = false;
+  }
+});
+
+el.triggerKinds.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && el.triggerKinds.open) {
+    el.triggerKinds.open = false;
+    el.triggerKindsLabel.focus();
+  }
 });
 
 /** Whether any panel, of a device or a rule, holds something not saved. */
@@ -2084,23 +2124,26 @@ const OUTCOME_LABELS = {
   // that decided not to.
   rateLimited: 'ignored',
   conditionsFailed: 'ignored',
-  waiting: 'waiting',
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'ignored',
   started: 'started',
-  cancelled: 'called off',
+  cancelled: 'wait called off',
 };
 
 /**
- * Whether a line reads `ignored`: a rule held back, with no outcome to take,
- * or one that ran into Ignore, and a slider with nothing left to do. A press
- * that set it off is on the same line, and goes with it.
+ * Whether a line counts as ignored, dimmed and left out until asked for: a
+ * rule held back, with no outcome to take, or one that ran into Ignore, a
+ * slider with nothing left to do, a wait called off, and a press nothing
+ * answered. A press that set a rule off is on the rule's line, and goes with
+ * it.
  */
 function isIgnored(entry) {
   return (
     OUTCOME_LABELS[entry.outcome] === 'ignored' ||
-    (entry.outcome === 'fired' && entry.detail === 'ignored')
+    (entry.outcome === 'fired' && entry.detail === 'ignored') ||
+    entry.outcome === 'cancelled' ||
+    entry.ruleKind === 'action'
   );
 }
 
@@ -2119,24 +2162,17 @@ const WORDLESS = new Set(['cancelled']);
 function logParts(entry) {
   const words = (text) => document.createTextNode(text);
 
-  // A press of its own: nothing answered it, so it is the whole line.
+  // A press nothing answered, read the way one that set a rule off is, with
+  // nothing to have set off.
   if (entry.ruleKind === 'action') {
     const device = findDevice(entry.press ?? refOf(entry.ruleId));
+    const pressed = pressWords(entry.press) ?? entry.detail;
     return [
-      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
+      phrase(
+        ...(device ? deviceParts(device, `: ${pressed} →`) : [words(`${entry.ruleName}: ${pressed} →`)]),
+      ),
       words(' '),
-      phrase(words(pressWords(entry.press) ?? entry.detail)),
-    ];
-  }
-
-  // A toggle changing: where it stands now, and whether somebody did it.
-  if (entry.ruleKind === 'state') {
-    const device = findDevice(entry.changed ?? refOf(entry.ruleId));
-    const value = entry.changed?.value ?? '';
-    return [
-      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
-      words(' '),
-      phrase(words(entry.byHand ? `${value} (by hand)` : value)),
+      phrase(words('ignored: not configured')),
     ];
   }
 
@@ -2180,10 +2216,9 @@ function logParts(entry) {
     parts.push(phrase(chunk), words(' '));
   }
 
-  // `waiting 00:30` is a sentence, not a heading over one, so it is the one
-  // outcome whose words follow without a colon.
-  const joined = entry.outcome === 'waiting' ? '' : ':';
-  parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? joined : ''}`)));
+  // A run that waited is one line, said once it is over.
+  const waited = entry.waitedMs ? `waited ${describeWait(entry.waitedMs)} and ` : '';
+  parts.push(phrase(words(`${named} - ${waited}${branch}${outcome}${said ? ':' : ''}`)));
   if (said) {
     parts.push(words(' '), phrase(words(said)));
   }
@@ -2527,6 +2562,7 @@ const kindOf = (rule) => {
 };
 
 function renderRules() {
+  drawTriggerKinds();
   safely(() => renderRuleList('standard', el.automation, 'No rules yet.'));
   safely(() => renderRuleList('mirror', el.mirror, 'No mirrors yet.'));
   safely(() => renderRuleList('slider', el.sliders, 'No sliders yet.'));
@@ -2772,6 +2808,7 @@ function renderRuleList(kind, container, emptyText) {
   container.replaceChildren();
   const term = currentFilter();
   const sort = state.sorts[state.view] ?? 'name';
+  const hiding = hiddenKindsIn(viewOfRule({ kind }));
 
   // A rule just added is exempt from both. It is saved the moment it is
   // added, so it starts with a placeholder name and switched off, and a list
@@ -2783,7 +2820,7 @@ function renderRuleList(kind, container, emptyText) {
   // that is doing it n log n times over.
   const rules = state.rules
     .filter((rule) => kindOf(rule) === kind)
-    .filter((rule) => justAdded(rule) || matchesRuleFilter(rule, term))
+    .filter((rule) => justAdded(rule) || (matchesRuleFilter(rule, term) && !leftOutByKind(rule, hiding)))
     .map((rule) => ({ rule, key: ruleSortKey(rule, sort), title: ruleTitle(rule) }))
     .sort(
       (a, b) =>
@@ -3294,7 +3331,7 @@ function ruleFooter(rule, draft, body) {
     try {
       await api('/api/rules', {
         method: 'PUT',
-        body: JSON.stringify({ ...draft, enabled: stored.enabled }),
+        body: JSON.stringify({ ...forSaving(draft), enabled: stored.enabled }),
       });
       state.ruleDrafts.delete(rule.id);
       // Saved, so it has a name worth sorting by and can take its place.
@@ -3454,10 +3491,6 @@ function drawWhenThen(body, draft) {
   drawTriggers();
   body.append(triggers);
 
-  // Between what sets the rule off and what it asks: the wait runs first, and
-  // the conditions are asked when it runs out.
-  body.append(waitRow(draft, { label: 'Optional wait time (mm:ss)' }));
-
   // One outcome or several. The first branch that holds runs, so else if is
   // exclusive by construction rather than by carefully written conditions.
   draft.branches = draft.branches?.length
@@ -3466,41 +3499,170 @@ function drawWhenThen(body, draft) {
   delete draft.when;
   delete draft.conditions;
   delete draft.actions;
+  draft.branches = withWaits(draft);
 
-  const branches = document.createElement('div');
-  const drawBranches = () => {
-    branches.replaceChildren();
-    draft.branches.forEach((branch, index) => {
-      branches.append(renderBranch(branch, index, draft.branches, drawBranches));
+  const blocks = document.createElement('div');
+  const drawBlocks = () => {
+    blocks.replaceChildren();
+    draft.branches.forEach((block, position) => {
+      blocks.append(
+        isWaitBlock(block)
+          ? renderWaitBlock(block, position, draft.branches, drawBlocks)
+          : renderBranch(block, position, draft.branches, drawBlocks),
+      );
     });
-    branches.append(
+    const adds = document.createElement('div');
+    adds.className = 'block-buttons';
+    adds.append(
       addButton('+ outcome', () => {
         draft.branches.push({ actions: [{ ...emptyRef(), value: '' }] });
-        drawBranches();
+        drawBlocks();
+      }),
+      addButton('+ wait', () => {
+        draft.branches.push({ kind: 'wait', waitMs: NEW_WAIT_MS });
+        drawBlocks();
       }),
     );
+    blocks.append(adds);
   };
-  drawBranches();
-  body.append(branches);
+  drawBlocks();
+  body.append(blocks);
+}
+
+/** What a wait added in the editor starts at, the same as the server's own. */
+const NEW_WAIT_MS = 30_000;
+
+const isWaitBlock = (block) => block?.kind === 'wait';
+
+/**
+ * The outcomes with the waits in among them, as the editor has them.
+ *
+ * Stored, the rule's own wait is the one before its first outcome and any
+ * other is on the outcome it comes before. Edited, they are all blocks of
+ * their own, to be moved about like the outcomes. Drawing a rule again takes
+ * the blocks as they are.
+ */
+function withWaits(draft) {
+  const blocks = draft.waitMs ? [{ kind: 'wait', waitMs: draft.waitMs }] : [];
+  delete draft.waitMs;
+  for (const [index, entry] of draft.branches.entries()) {
+    if (!isWaitBlock(entry) && entry.waitMs && index > 0) {
+      blocks.push({ kind: 'wait', waitMs: entry.waitMs });
+    }
+    if (!isWaitBlock(entry)) {
+      delete entry.waitMs;
+    }
+    blocks.push(entry);
+  }
+  return blocks;
+}
+
+/**
+ * And back into what is stored, refusing waits that would wait for nothing:
+ * one with no time, one with no outcome after it, or two in a row.
+ */
+function forSaving(draft) {
+  // An outcome with nothing to ask always runs, so none after it ever would.
+  const outcomes = (draft.branches ?? []).filter((block) => !isWaitBlock(block));
+  if (outcomes.slice(0, -1).some((branch) => !(branch.when ?? asExpression(branch.conditions)))) {
+    throw new Error('Only the last outcome can go without a condition');
+  }
+  if (!draft.branches?.some(isWaitBlock)) {
+    return draft;
+  }
+  const branches = [];
+  let waitMs;
+  let pending;
+  for (const block of draft.branches) {
+    if (isWaitBlock(block)) {
+      if (!block.waitMs) {
+        throw new Error('A wait needs a time');
+      }
+      if (pending !== undefined) {
+        throw new Error('Two waits in a row: make them one');
+      }
+      pending = block.waitMs;
+      continue;
+    }
+    if (pending !== undefined && branches.length === 0) {
+      waitMs = pending;
+    }
+    branches.push(pending !== undefined && branches.length > 0 ? { ...block, waitMs: pending } : block);
+    pending = undefined;
+  }
+  if (pending !== undefined) {
+    throw new Error('A wait needs an outcome after it');
+  }
+  return { ...draft, branches, ...(waitMs ? { waitMs } : {}) };
+}
+
+/**
+ * Up and down a place, past whatever is next to it, outcome or wait. Neither
+ * at the ends, where there is no place to go.
+ */
+function moveButtons(position, blocks, redraw, what) {
+  const move = (text, to) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'add-row move';
+    button.textContent = text;
+    button.title = `Move ${what} ${to < position ? 'up' : 'down'}`;
+    button.disabled = to < 0 || to >= blocks.length;
+    button.addEventListener('click', () => {
+      [blocks[position], blocks[to]] = [blocks[to], blocks[position]];
+      redraw();
+    });
+    return button;
+  };
+  return [move('\u2191', position - 1), move('\u2193', position + 1)];
+}
+
+/** A wait between two outcomes, or before the first: a time, and nothing else. */
+function renderWaitBlock(block, position, blocks, redraw) {
+  const box = document.createElement('div');
+  box.className = 'wait-block';
+
+  const head = document.createElement('div');
+  head.className = 'branch-head';
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(waitRow(block, { label: 'Wait (mm:ss)' }));
+
+  const right = document.createElement('div');
+  right.className = 'branch-head-right';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'add-row';
+  remove.textContent = '\u2715';
+  remove.title = 'Remove wait';
+  remove.addEventListener('click', () => {
+    blocks.splice(position, 1);
+    redraw();
+  });
+  right.append(...moveButtons(position, blocks, redraw, 'wait'), remove);
+
+  head.append(left, right);
+  box.append(head);
+  return box;
 }
 
 /** One outcome: what has to hold, and what to do when it does. */
-function renderBranch(branch, index, branches, redraw) {
+function renderBranch(branch, position, blocks, redraw) {
   const box = document.createElement('div');
   box.className = 'branch';
 
-  const only = branches.length === 1;
+  // Counted among the outcomes alone: a wait is not one.
+  const outcomes = blocks.filter((block) => !isWaitBlock(block));
+  const index = outcomes.indexOf(branch);
+  const only = outcomes.length === 1;
 
   const head = document.createElement('div');
   head.className = 'branch-head';
 
+  // The heading is the condition editor's to write, since what it says
+  // depends on whether there are any conditions yet.
   const left = document.createElement('div');
   left.className = 'branch-head-left';
-  left.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
-  // Where the condition editor puts its add button while there is nothing to
-  // show, since there is no row for it to sit on yet.
-  const slot = document.createElement('span');
-  left.append(slot);
   head.append(left);
 
   const right = document.createElement('div');
@@ -3516,7 +3678,7 @@ function renderBranch(branch, index, branches, redraw) {
   name.addEventListener('input', () => {
     branch.label = name.value.trim() || undefined;
   });
-  right.append(name);
+  right.append(name, ...moveButtons(position, blocks, redraw, 'outcome'));
 
   if (!only) {
     const remove = document.createElement('button');
@@ -3525,7 +3687,7 @@ function renderBranch(branch, index, branches, redraw) {
     remove.textContent = '✕';
     remove.title = `Remove outcome ${index + 1}`;
     remove.addEventListener('click', () => {
-      branches.splice(index, 1);
+      blocks.splice(position, 1);
       redraw();
     });
     right.append(remove);
@@ -3534,9 +3696,10 @@ function renderBranch(branch, index, branches, redraw) {
   head.append(right);
 
   box.append(head);
-  box.append(conditionEditor(branch, slot));
+  const then = sectionTitle('Then');
+  box.append(conditionEditor(branch, left, index === 0, then));
 
-  box.append(sectionTitle('Then'));
+  box.append(then);
   box.append(actionEditor(branch));
   return box;
 }
@@ -3610,8 +3773,7 @@ function powerOf(ref) {
 /**
  * Two boxes and a colon: a wait, said the way a clock says it.
  *
- * Empty is what it starts as and what it goes back to, with `00` shown
- * behind rather than typed in, since most rules act at once.
+ * Empty is no time at all, with `00` shown behind rather than typed in.
  */
 function waitRow(draft, { label }) {
   const row = document.createElement('div');
@@ -3643,7 +3805,7 @@ function waitRow(draft, { label }) {
 
   const readWait = () => {
     const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
-    // Nothing typed is no wait at all, which is how most rules run.
+    // Nothing typed is no time, which a wait cannot be saved with.
     if (both > 0) {
       draft.waitMs = both * 1000;
     } else {
@@ -3662,7 +3824,7 @@ function waitRow(draft, { label }) {
     });
     input.addEventListener('blur', () => {
       // One box filled in wants the other to read `00` beside it; both empty
-      // stay empty, since empty is what having no wait looks like.
+      // stay empty, since empty is what having no time looks like.
       const said = Number(input.value) || 0;
       input.value =
         said > 0 || Number(minutes.value) || Number(seconds.value) ? pad(said) : '';
@@ -4173,18 +4335,24 @@ function drawMirror(body, draft) {
 }
 
 /**
- * Two levels: any of several groups, each all of several tests.
+ * Two levels: an outcome's groups, each of several tests, and on both a line
+ * saying how they are taken together.
  *
  * Deeper nesting would express nothing new, since every boolean expression can
- * be written as an or of ands, and it would cost a much heavier editor.
+ * be written as groups of tests, and it would cost a much heavier editor.
  */
-function conditionEditor(draft, slot) {
+function conditionEditor(draft, heading, first, then) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
+  // A rule saved before expressions existed still carries a flat list, and the
+  // interface is handed rules exactly as stored. Reading only `when` would
+  // show it as having no conditions and drop them on the next save.
+  const read = readConditions(draft.when ?? asExpression(draft.conditions));
+
   // Stored to any depth, so anything hand written that does not fit two levels
   // is left alone rather than quietly flattened.
-  if (draft.when && !isTwoLevel(draft.when)) {
+  if (!read) {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent = `Condition edited by hand: ${draft.when.kind}. Leaving it as it is.`;
@@ -4192,46 +4360,116 @@ function conditionEditor(draft, slot) {
     return wrap;
   }
 
-  // A rule saved before expressions existed still carries a flat list, and the
-  // interface is handed rules exactly as stored. Reading only `when` would
-  // show it as having no conditions and drop them on the next save.
-  const groups = toGroups(draft.when ?? asExpression(draft.conditions));
+  const groups = read.groups;
+  let mode = read.mode;
 
   const draw = () => {
     wrap.replaceChildren();
 
     groups.forEach((group, index) => {
-      if (index > 0) {
-        const or = document.createElement('p');
-        or.className = 'joiner';
-        or.textContent = 'or';
-        wrap.append(or);
+      const joiner = joinerBefore(mode, index);
+      if (joiner) {
+        wrap.append(joinerLine(joiner));
       }
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
 
-    const add = addButton(groups.length === 0 ? '+ condition' : 'Add or', () => {
-      groups.push({ negated: false, tests: [newTest()] });
+    const add = addButton(groups.length === 0 ? '+ condition' : '+ condition group', () => {
+      groups.push({ mode: 'all', tests: [newTest()] });
       commit();
       draw();
     });
 
     // With no conditions set there is no row to hang the button off, so it
-    // goes up beside the heading instead of alone on a line of its own.
-    slot?.replaceChildren();
-    if (groups.length === 0 && slot) {
-      slot.append(add);
-    } else {
-      wrap.append(add);
+    // goes up on the heading's line instead of alone on a line of its own,
+    // after `Or else` on any outcome but the first, which reads on into the
+    // actions with no `Then` between. Once there are conditions the heading
+    // says so, and how the groups are taken together once there is more than
+    // one of them to take.
+    heading.replaceChildren();
+    then.hidden = !first && groups.length === 0;
+    if (groups.length === 0) {
+      heading.append(...(first ? [] : [sectionTitle('Or else')]), add);
+      return;
+    }
+    wrap.append(add);
+    heading.append(sectionTitle(first ? 'And when' : 'Or when'));
+    if (groups.length > 1) {
+      heading.append(
+        combinationLine(mode, (picked) => {
+          mode = picked;
+          commit();
+          draw();
+        }),
+      );
     }
   };
 
   function commit() {
-    draft.when = fromGroups(groups);
+    // One group or none is all of them, with nothing to say otherwise.
+    if (groups.length < 2) {
+      mode = 'all';
+    }
+    draft.when = writeConditions(mode, groups);
+    // Read into the groups above, so what is left of it says nothing new and
+    // would bring back on the next draw what was just taken out.
+    delete draft.conditions;
   }
 
   draw();
   return wrap;
+}
+
+/** How the tests of a group, or the groups of an outcome, are taken together. */
+const COMBINATIONS = [
+  ['all', 'All'],
+  ['any', 'At least 1'],
+  ['none', 'None'],
+  ['notAll', 'Not all'],
+];
+
+/**
+ * The word in front of one of them: all of them is this and that, at least
+ * one or not all is this or that, and none is not this and not that, the
+ * first one included.
+ */
+function joinerBefore(mode, index) {
+  if (mode === 'none') {
+    return index === 0 ? 'not' : 'and not';
+  }
+  if (index === 0) {
+    return undefined;
+  }
+  return mode === 'all' ? 'and' : 'or';
+}
+
+/** `All are true`, as a sentence with the dropdown in it. */
+function combinationLine(mode, onChange) {
+  const line = document.createElement('div');
+  line.className = 'combination';
+
+  const pick = document.createElement('select');
+  for (const [value, text] of COMBINATIONS) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = text;
+    pick.append(choice);
+  }
+  pick.value = mode;
+
+  // At least 1 is one of them, so it is.
+  const verb = document.createElement('span');
+  const paint = () => {
+    verb.textContent = pick.value === 'any' ? 'is true' : 'are true';
+  };
+  paint();
+  pick.addEventListener('change', () => {
+    paint();
+    onChange(pick.value);
+  });
+
+  line.append(pick, verb);
+  return line;
 }
 
 function renderGroup(group, groups, index, commit, redraw) {
@@ -4240,18 +4478,13 @@ function renderGroup(group, groups, index, commit, redraw) {
 
   const head = document.createElement('div');
   head.className = 'group-head';
-  const negate = document.createElement('label');
-  negate.className = 'toggle';
-  const negateBox = document.createElement('input');
-  negateBox.type = 'checkbox';
-  negateBox.checked = group.negated;
-  negateBox.addEventListener('change', () => {
-    group.negated = negateBox.checked;
-    commit();
-  });
-  negate.append(negateBox, document.createTextNode('Not'));
-  negate.title = 'Holds when this group does not';
-  head.append(negate);
+  head.append(
+    combinationLine(group.mode, (picked) => {
+      group.mode = picked;
+      commit();
+      redraw();
+    }),
+  );
 
   head.append(
     addButton('Remove group', () => {
@@ -4264,13 +4497,12 @@ function renderGroup(group, groups, index, commit, redraw) {
 
   group.tests.forEach((node, position) => {
     const last = position === group.tests.length - 1;
-    box.append(
-      refRow(node, {
+    const row = refRow(node, {
         pick: watchable,
         withMatch: true,
         onChange: commit,
         // A condition can ask the time, said as a side of one rather than as
-        // a range: a night is after 22:00 or before 06:00, in one `any` group.
+        // a range: a night is after 22:00 or before 06:00, at least 1 true.
         allowTime: true,
         asCondition: true,
         redraw,
@@ -4282,7 +4514,7 @@ function renderGroup(group, groups, index, commit, redraw) {
                 redraw();
               }
             : undefined,
-        joiner: last ? undefined : 'and',
+        joiner: last ? undefined : joinerBefore(group.mode, position + 1),
         trailing: last
           ? addButton('+ condition', () => {
               group.tests.push(newTest());
@@ -4290,8 +4522,13 @@ function renderGroup(group, groups, index, commit, redraw) {
               redraw();
             })
           : undefined,
-      }),
-    );
+      });
+    // Only none has a word in front of the first one, on a line of its own.
+    const opening = position === 0 && joinerBefore(group.mode, 0);
+    if (opening) {
+      box.append(joinerLine(opening));
+    }
+    box.append(row);
   });
 
   return box;
@@ -4309,53 +4546,127 @@ function asExpression(conditions) {
   return { kind: 'all', nodes: conditions.map((condition) => ({ kind: 'test', ...condition })) };
 }
 
-/** True when the stored expression is something this editor can show. */
-function isTwoLevel(when) {
-  // A row is a device test or a time. Anything else is somebody's own work,
-  // written by hand, and is left alone rather than flattened into rows.
-  const rowish = (node) => node.kind === 'test' || node.kind === 'time';
+/** A row is a device test or a time. Anything else is a group of them, or more. */
+const isRow = (node) => node?.kind === 'test' || node?.kind === 'time';
 
-  const groupish = (node) =>
-    rowish(node) ||
-    (node.kind === 'not' && groupish(node.node)) ||
-    (node.kind === 'all' && node.nodes.every(rowish));
-
-  if (when.kind === 'any') {
-    return when.nodes.every(groupish);
+/**
+ * A group as stored, read back into its rows and how they are taken
+ * together: all, any, or either of those turned round. Undefined for
+ * anything deeper, which is not a group this editor can draw.
+ *
+ * A single row turned round is how Not was stored before there was a choice,
+ * and Not was not all of them.
+ */
+function readGroup(node) {
+  const rows = (list) => list.nodes.map((child) => structuredClone(child));
+  if (isRow(node)) {
+    return { mode: 'all', tests: [structuredClone(node)] };
   }
-  return groupish(when);
+  if ((node?.kind === 'all' || node?.kind === 'any') && node.nodes.every(isRow)) {
+    return { mode: node.kind, tests: rows(node) };
+  }
+  if (node?.kind === 'not' && isRow(node.node)) {
+    return { mode: 'notAll', tests: [structuredClone(node.node)] };
+  }
+  if (node?.kind === 'not' && (node.node?.kind === 'all' || node.node?.kind === 'any')) {
+    const inner = node.node;
+    if (inner.nodes.every(isRow)) {
+      return { mode: inner.kind === 'all' ? 'notAll' : 'none', tests: rows(inner) };
+    }
+  }
+  return undefined;
 }
 
-/** Reads the stored expression into the rows the editor works with. */
-function toGroups(when) {
+/**
+ * The stored expression, read into an outcome's groups and how they are taken
+ * together. Undefined for one written by hand that does not fit.
+ *
+ * Any of several is how every outcome with more than one group was stored
+ * before there was a choice, so it stays at least 1 of them. One group alone
+ * is all of one.
+ */
+function readConditions(when) {
   if (!when) {
-    return [];
+    return { mode: 'all', groups: [] };
   }
-  const asGroup = (node) => {
-    if (node.kind === 'not') {
-      return { ...asGroup(node.node), negated: true };
-    }
-    if (node.kind === 'all') {
-      return { negated: false, tests: node.nodes.map((child) => structuredClone(child)) };
-    }
-    return { negated: false, tests: [structuredClone(node)] };
+  const groupsOf = (list) => {
+    const groups = list.nodes.map(readGroup);
+    return groups.every(Boolean) ? groups : undefined;
   };
-  return when.kind === 'any' ? when.nodes.map(asGroup) : [asGroup(when)];
-}
-
-/** And back again, in the simplest form that says the same thing. */
-function fromGroups(groups) {
-  const nodes = groups
-    .filter((group) => group.tests.length > 0)
-    .map((group) => {
-      const inner = group.tests.length === 1 ? group.tests[0] : { kind: 'all', nodes: group.tests };
-      return group.negated ? { kind: 'not', node: inner } : inner;
-    });
-
-  if (nodes.length === 0) {
+  if (when.kind === 'any') {
+    const groups = groupsOf(when);
+    return groups && alone({ mode: 'any', groups });
+  }
+  const single = readGroup(when);
+  if (single) {
+    return { mode: 'all', groups: [single] };
+  }
+  // All of the groups, or none or not all of them. Any of them was read above.
+  const turned = when.kind === 'not';
+  const list = turned ? when.node : when;
+  if (list?.kind !== 'all' && !(turned && list?.kind === 'any')) {
     return undefined;
   }
-  return nodes.length === 1 ? nodes[0] : { kind: 'any', nodes };
+  const mode = !turned ? 'all' : list.kind === 'all' ? 'notAll' : 'none';
+  const groups = groupsOf(list);
+  return groups && alone({ mode, groups });
+}
+
+/** What turning a group round as a whole makes of how it is taken. */
+const TURNED = { all: 'notAll', notAll: 'all', any: 'none', none: 'any' };
+
+/**
+ * One group with a line of its own over it, which the editor no longer shows
+ * for one: at least 1 or all of one is the group itself, and none or not all
+ * of one is the group turned round.
+ */
+function alone(read) {
+  if (read.groups.length !== 1 || read.mode === 'all') {
+    return read;
+  }
+  const [group] = read.groups;
+  if (read.mode === 'none' || read.mode === 'notAll') {
+    group.mode = TURNED[group.mode];
+  }
+  return { mode: 'all', groups: [group] };
+}
+
+/**
+ * And back again, in a form that reads back as the same choices.
+ *
+ * The forms earlier versions wrote are kept where they say the same thing,
+ * a lone row bare and several groups any of which will do as an `any`. Any
+ * other group is written whole, so that a group of one row is still a group
+ * when it is read back.
+ */
+function writeConditions(mode, groups) {
+  const kept = groups.filter((group) => group.tests.length > 0);
+  if (kept.length === 0) {
+    return undefined;
+  }
+  if (mode === 'all' && kept.length === 1 && kept[0].mode !== 'any') {
+    return writeGroup(kept[0], true);
+  }
+  const nodes = kept.map((group) => writeGroup(group, mode === 'any'));
+  if (mode === 'all' || mode === 'any') {
+    return { kind: mode, nodes };
+  }
+  return { kind: 'not', node: { kind: mode === 'none' ? 'any' : 'all', nodes } };
+}
+
+/** One group, a lone row left bare where that reads back as the same. */
+function writeGroup(group, bare) {
+  const lone = bare && group.tests.length === 1;
+  switch (group.mode) {
+    case 'any':
+      return { kind: 'any', nodes: group.tests };
+    case 'none':
+      return { kind: 'not', node: { kind: 'any', nodes: group.tests } };
+    case 'notAll':
+      return { kind: 'not', node: lone ? group.tests[0] : { kind: 'all', nodes: group.tests } };
+    default:
+      return lone ? group.tests[0] : { kind: 'all', nodes: group.tests };
+  }
 }
 
 function sectionTitle(text) {
@@ -4442,6 +4753,14 @@ function becomeNotify(ref) {
 function joinerOf(word) {
   const joiner = document.createElement('span');
   joiner.className = 'joiner inline';
+  joiner.textContent = word;
+  return joiner;
+}
+
+/** A joining word on a line of its own, between groups or ahead of a row. */
+function joinerLine(word) {
+  const joiner = document.createElement('p');
+  joiner.className = 'joiner';
   joiner.textContent = word;
   return joiner;
 }
@@ -5137,23 +5456,17 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
-const KIND_LABELS = {
-  standard: 'rule',
-  mirror: 'mirror',
-  slider: 'slider',
-  action: 'action',
-  state: 'state',
-};
-
 function renderLog() {
   const container = el.activityLog;
   container.replaceChildren();
   const term = (state.filters.activity ?? '').trim().toLowerCase();
+  const hiding = hiddenKindsIn('activity');
+  drawTriggerKinds();
 
   // Drawn first and matched after, so the filter reads what is on screen.
   const lines = state.log
-    .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
     .filter((entry) => state.showIgnored || !isIgnored(entry))
+    .filter((entry) => !hiding.has(setOffByKind(entry)))
     .map(logLine)
     .filter((line) => !term || line.search.includes(term));
 
@@ -5168,27 +5481,147 @@ function renderLog() {
   container.append(...lines.slice(0, 100).map((line) => line.node));
 }
 
+/** What a kind of device is called when there are several of them. */
+const KIND_PLURALS = { '': 'Devices with no kind', other: 'Other devices', tv: 'TVs' };
+
+function kindsWord(kind) {
+  return KIND_PLURALS[kind] ?? `${KINDS.find(([value]) => value === kind)?.[1] ?? kind}s`;
+}
+
+/** The kinds of the devices that can set a rule, mirror or slider off. */
+function setOffKinds(rule) {
+  const kinds = new Set();
+  for (const ref of rule.kind === 'mirror' ? ruleRefs(rule) : startsOf(rule)) {
+    const device = ref?.deviceId ? findDevice(ref) : undefined;
+    if (device) {
+      kinds.add(device.exposure.type ?? '');
+    }
+  }
+  return kinds;
+}
+
+/**
+ * The kinds of device that set off what a tab lists, in the order the
+ * kinds are listed in: everything for the log, the tab's own for the rest.
+ * A rule set off by the clock has no device to count.
+ */
+function triggerKinds(view) {
+  const found = new Set();
+  for (const rule of state.rules) {
+    if (view === 'activity' || viewOfRule(rule) === view) {
+      setOffKinds(rule).forEach((kind) => found.add(kind));
+    }
+  }
+  return KINDS.map(([kind]) => kind).filter((kind) => found.has(kind));
+}
+
+/**
+ * The kinds a tab leaves out. Only kinds still setting something off there
+ * count, so a kind left out once and gone since cannot hide anything with no
+ * tick to bring it back.
+ */
+function hiddenKindsIn(view) {
+  const hidden = state.hiddenKinds[view] ?? new Set();
+  return new Set(triggerKinds(view).filter((kind) => hidden.has(kind)));
+}
+
+/**
+ * Whether a list leaves a rule out: only when everything that can set it off
+ * is of a kind left out. A motion sensor or a button stays in with the
+ * button, and so does anything the clock can set off too.
+ */
+function leftOutByKind(rule, hiding) {
+  if (hiding.size === 0 || startsOf(rule).some((start) => start && !start.deviceId)) {
+    return false;
+  }
+  const kinds = setOffKinds(rule);
+  return kinds.size > 0 && [...kinds].every((kind) => hiding.has(kind));
+}
+
+/**
+ * The kind of device that set a line off, or undefined for the clock and a
+ * hand. A mirror's line says what it copied from, which is what set it off.
+ */
+function setOffByKind(entry) {
+  const cause = entry.press ?? entry.changed ?? entry.copy?.from;
+  const device = cause ? findDevice(cause) : undefined;
+  return device ? (device.exposure.type ?? '') : undefined;
+}
+
+/** Says on the dropdown what the open tab is showing. */
+function drawTriggerKinds() {
+  const view = state.view;
+  if (!(view in HIDDEN_KINDS_KEYS)) {
+    return;
+  }
+  const kinds = triggerKinds(view);
+  const hiding = hiddenKindsIn(view);
+  const shown = kinds.filter((kind) => !hiding.has(kind));
+  el.triggerKindsLabel.textContent =
+    shown.length === kinds.length
+      ? 'All trigger devices'
+      : shown.length === 1
+        ? `Only ${kindsWord(shown[0])}`
+        : `${shown.length}/${kinds.length} trigger devices`;
+}
+
+/** A tick for every kind of device that sets something off on the open tab. */
+function drawTriggerKindList() {
+  const view = state.view;
+  const hidden = state.hiddenKinds[view];
+  const kinds = triggerKinds(view);
+  if (kinds.length === 0) {
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.textContent = 'Nothing is set off by a device yet.';
+    el.triggerKindsList.replaceChildren(none);
+    return;
+  }
+  el.triggerKindsList.replaceChildren(
+    ...kinds.map((kind) => {
+      const label = document.createElement('label');
+      label.className = 'toggle';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = !hidden.has(kind);
+      box.addEventListener('change', () => {
+        if (box.checked) {
+          hidden.delete(kind);
+        } else {
+          hidden.add(kind);
+        }
+        keepHiddenKinds(view);
+        drawTriggerKinds();
+        repaint();
+      });
+      label.append(box, kindsWord(kind));
+      return label;
+    }),
+  );
+}
+
 /**
  * One line of the log, and what the filter finds it by: everything the line
  * says, and the names, topics and rooms of every device it involves, which is
  * more than the line says of them.
  */
 function logLine(entry) {
-  const line = document.createElement('div');
-  line.className = `log-line ${entry.outcome}`;
+  // A line about a rule goes to it. A press nothing answered has nowhere to go.
+  const rule =
+    entry.ruleKind === 'action' ? undefined : state.rules.find((candidate) => candidate.id === entry.ruleId);
+  const line = document.createElement(rule ? 'a' : 'div');
+  if (rule) {
+    linkToRule(line, rule);
+  }
+  line.className = `log-line ${entry.outcome}${isIgnored(entry) ? ' ignored' : ''}`;
   const when = document.createElement('span');
   when.className = 'log-time';
   when.textContent = new Date(entry.at).toLocaleTimeString();
-  // Both kinds share this list now, and two rules can share a name, so each
-  // entry says which it came from.
-  const kind = document.createElement('span');
-  kind.className = 'tag';
-  kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
 
   const what = document.createElement('span');
   what.className = 'log-what';
   what.replaceChildren(...logParts(entry));
-  line.append(when, kind, what);
+  line.append(when, what);
 
   // The drawings carry titles, which are not words on the line.
   const said = line.cloneNode(true);
@@ -5212,8 +5645,8 @@ function logRefs(entry) {
     entry.copy?.from,
     ...(entry.copy?.to ?? []),
     ...(rule ? ruleRefs(rule) : []),
-    // A press or a state on a line of its own is named by its key.
-    ...(entry.ruleKind === 'action' || entry.ruleKind === 'state' ? [refOf(entry.ruleId)] : []),
+    // A press on a line of its own is named by its key.
+    ...(entry.ruleKind === 'action' ? [refOf(entry.ruleId)] : []),
   ].filter(Boolean);
 }
 
@@ -5312,6 +5745,11 @@ function ruleLink(rule, text) {
   const link = document.createElement('a');
   link.className = 'rule-link';
   link.textContent = text;
+  return linkToRule(link, rule);
+}
+
+/** Makes a link go to a rule, the way {@link ruleLink} does. */
+function linkToRule(link, rule) {
   link.href = addressOf(viewOfRule(rule), shortLink(rule.id));
   link.addEventListener('click', (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {

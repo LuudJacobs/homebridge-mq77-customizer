@@ -27,6 +27,8 @@ export async function openInterface(options: {
   at?: string;
   /** What the browser says it is, for what only one kind of device does. */
   userAgent?: string;
+  /** What this browser kept from an earlier visit. */
+  stored?: Record<string, string>;
 }) {
   // Anything the page throws is collected rather than swallowed, since a
   // handler that fails silently is the whole difficulty with this code.
@@ -120,6 +122,9 @@ export async function openInterface(options: {
     Object.defineProperty(window.navigator, 'userAgent', { value: options.userAgent });
   }
 
+  for (const [key, value] of Object.entries(options.stored ?? {})) {
+    window.localStorage.setItem(key, value);
+  }
   window.eval(read('app.js'));
   await settle(window);
 
@@ -153,6 +158,12 @@ export async function openInterface(options: {
     },
     click: async (node: Element | null) => {
       (node as HTMLElement).click();
+      await settle(window);
+    },
+    /** Picks an option in a dropdown, the way choosing one does. */
+    pick: async (node: Element | null, value: string) => {
+      (node as HTMLSelectElement).value = value;
+      node!.dispatchEvent(new window.Event('change', { bubbles: true }));
       await settle(window);
     },
     /** Buttons and tabs are found by what they say, as a person would. */

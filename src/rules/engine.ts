@@ -5,7 +5,6 @@ import type { Logger } from '../logger.js';
 import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
-import { STATES_SOURCE } from '../states.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
@@ -145,7 +144,12 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
    */
   private readonly countdowns = new Map<
     string,
-    { timer: ReturnType<typeof setTimeout>; trigger?: Trigger; startedWith: unknown; fired: Fired }
+    {
+      timer: ReturnType<typeof setTimeout>;
+      trigger?: Trigger;
+      startedWith: unknown;
+      fired: Fired;
+    }
   >();
   /**
    * Questions asked of a device and not yet answered, by property.
@@ -227,12 +231,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
 
       this.pressed = undefined;
       this.struck = { at: due.at, ...(due.offset ? { offset: due.offset } : {}) };
-      const fired: Fired = { property: undefined, value: undefined, time: due };
-      if (rule.waitMs) {
-        this.startCountdown(rule, fired);
-      } else {
-        this.fire(rule, fired);
-      }
+      this.begin(rule, { property: undefined, value: undefined, time: due });
       this.struck = undefined;
     }
   }
@@ -257,11 +256,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // happened. Acting on it would fire every rule again on each reconnect.
     if (update.retained) {
       return;
-    }
-
-    // Before the rules it sets off, so it reads underneath them.
-    if (update.sourceId === STATES_SOURCE) {
-      this.noteToggle(update);
     }
 
     // Held back rather than written down at once: a press that sets a rule off
@@ -309,7 +303,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       // What this rule itself just sent is not a new reason to start: a rule
       // that switches off what it watches would otherwise hear its own doing
       // and begin again.
-      if (rule.waitMs && this.isOwnDoing(rule, update)) {
+      if (waits(rule) && this.isOwnDoing(rule, update)) {
         continue;
       }
 
@@ -332,11 +326,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         }
         this.moved = said(trigger, value);
         try {
-          if (rule.waitMs) {
-            this.startCountdown(rule, { property: trigger, value }, trigger);
-          } else {
-            this.fire(rule, { property: trigger, value });
-          }
+          this.begin(rule, { property: trigger, value, trigger });
         } finally {
           this.moved = undefined;
         }
@@ -785,45 +775,70 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ? this.catalog.getState(trigger.sourceId, trigger.deviceId)?.[trigger.propertyKey]
       : undefined;
 
-    // Deliberately past the wait: the button is for trying a rule while
-    // building it, and sitting through ten minutes is not that.
-    this.fire(rule, { property: trigger, value });
+    // Deliberately past the waits, the ones between outcomes too: the button
+    // is for trying a rule while building it, and sitting through ten
+    // minutes is not that.
+    this.fire(rule, { property: trigger, value }, { from: 0, declined: [], unanswerable: [], hurry: true });
     return true;
   }
 
   /**
-   * Starts an automation's wait, or starts it again.
+   * Sets an automation off: its wait first, when it has one, or straight
+   * into its outcomes.
    *
-   * Again rather than on top: a sensor seeing somebody a second time means
-   * another full wait, not a shorter one. A different trigger is a different
-   * thing happening, so the one that was counting is called off and this one
-   * takes its place.
+   * Either way a run already under way is dropped, a wait between two
+   * outcomes included: the trigger happening again starts the rule over
+   * from the top.
    */
-  private startCountdown(rule: Rule, fired: Fired, trigger?: Trigger): void {
-    const running = this.countdowns.get(rule.id);
-
-    // The same thing happening again is the same wait starting over, and says
-    // nothing new: a switch that reports twice would otherwise write a second
-    // line saying exactly what the first one said.
-    const again = Boolean(
-      running && trigger && running.trigger && sameTrigger(running.trigger, trigger),
-    );
-
-    if (running) {
-      this.forgetCountdown(rule);
-
-      // A different trigger is a different thing happening, so the one that
-      // was counting is called off and this one takes its place.
-      if (!again && trigger) {
-        this.record(
-          rule,
-          'cancelled',
-          `${trigger.propertyKey} ${describeMatch(trigger.match)} instead`,
-        );
-      }
+  private begin(rule: Rule, fired: Fired): void {
+    const again = this.startOver(rule, fired.trigger);
+    if (rule.waitMs) {
+      this.startCountdown(rule, fired, undefined, again);
+    } else {
+      this.fire(rule, fired);
     }
+  }
 
-    const wait = clampWait(rule.waitMs);
+  /**
+   * Drops a run under way, for one starting over, and says whether it is the
+   * same trigger again.
+   *
+   * Again is a sensor seeing somebody a second time, which means another
+   * full wait rather than a shorter one, and says nothing new. A different
+   * trigger is a different thing happening, so the run it was on is called
+   * off and this one takes its place.
+   */
+  private startOver(rule: Rule, trigger?: Trigger): boolean {
+    const running = this.countdowns.get(rule.id);
+    if (!running) {
+      return false;
+    }
+    const again = Boolean(trigger && running.trigger && sameTrigger(running.trigger, trigger));
+    this.forgetCountdown(rule);
+    if (!again && trigger) {
+      this.record(
+        rule,
+        'cancelled',
+        `${trigger.propertyKey} ${describeMatch(trigger.match)} instead`,
+        {},
+        causeOf(running.fired),
+      );
+    }
+    return again;
+  }
+
+  /**
+   * Counts down a wait: the rule's own, before its first outcome, or the one
+   * in front of an outcome further down, which `run` says where to go on from.
+   *
+   * What set the rule off is kept with it, so the wait can be called off
+   * when that stops being true and the rule fires as though it had just
+   * happened, which is what makes an action copying the trigger still have
+   * something to copy ten minutes later.
+   */
+  private startCountdown(rule: Rule, fired: Fired, run?: Run, again = false): void {
+    const wait = clampWait(run ? branchesOf(rule)[run.from]?.waitMs : rule.waitMs);
+    const trigger = fired.trigger;
     const timer = setTimeout(() => {
       this.timers.delete(timer);
       this.countdowns.delete(rule.id);
@@ -831,8 +846,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       this.struck = fired.time
         ? { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) }
         : undefined;
+      // The waits so far go on with the run, so its one line says them all.
+      const waited = (run?.waited ?? 0) + wait;
       try {
-        this.fire(rule, fired);
+        this.fire(rule, fired, { ...(run ?? { from: 0, declined: [], unanswerable: [] }), waited });
       } finally {
         this.moved = undefined;
         this.struck = undefined;
@@ -841,8 +858,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.timers.add(timer);
     this.countdowns.set(rule.id, { timer, trigger, startedWith: fired.value, fired });
 
+    // Only the Homebridge log hears of it now: the interface gets one line
+    // for the whole run, once it has run or been called off.
     if (!again) {
-      this.record(rule, 'waiting', onTheClock(wait));
+      this.log.debug(`Rule "${rule.name}" waiting ${onTheClock(wait)}`);
     }
   }
 
@@ -865,15 +884,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     this.forgetCountdown(rule);
-
-    // The value that took the wait away is what there is to say here, the
-    // same as on a timer's own line.
-    this.moved = said(trigger, value);
-    try {
-      this.record(rule, 'cancelled', `${describeMatch(trigger.match, true)} no longer`);
-    } finally {
-      this.moved = undefined;
-    }
+    this.record(rule, 'cancelled', `${describeMatch(trigger.match, true)} no longer`, {}, causeOf(running.fired));
   }
 
   /** True when this rule wrote to one of these properties a moment ago. */
@@ -957,36 +968,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.keep(entry);
   }
 
-  /**
-   * Records a state toggle changing.
-   *
-   * Every change, whoever made it: a toggle is something the house is doing,
-   * and when it changed is half of what anybody looking it up wants to know.
-   * A rule that changed one has its own line just above.
-   */
-  private noteToggle(update: StateUpdate): void {
-    if (!('state' in update.changes)) {
-      return;
-    }
-    const value = String(update.changes.state);
-    const name = this.catalog.getDevice(update.sourceId, update.deviceId)?.name ?? update.deviceId;
-    this.keep({
-      at: update.at,
-      ruleId: `${update.sourceId}:${update.deviceId}`,
-      ruleName: name,
-      ruleKind: 'state',
-      outcome: 'fired',
-      detail: `${name} ${value}${update.byHand ? ' (by hand)' : ''}`,
-      changed: {
-        sourceId: update.sourceId,
-        deviceId: update.deviceId,
-        propertyKey: 'state',
-        value,
-      },
-      ...(update.byHand ? { byHand: true } : {}),
-    });
-  }
-
   private keep(entry: LogEntry): void {
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
@@ -1023,17 +1004,25 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.record(rule, 'disabled', 'Fired too often');
   }
 
-  private fire(rule: Rule, trigger: Fired): void {
+  /**
+   * Tries a rule's outcomes in order, from the top or from where a wait
+   * between two of them left off.
+   */
+  private fire(rule: Rule, trigger: Fired, run?: Run): void {
     const now = Date.now();
+    // Held back once, as it is set off. Going on after a wait between two
+    // outcomes is the same run, not another one.
+    const resumed = run !== undefined && run.from > 0;
     const limit = rule.rateLimitMs ?? DEFAULT_RATE_LIMIT_MS;
     const last = this.lastFired.get(rule.id);
+    const waited = run?.waited ? { waitedMs: run.waited } : {};
 
-    if (last !== undefined && now - last < limit) {
-      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`);
+    if (!resumed && last !== undefined && now - last < limit) {
+      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`, waited);
       return;
     }
 
-    if (this.isRunaway(rule, now)) {
+    if (!resumed && this.isRunaway(rule, now)) {
       // Two rules triggering each other would otherwise saturate the broker.
       // Turning it off is louder than letting it churn quietly.
       this.disable(rule);
@@ -1041,14 +1030,24 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     // The first branch that holds wins, the rest are skipped. That is what
-    // makes else if exclusive by construction rather than by hand.
+    // makes else if exclusive by construction rather than by hand. A wait in
+    // front of one is a pause before asking it, so the ones before it have
+    // all said no by the time it starts.
     const lookup = catalogLookup(this.catalog, () => new Date(), this.place);
     const branches = branchesOf(rule);
-    const declined: string[] = [];
-    const unanswerable: string[] = [];
+    const from = run?.from ?? 0;
+    const declined = run?.declined ?? [];
+    const unanswerable = run?.unanswerable ?? [];
     let chosen: { branch: Branch; index: number } | undefined;
 
     for (const [index, branch] of branches.entries()) {
+      if (index < from) {
+        continue;
+      }
+      if (index > from && branch.waitMs && !run?.hurry) {
+        this.startCountdown(rule, trigger, { from: index, declined, unanswerable, waited: run?.waited });
+        return;
+      }
       const failed = evaluate(branch.when, lookup);
       if (!failed) {
         chosen = { branch, index };
@@ -1064,10 +1063,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       // Not a failure. A rule whose every branch declined has done its job,
       // unless one of them could not be asked at all.
       if (unanswerable.length > 0) {
-        this.record(rule, 'failed', unanswerable[0] as string);
+        this.record(rule, 'failed', unanswerable[0] as string, waited);
         return;
       }
-      this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched');
+      this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched', waited);
       return;
     }
 
@@ -1079,7 +1078,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // The rule stops here, having decided to, which is worth a line of its own
     // rather than looking like it sent nothing by accident.
     if (chosen.branch.actions.some(isIgnore)) {
-      this.record(rule, 'fired', 'ignored', { branch: what });
+      this.record(rule, 'fired', 'ignored', { branch: what, ...waited });
       return;
     }
 
@@ -1092,19 +1091,19 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     if (problems.length > 0) {
-      this.record(rule, 'failed', problems.join('; '), { branch: what });
+      this.record(rule, 'failed', problems.join('; '), { branch: what, ...waited });
       return;
     }
 
     // Noted before the devices answer, so their answer is not read as a new
     // reason to start waiting. Only a rule that waits can be started again by
     // its own doing; one that acts at once has the runaway cutoff instead.
-    if (rule.waitMs) {
+    if (waits(rule)) {
       this.noteEcho(rule, deviceActions(chosen.branch.actions));
     }
 
     const count = chosen.branch.actions.length;
-    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what });
+    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what, ...waited });
   }
 
   /** Returns a problem, or undefined when the action was sent or is on its way. */
@@ -1372,7 +1371,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     rule: AnyRule,
     outcome: LogOutcome,
     detail: string,
-    parts: Pick<LogEntry, 'branch' | 'step' | 'copy'> = {},
+    parts: Pick<LogEntry, 'branch' | 'step' | 'copy' | 'waitedMs'> = {},
+    cause?: Pick<LogEntry, 'changed' | 'firedAt'>,
   ): void {
     // A rule that answers a press says so on its own line, and the press does
     // not get one of its own. Two lines for one thing that happened read as
@@ -1388,10 +1388,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
       outcome,
       detail,
-      // A press is the fuller account of the two, so it wins where a
+      // What set it off: what is going on now, or what the run it is about
+      // was set off by, for a run called off by something else happening. A
+      // press is the fuller account of the two, so it wins where a
       // controller's own action is what moved.
-      ...(this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {}),
-      ...(this.struck ? { firedAt: this.struck } : {}),
+      ...(cause ??
+        (this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {})),
+      ...(!cause && this.struck ? { firedAt: this.struck } : {}),
       ...parts,
     };
     this.entries.push(entry);
@@ -1483,6 +1486,37 @@ interface Fired {
   property?: PropertyRef;
   value: unknown;
   time?: TimeTrigger;
+  /** The device trigger that did it, which a wait is called off by. */
+  trigger?: Trigger;
+}
+
+/**
+ * How far a rule got through its outcomes: the one to try next, after the
+ * wait in front of it, and why each one before it was passed over.
+ */
+interface Run {
+  from: number;
+  declined: string[];
+  unanswerable: string[];
+  /** Straight past every wait, for trying a rule out. */
+  hurry?: boolean;
+  /** The waits gone through so far, added up. */
+  waited?: number;
+}
+
+/** What set a run off, as its log lines tell it. */
+function causeOf(fired: Fired): Pick<LogEntry, 'changed' | 'firedAt'> {
+  return {
+    ...(fired.trigger ? { changed: said(fired.trigger, fired.value) } : {}),
+    ...(fired.time
+      ? { firedAt: { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) } }
+      : {}),
+  };
+}
+
+/** Whether a rule waits anywhere, before its outcomes or between them. */
+function waits(rule: Rule): boolean {
+  return Boolean(rule.waitMs) || branchesOf(rule).some((branch, index) => index > 0 && branch.waitMs);
 }
 
 /** Keeps a wait inside what the interface offers, whatever was stored. */

@@ -359,32 +359,4 @@ describe('a state elsewhere', () => {
     expect(offered).toContain('Away');
     expect(offered).not.toContain('Gasten');
   });
-
-  it('reads in the log as a state, where it stands and who did it', async () => {
-    const log = [
-      {
-        at: Date.now(),
-        ruleId: 'states:t1',
-        ruleName: 'Away',
-        ruleKind: 'state',
-        outcome: 'fired',
-        detail: 'Away true (by hand)',
-        changed: { sourceId: 'states', deviceId: 't1', propertyKey: 'state', value: 'true' },
-        byHand: true,
-      },
-    ];
-    const ui = await openInterface({ state: { devices: devices() }, log });
-    await ui.click(ui.byText('button.tab', 'Log'));
-
-    const line = ui.document.querySelector('#activity-log .log-line')!;
-    expect(line.querySelector('.tag')?.textContent).toBe('state');
-    const what = line.querySelector('.log-what')!;
-    expect(what.querySelector('svg.type-icon.state')).not.toBeNull();
-    what.querySelectorAll('title').forEach((title) => title.remove());
-    expect(what.textContent).toBe('Away: true (by hand)');
-
-    const box = ui.document.getElementById('kind-state') as HTMLInputElement;
-    expect(box.parentElement?.textContent?.trim()).toBe('State');
-    expect(box.checked).toBe(true);
-  });
 });
