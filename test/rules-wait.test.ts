@@ -411,3 +411,162 @@ describe('a rule that waits and acts on what it watches', () => {
     }
   });
 });
+
+describe('a wait between two outcomes', () => {
+  const second = { ...ref(SWITCH.id, 'state_l2'), kind: 'test' as const };
+  /**
+   * The lamp on when the second switch is on; failing that, ten seconds
+   * later, off when it is on by then.
+   */
+  const pausing = (overrides: Partial<Rule> = {}) =>
+    waiting({
+      waitMs: undefined,
+      branches: [
+        {
+          when: { ...second, match: { kind: 'equals', value: 'ON' } },
+          actions: [{ ...ref(LAMP.id, 'state'), value: 'ON' }],
+        },
+        {
+          waitMs: 10_000,
+          when: { ...second, match: { kind: 'equals', value: 'ON' } },
+          actions: [{ ...ref(LAMP.id, 'state'), value: 'OFF' }],
+        },
+      ],
+      ...overrides,
+    });
+
+  it('never comes to it when the outcome before it holds', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([pausing()]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+      mqtt.published.length = 0;
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+
+      expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+      expect(engine.getLog().some((entry) => entry.outcome === 'waiting')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits once the outcome before it says no, then asks the next one', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([pausing()]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+      mqtt.published.length = 0;
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+
+      expect(sent(mqtt)).toEqual([]);
+      expect(engine.getLog()[0]).toMatchObject({ outcome: 'waiting', detail: '00:10' });
+
+      // On by the time the wait runs out, which is the moment that counts.
+      mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(sent(mqtt)).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sent(mqtt)).toEqual(['{"state":"OFF"}']);
+      expect(engine.getLog()[0]).toMatchObject({ outcome: 'fired', branch: 'outcome 2' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names every outcome passed over when none of them holds', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([pausing()]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      const last = engine.getLog()[0];
+      expect(last?.outcome).toBe('conditionsFailed');
+      expect(last?.detail).toMatch(/^outcome 1: .*; outcome 2: /);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is called off when what set the rule off stops being true', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, mqtt } = await harness([pausing()]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+      mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(sent(mqtt)).toEqual([]);
+      expect(engine.getLog()[0]).toMatchObject({ outcome: 'cancelled' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts over from the top when the trigger happens again', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([pausing()]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      await vi.advanceTimersByTimeAsync(5000);
+
+      // Asked again from the first outcome, which holds now.
+      mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+      mqtt.deliver(SOCKET.topic, { state: 'OFF' });
+      mqtt.published.length = 0;
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+
+      // And the run that was waiting is gone.
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(sent(mqtt)).toEqual(['{"state":"ON"}']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('comes after the rule’s own wait', async () => {
+    vi.useFakeTimers();
+    try {
+      const { mqtt } = await harness([pausing({ waitMs: 30_000 })]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+      mqtt.deliver(SOCKET.topic, { state: 'ON' });
+      mqtt.published.length = 0;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(sent(mqtt)).toEqual([]);
+      mqtt.deliver(SWITCH.topic, { state_l2: 'ON' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(sent(mqtt)).toEqual(['{"state":"OFF"}']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is passed straight by when the rule is run by hand', async () => {
+    const { engine, mqtt } = await harness([
+      pausing({
+        branches: [
+          {
+            when: { ...second, match: { kind: 'equals', value: 'ON' } },
+            actions: [{ ...ref(LAMP.id, 'state'), value: 'ON' }],
+          },
+          { waitMs: 10_000, actions: [{ ...ref(LAMP.id, 'state'), value: 'OFF' }] },
+        ],
+      }),
+    ]);
+    mqtt.deliver(SWITCH.topic, { state_l2: 'OFF' });
+    mqtt.published.length = 0;
+
+    engine.runNow('r1');
+    expect(sent(mqtt)).toEqual(['{"state":"OFF"}']);
+  });
+});

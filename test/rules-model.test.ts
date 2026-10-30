@@ -158,6 +158,25 @@ describe('parseRule', () => {
     expect('rule' in huge && huge.rule.waitMs).toBe(24 * 60 * 60 * 1000);
   });
 
+  it('reads a wait in front of an outcome, except the first', () => {
+    const parsed = parseRule(
+      {
+        name: 'Step by step',
+        trigger,
+        branches: [
+          { waitMs: 5000, actions: [action] },
+          { waitMs: 10_000, actions: [action] },
+          { waitMs: 0, actions: [action] },
+          { waitMs: 99 * 60 * 60 * 1000, actions: [action] },
+        ],
+      },
+      'r1',
+    );
+    const waits = 'rule' in parsed ? parsed.rule.branches?.map((branch) => branch.waitMs) : [];
+    // The rule's own wait is the one before the first outcome.
+    expect(waits).toEqual([undefined, 10_000, undefined, 24 * 60 * 60 * 1000]);
+  });
+
   it('fires on any of several triggers', () => {
     const second = { ...trigger, deviceId: '0xother' };
     const parsed = parseRule(

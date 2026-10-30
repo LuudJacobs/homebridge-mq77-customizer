@@ -100,12 +100,14 @@ export function parseRule(raw: unknown, id: string): { rule: AnyRule } | { error
   const branches: Branch[] = [];
 
   if (Array.isArray(raw.branches)) {
-    for (const entry of raw.branches) {
+    for (const [index, entry] of raw.branches.entries()) {
       const parsed = parseBranch(entry);
       if ('error' in parsed) {
         return parsed;
       }
-      branches.push(parsed.branch);
+      // The rule's own wait is the one before the first outcome.
+      const { waitMs: _first, ...first } = parsed.branch;
+      branches.push(index === 0 ? first : parsed.branch);
     }
   } else {
     const parsed = parseBranch(raw);
@@ -398,11 +400,22 @@ function parseBranch(raw: unknown): { branch: Branch } | { error: string } {
     return { error: 'A rule needs at least one action' };
   }
 
-  // A branch is rebuilt rather than copied, so its name has to be carried
-  // across by hand or saving the rule would quietly drop it.
+  // A branch is rebuilt rather than copied, so its name and its wait have to
+  // be carried across by hand or saving the rule would quietly drop them.
   const label = typeof raw.label === 'string' ? raw.label.trim() : '';
+  const waitMs =
+    typeof raw.waitMs === 'number' && raw.waitMs > 0
+      ? clamp(raw.waitMs, MIN_WAIT_MS, MAX_WAIT_MS)
+      : undefined;
 
-  return { branch: { ...(label ? { label } : {}), ...(when ? { when } : {}), actions } };
+  return {
+    branch: {
+      ...(label ? { label } : {}),
+      ...(waitMs === undefined ? {} : { waitMs }),
+      ...(when ? { when } : {}),
+      actions,
+    },
+  };
 }
 
 /**

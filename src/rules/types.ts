@@ -199,6 +199,12 @@ export function deviceActions(actions: AnyAction[]): Action[] {
 export interface Branch {
   /** A note from whoever wrote the rule. Nothing evaluates it. */
   label?: string;
+  /**
+   * How long to wait before asking this one, once the ones before it have
+   * said no. Never on the first: the rule's own `waitMs` is the wait before
+   * that.
+   */
+  waitMs?: number;
   when?: ConditionNode;
   actions: AnyAction[];
 }
@@ -241,7 +247,9 @@ export interface Rule {
    * about ten minutes from now.
    *
    * A wait is called off when what started it stops being true, which is the
-   * difference between this and an action that carries its own delay.
+   * difference between this and an action that carries its own delay. So is
+   * one between two outcomes, and the trigger happening again starts the
+   * rule over from the top.
    */
   waitMs?: number;
   /**

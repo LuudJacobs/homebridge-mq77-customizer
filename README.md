@@ -152,19 +152,20 @@ Across all four:
 - a rule's name is shown with its rooms in front of it, where its trigger device is and where it acts: one or two by name, `Whole house` for more when that is every room with a device in it, and `<n> Rooms` otherwise. Sorted by room, a rule is listed under each of them, with that room first: `Kitchen and Hall`, or `Kitchen and 2 more`
 - an action can copy whatever set the rule off, restated in the target's own terms, so a switch that says `ON` can drive one that expects `true` and a dimmer counting to 254 can drive one counting to 100
 - an action on a number can increase or decrease it instead of setting it, so a button can say half a degree warmer without the rule knowing what warm is at the time. The value is read when the action is sent, so a delayed one counts from what it finds then, and nothing is trimmed to the device's own range: a thermostat already at its highest stays where it is
-- a rule with several outcomes runs the first whose condition holds and skips the rest
+- a rule with several outcomes runs the first whose condition holds and skips the rest. Outcomes and waits move up and down with the arrows on them
+- a condition group says how its conditions are taken together: `All`, `At least 1`, `None` or `Not all` are true. An outcome says the same of its groups, on the line under its heading, once it has a condition
 - an outcome can be **Ignore**, the last choice in its first action's room picker: the rule stops there and sends nothing, so an outcome ahead of the others can say when not to act
 - picking what sets a rule off marks any value another rule already uses with a `*`, since two rules on one button press is a mistake nobody sees until both of them run
 - rules never run on retained messages, so reconnecting to the broker cannot replay yesterday's button press
 - a rule will not run more often than its rate limit, one second by default, and one that runs more than twenty times in ten seconds is switched off and logged on the assumption it is setting itself off
 
-A rule can wait between the trigger and everything else: `Optional wait time (mm:ss)`, empty on most rules. A light coming on, thirty seconds, the light going out again.
+A rule can wait: `+ wait`, beside `+ outcome`, adds a `Wait (mm:ss)` of thirty seconds to begin with. Above the first outcome it is a wait between the trigger and everything else: a light coming on, thirty seconds, the light going out again. Between two outcomes it is a pause before asking the next one, once the ones above it have said no: no answer at once, ask again in a minute. A wait needs an outcome after it, and two in a row are one.
 
-The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. The same thing happening again starts the wait from the top, a different trigger of the same rule takes it over, and a rule's own doing is not read as either. A wait running when Homebridge restarts is forgotten.
+The conditions are asked when the wait runs out rather than when the trigger fired, so "in ten minutes, unless somebody is home by then" asks about ten minutes from now. The wait is called off the moment what started it stops being true: told to run when a light came on, it stops caring once the light is off, however that happened. The same thing happening again starts the rule over from the top, a different trigger of the same rule takes it over, and a rule's own doing is not read as either. A wait running when Homebridge restarts is forgotten.
 
 An action's own delay is a different thing: it comes after the conditions and cannot be called off. Timers were a tab of their own until the wait arrived; anything one of those did is a rule with a wait now.
 
-A rule can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with a wait acts at once when it is run that way, since trying a rule while building it is not sitting through its wait.
+A rule can be run by hand with the Trigger button beside Save, whether or not it is switched on. Only what has been saved can be run. A rule with waits goes straight past them when it is run that way, since trying a rule while building it is not sitting through its waits.
 
 ### Times
 
