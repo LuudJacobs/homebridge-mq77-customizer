@@ -3617,13 +3617,10 @@ function renderBranch(branch, position, blocks, redraw) {
   const head = document.createElement('div');
   head.className = 'branch-head';
 
+  // The heading is the condition editor's to write, since what it says
+  // depends on whether there are any conditions yet.
   const left = document.createElement('div');
   left.className = 'branch-head-left';
-  left.append(sectionTitle(index === 0 ? 'And, optionally' : 'Or when'));
-  // Where the condition editor puts its add button while there is nothing to
-  // show, since there is no row for it to sit on yet.
-  const slot = document.createElement('span');
-  left.append(slot);
   head.append(left);
 
   const right = document.createElement('div');
@@ -3657,7 +3654,7 @@ function renderBranch(branch, position, blocks, redraw) {
   head.append(right);
 
   box.append(head);
-  box.append(conditionEditor(branch, slot));
+  box.append(conditionEditor(branch, left, index === 0));
 
   box.append(sectionTitle('Then'));
   box.append(actionEditor(branch));
@@ -4301,7 +4298,7 @@ function drawMirror(body, draft) {
  * Deeper nesting would express nothing new, since every boolean expression can
  * be written as groups of tests, and it would cost a much heavier editor.
  */
-function conditionEditor(draft, slot) {
+function conditionEditor(draft, heading, first) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
@@ -4327,11 +4324,12 @@ function conditionEditor(draft, slot) {
     wrap.replaceChildren();
 
     groups.forEach((group, index) => {
-      if (index > 0) {
-        const joiner = document.createElement('p');
-        joiner.className = 'joiner';
-        joiner.textContent = joinedBy(mode);
-        wrap.append(joiner);
+      const joiner = joinerBefore(mode, index);
+      if (joiner) {
+        const word = document.createElement('p');
+        word.className = 'joiner';
+        word.textContent = joiner;
+        wrap.append(word);
       }
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
@@ -4343,29 +4341,33 @@ function conditionEditor(draft, slot) {
     });
 
     // With no conditions set there is no row to hang the button off, so it
-    // goes up beside the heading instead of alone on a line of its own. Once
-    // there is something to take together, the heading says how instead.
-    slot?.replaceChildren();
-    if (groups.length === 0 && slot) {
-      slot.append(add);
+    // goes up on the heading's line instead of alone on a line of its own,
+    // after `Or` on any outcome but the first. Once there are conditions the
+    // heading says so, and how the groups are taken together once there is
+    // more than one of them to take.
+    heading.replaceChildren();
+    if (groups.length === 0) {
+      heading.append(...(first ? [] : [sectionTitle('Or')]), add);
       return;
     }
     wrap.append(add);
-    if (groups.length > 0) {
-      const line = combinationLine(mode, (picked) => {
-        mode = picked;
-        commit();
-        draw();
-      });
-      if (slot) {
-        slot.append(line);
-      } else {
-        wrap.prepend(line);
-      }
+    heading.append(sectionTitle(first ? 'And when' : 'Or when'));
+    if (groups.length > 1) {
+      heading.append(
+        combinationLine(mode, (picked) => {
+          mode = picked;
+          commit();
+          draw();
+        }),
+      );
     }
   };
 
   function commit() {
+    // One group or none is all of them, with nothing to say otherwise.
+    if (groups.length < 2) {
+      mode = 'all';
+    }
     draft.when = writeConditions(mode, groups);
   }
 
@@ -4382,11 +4384,19 @@ const COMBINATIONS = [
 ];
 
 /**
- * The word between two of them: all of them is this and that, at least one
- * is this or that. None is neither this nor that, and not all is not both
- * this and that, so each reads the way the one it turns round does.
+ * The word in front of one of them: all of them is this and that, at least
+ * one or not all is this or that, and none is not this and not that, the
+ * first one included.
  */
-const joinedBy = (mode) => (mode === 'any' || mode === 'none' ? 'or' : 'and');
+function joinerBefore(mode, index) {
+  if (mode === 'none') {
+    return index === 0 ? 'not' : 'and not';
+  }
+  if (index === 0) {
+    return undefined;
+  }
+  return mode === 'all' ? 'and' : 'or';
+}
 
 /** `All are true`, as a sentence with the dropdown in it. */
 function combinationLine(mode, onChange) {
@@ -4442,8 +4452,7 @@ function renderGroup(group, groups, index, commit, redraw) {
 
   group.tests.forEach((node, position) => {
     const last = position === group.tests.length - 1;
-    box.append(
-      refRow(node, {
+    const row = refRow(node, {
         pick: watchable,
         withMatch: true,
         onChange: commit,
@@ -4460,7 +4469,7 @@ function renderGroup(group, groups, index, commit, redraw) {
                 redraw();
               }
             : undefined,
-        joiner: last ? undefined : joinedBy(group.mode),
+        joiner: last ? undefined : joinerBefore(group.mode, position + 1),
         trailing: last
           ? addButton('+ condition', () => {
               group.tests.push(newTest());
@@ -4468,8 +4477,13 @@ function renderGroup(group, groups, index, commit, redraw) {
               redraw();
             })
           : undefined,
-      }),
-    );
+      });
+    // Only none has a word in front of the first one.
+    const opening = position === 0 && joinerBefore(group.mode, 0);
+    if (opening) {
+      row.prepend(joinerOf(opening));
+    }
+    box.append(row);
   });
 
   return box;
@@ -4536,7 +4550,7 @@ function readConditions(when) {
   };
   if (when.kind === 'any') {
     const groups = groupsOf(when);
-    return groups && { mode: 'any', groups };
+    return groups && alone({ mode: 'any', groups });
   }
   const single = readGroup(when);
   if (single) {
@@ -4550,7 +4564,26 @@ function readConditions(when) {
   }
   const mode = !turned ? 'all' : list.kind === 'all' ? 'notAll' : 'none';
   const groups = groupsOf(list);
-  return groups && { mode, groups };
+  return groups && alone({ mode, groups });
+}
+
+/** What turning a group round as a whole makes of how it is taken. */
+const TURNED = { all: 'notAll', notAll: 'all', any: 'none', none: 'any' };
+
+/**
+ * One group with a line of its own over it, which the editor no longer shows
+ * for one: at least 1 or all of one is the group itself, and none or not all
+ * of one is the group turned round.
+ */
+function alone(read) {
+  if (read.groups.length !== 1 || read.mode === 'all') {
+    return read;
+  }
+  const [group] = read.groups;
+  if (read.mode === 'none' || read.mode === 'notAll') {
+    group.mode = TURNED[group.mode];
+  }
+  return { mode: 'all', groups: [group] };
 }
 
 /**
