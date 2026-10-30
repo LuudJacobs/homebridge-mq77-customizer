@@ -4326,10 +4326,7 @@ function conditionEditor(draft, heading, first) {
     groups.forEach((group, index) => {
       const joiner = joinerBefore(mode, index);
       if (joiner) {
-        const word = document.createElement('p');
-        word.className = 'joiner';
-        word.textContent = joiner;
-        wrap.append(word);
+        wrap.append(joinerLine(joiner));
       }
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
@@ -4478,10 +4475,10 @@ function renderGroup(group, groups, index, commit, redraw) {
             })
           : undefined,
       });
-    // Only none has a word in front of the first one.
+    // Only none has a word in front of the first one, on a line of its own.
     const opening = position === 0 && joinerBefore(group.mode, 0);
     if (opening) {
-      row.prepend(joinerOf(opening));
+      box.append(joinerLine(opening));
     }
     box.append(row);
   });
@@ -4708,6 +4705,14 @@ function becomeNotify(ref) {
 function joinerOf(word) {
   const joiner = document.createElement('span');
   joiner.className = 'joiner inline';
+  joiner.textContent = word;
+  return joiner;
+}
+
+/** A joining word on a line of its own, between groups or ahead of a row. */
+function joinerLine(word) {
+  const joiner = document.createElement('p');
+  joiner.className = 'joiner';
   joiner.textContent = word;
   return joiner;
 }
