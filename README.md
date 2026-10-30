@@ -55,7 +55,7 @@ What was described is logged at startup, so a topic that matches no device is vi
 
 Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
 
-The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide. Every tab has an address of its own, `/rules`, `/guide` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Guide, every rule on a button is a link to it, and in Log every line about a rule is.
+The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide. Every tab has an address of its own, `/rules`, `/guide` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Guide, every rule on a button is a link to it, and in Log every line about a rule is. Rules, Mirrors, Sliders and Log each have a trigger devices dropdown after the search, with ticks of their own: a rule is left out once everything that can set it off is of a kind unticked, and a log line once what set it off is.
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
@@ -140,7 +140,7 @@ A scan questions every device in turn, so it takes minutes on a mesh of any size
 
 The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line is its time and what happened, and goes to its rule. It says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line. A rule that waits has one line once the wait is over, its waits added up: `waited 02:00 and ran: 1 action sent`, or `wait called off`.
 
-Everything shows except what counts as ignored, which is dimmed and behind the one filter, Ignored rules: a rule that ran into Ignore, found no condition holding or was held back by its rate limit, a slider with nothing left to do, a wait called off, and a press nothing answered. A dropdown beside it lists the kinds of device that set a rule, mirror or slider off, as set in Devices: untick Sensors and nothing a sensor set off is listed, ran or ignored. It reads `All trigger devices`, `2/3 trigger devices` or `Only Controllers`, and is kept in the browser. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
+Everything shows except what counts as ignored, which is dimmed and behind the one filter, Ignored rules: a rule that ran into Ignore, found no condition holding or was held back by its rate limit, a slider with nothing left to do, a wait called off, and a press nothing answered. The trigger devices dropdown beside it lists the kinds of device that set a rule, mirror or slider off, as set in Devices: untick Sensors and nothing a sensor set off is listed, ran or ignored. It reads `All trigger devices`, `2/3 trigger devices` or `Only Controllers`, and is kept in the browser. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
 
 ## Rules
 

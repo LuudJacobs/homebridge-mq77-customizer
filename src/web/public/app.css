@@ -229,7 +229,8 @@ header {
 }
 
 /* Activity is filtered by its text first, then by kind. */
-#view-activity .tab-tools > #filter {
+#view-activity .tab-tools > #filter,
+#view-activity .tab-tools > #trigger-kinds {
   order: -1;
 }
 
@@ -1693,7 +1694,8 @@ a.log-line {
     display: block;
   }
 
-  #kind-filters {
+  #kind-filters,
+  #trigger-kinds {
     display: none;
   }
 

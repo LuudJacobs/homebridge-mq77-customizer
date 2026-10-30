@@ -549,3 +549,91 @@ describe('trigger devices', () => {
     expect(picker.open).toBe(false);
   });
 });
+
+describe('trigger devices on Rules, Mirrors and Sliders', () => {
+  const sensorOn = { ...ref('0xs', 'occupancy'), match: { kind: 'changedTo', value: true } };
+  const listed = [
+    ...rules,
+    { id: 'g1', kind: 'standard', name: 'Gang aan', enabled: true, triggers: [sensorOn], actions: [{ ...ref('0xa'), value: 'ON' }] },
+    // Set off by the sensor or by the remote.
+    {
+      id: 'x1',
+      kind: 'standard',
+      name: 'Beide',
+      enabled: true,
+      triggers: [sensorOn, { ...ref('0xr', 'action'), match: { kind: 'equals', value: '1_single' } }],
+      actions: [{ ...ref('0xb'), value: 'ON' }],
+    },
+    // Set off by the sensor or the clock.
+    {
+      id: 'c1',
+      kind: 'standard',
+      name: 'Nacht',
+      enabled: true,
+      triggers: [sensorOn, { kind: 'time', at: '22:00' }],
+      actions: [{ ...ref('0xb'), value: 'OFF' }],
+    },
+  ];
+
+  async function open(tab: string, stored?: Record<string, string>) {
+    const ui = await openInterface({ state: { devices }, rules: listed, stored });
+    await ui.click(ui.byText('button.tab', tab));
+    return ui;
+  }
+  type UI = Awaited<ReturnType<typeof open>>;
+  const ticks = async (ui: UI) => {
+    await ui.openCard(ui.document.getElementById('trigger-kinds'));
+    return [...ui.document.querySelectorAll('#trigger-kinds-list label')] as HTMLLabelElement[];
+  };
+  const untick = async (ui: UI, kind: string) => {
+    const box = (await ticks(ui)).find((label) => label.textContent === kind)?.querySelector('input');
+    (box as HTMLInputElement).checked = false;
+    box!.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+  };
+  const cards = (ui: UI, list: string) =>
+    [...ui.document.querySelectorAll(`#${list} details.rule summary`)].map((summary) => summary.textContent ?? '');
+
+  it('sits after the search, listing the kinds that set off what the tab lists', async () => {
+    const ui = await open('Rules');
+    const picker = ui.document.getElementById('trigger-kinds') as HTMLElement;
+    expect(picker.hidden).toBe(false);
+    expect(picker.previousElementSibling?.id).toBe('filter');
+    expect((await ticks(ui)).map((tick) => tick.textContent)).toEqual(['Controllers', 'Lights', 'Sensors']);
+
+    const mirrors = await open('Mirrors');
+    expect((await ticks(mirrors)).map((tick) => tick.textContent)).toEqual(['Lights']);
+  });
+
+  it('leaves a rule out only when everything that can set it off is of a kind left out', async () => {
+    const ui = await open('Rules');
+    expect(cards(ui, 'automation').filter((card) => card.includes('Gang aan'))).toHaveLength(1);
+
+    await untick(ui, 'Sensors');
+    expect(ui.document.getElementById('trigger-kinds-label')?.textContent).toBe('2/3 trigger devices');
+    const shown = cards(ui, 'automation');
+    expect(shown.some((card) => card.includes('Gang aan'))).toBe(false);
+    // The remote can still set this one off, and the clock that one.
+    expect(shown.some((card) => card.includes('Beide'))).toBe(true);
+    expect(shown.some((card) => card.includes('Nacht'))).toBe(true);
+  });
+
+  it('keeps a choice for each tab, apart from the others', async () => {
+    const ui = await open('Rules');
+    await untick(ui, 'Sensors');
+    expect(ui.window.localStorage.getItem('mq77.rules.hiddenKinds')).toBe('["sensor"]');
+
+    await ui.click(ui.byText('button.tab', 'Log'));
+    expect(ui.document.getElementById('trigger-kinds-label')?.textContent).toBe('All trigger devices');
+    expect(ui.window.localStorage.getItem('mq77.log.hiddenKinds')).toBeNull();
+
+    // And read back on the next visit.
+    const again = await open('Rules', { 'mq77.rules.hiddenKinds': '["sensor"]' });
+    expect(again.document.getElementById('trigger-kinds-label')?.textContent).toBe('2/3 trigger devices');
+  });
+
+  it('is not offered where there is nothing it could filter', async () => {
+    const ui = await open('Guide');
+    expect((ui.document.getElementById('trigger-kinds') as HTMLElement).hidden).toBe(true);
+  });
+});
