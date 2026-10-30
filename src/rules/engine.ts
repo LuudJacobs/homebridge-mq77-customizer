@@ -5,7 +5,6 @@ import type { Logger } from '../logger.js';
 import { writePath } from '../model/payload.js';
 import type { NormalisedProperty, StateUpdate } from '../model/types.js';
 import type { MqttConnection } from '../mqtt/client.js';
-import { STATES_SOURCE } from '../states.js';
 import type { Store } from '../store.js';
 import { catalogLookup, evaluate, fromConditions } from './conditions.js';
 import { convertValue } from './convert.js';
@@ -257,11 +256,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // happened. Acting on it would fire every rule again on each reconnect.
     if (update.retained) {
       return;
-    }
-
-    // Before the rules it sets off, so it reads underneath them.
-    if (update.sourceId === STATES_SOURCE) {
-      this.noteToggle(update);
     }
 
     // Held back rather than written down at once: a press that sets a rule off
@@ -822,7 +816,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const again = Boolean(trigger && running.trigger && sameTrigger(running.trigger, trigger));
     this.forgetCountdown(rule);
     if (!again && trigger) {
-      this.record(rule, 'cancelled', `${trigger.propertyKey} ${describeMatch(trigger.match)} instead`);
+      this.record(
+        rule,
+        'cancelled',
+        `${trigger.propertyKey} ${describeMatch(trigger.match)} instead`,
+        {},
+        causeOf(running.fired),
+      );
     }
     return again;
   }
@@ -846,8 +846,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       this.struck = fired.time
         ? { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) }
         : undefined;
+      // The waits so far go on with the run, so its one line says them all.
+      const waited = (run?.waited ?? 0) + wait;
       try {
-        this.fire(rule, fired, run);
+        this.fire(rule, fired, { ...(run ?? { from: 0, declined: [], unanswerable: [] }), waited });
       } finally {
         this.moved = undefined;
         this.struck = undefined;
@@ -856,8 +858,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.timers.add(timer);
     this.countdowns.set(rule.id, { timer, trigger, startedWith: fired.value, fired });
 
+    // Only the Homebridge log hears of it now: the interface gets one line
+    // for the whole run, once it has run or been called off.
     if (!again) {
-      this.record(rule, 'waiting', onTheClock(wait));
+      this.log.debug(`Rule "${rule.name}" waiting ${onTheClock(wait)}`);
     }
   }
 
@@ -880,15 +884,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     this.forgetCountdown(rule);
-
-    // The value that took the wait away is what there is to say here, the
-    // same as on a timer's own line.
-    this.moved = said(trigger, value);
-    try {
-      this.record(rule, 'cancelled', `${describeMatch(trigger.match, true)} no longer`);
-    } finally {
-      this.moved = undefined;
-    }
+    this.record(rule, 'cancelled', `${describeMatch(trigger.match, true)} no longer`, {}, causeOf(running.fired));
   }
 
   /** True when this rule wrote to one of these properties a moment ago. */
@@ -972,36 +968,6 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     this.keep(entry);
   }
 
-  /**
-   * Records a state toggle changing.
-   *
-   * Every change, whoever made it: a toggle is something the house is doing,
-   * and when it changed is half of what anybody looking it up wants to know.
-   * A rule that changed one has its own line just above.
-   */
-  private noteToggle(update: StateUpdate): void {
-    if (!('state' in update.changes)) {
-      return;
-    }
-    const value = String(update.changes.state);
-    const name = this.catalog.getDevice(update.sourceId, update.deviceId)?.name ?? update.deviceId;
-    this.keep({
-      at: update.at,
-      ruleId: `${update.sourceId}:${update.deviceId}`,
-      ruleName: name,
-      ruleKind: 'state',
-      outcome: 'fired',
-      detail: `${name} ${value}${update.byHand ? ' (by hand)' : ''}`,
-      changed: {
-        sourceId: update.sourceId,
-        deviceId: update.deviceId,
-        propertyKey: 'state',
-        value,
-      },
-      ...(update.byHand ? { byHand: true } : {}),
-    });
-  }
-
   private keep(entry: LogEntry): void {
     this.entries.push(entry);
     if (this.entries.length > LOG_SIZE) {
@@ -1049,9 +1015,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     const resumed = run !== undefined && run.from > 0;
     const limit = rule.rateLimitMs ?? DEFAULT_RATE_LIMIT_MS;
     const last = this.lastFired.get(rule.id);
+    const waited = run?.waited ? { waitedMs: run.waited } : {};
 
     if (!resumed && last !== undefined && now - last < limit) {
-      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`);
+      this.record(rule, 'rateLimited', `Fired ${now - last}ms ago, minimum ${limit}ms`, waited);
       return;
     }
 
@@ -1078,7 +1045,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
         continue;
       }
       if (index > from && branch.waitMs && !run?.hurry) {
-        this.startCountdown(rule, trigger, { from: index, declined, unanswerable });
+        this.startCountdown(rule, trigger, { from: index, declined, unanswerable, waited: run?.waited });
         return;
       }
       const failed = evaluate(branch.when, lookup);
@@ -1096,10 +1063,10 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       // Not a failure. A rule whose every branch declined has done its job,
       // unless one of them could not be asked at all.
       if (unanswerable.length > 0) {
-        this.record(rule, 'failed', unanswerable[0] as string);
+        this.record(rule, 'failed', unanswerable[0] as string, waited);
         return;
       }
-      this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched');
+      this.record(rule, 'conditionsFailed', declined.join('; ') || 'no branch matched', waited);
       return;
     }
 
@@ -1111,7 +1078,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     // The rule stops here, having decided to, which is worth a line of its own
     // rather than looking like it sent nothing by accident.
     if (chosen.branch.actions.some(isIgnore)) {
-      this.record(rule, 'fired', 'ignored', { branch: what });
+      this.record(rule, 'fired', 'ignored', { branch: what, ...waited });
       return;
     }
 
@@ -1124,7 +1091,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     if (problems.length > 0) {
-      this.record(rule, 'failed', problems.join('; '), { branch: what });
+      this.record(rule, 'failed', problems.join('; '), { branch: what, ...waited });
       return;
     }
 
@@ -1136,7 +1103,7 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     }
 
     const count = chosen.branch.actions.length;
-    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what });
+    this.record(rule, 'fired', `${count} action${count === 1 ? '' : 's'} sent`, { branch: what, ...waited });
   }
 
   /** Returns a problem, or undefined when the action was sent or is on its way. */
@@ -1404,7 +1371,8 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
     rule: AnyRule,
     outcome: LogOutcome,
     detail: string,
-    parts: Pick<LogEntry, 'branch' | 'step' | 'copy'> = {},
+    parts: Pick<LogEntry, 'branch' | 'step' | 'copy' | 'waitedMs'> = {},
+    cause?: Pick<LogEntry, 'changed' | 'firedAt'>,
   ): void {
     // A rule that answers a press says so on its own line, and the press does
     // not get one of its own. Two lines for one thing that happened read as
@@ -1420,10 +1388,13 @@ export class RulesEngine extends EventEmitter<EngineEvents> {
       ruleKind: isMirror(rule) ? 'mirror' : isSlider(rule) ? 'slider' : 'standard',
       outcome,
       detail,
-      // A press is the fuller account of the two, so it wins where a
+      // What set it off: what is going on now, or what the run it is about
+      // was set off by, for a run called off by something else happening. A
+      // press is the fuller account of the two, so it wins where a
       // controller's own action is what moved.
-      ...(this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {}),
-      ...(this.struck ? { firedAt: this.struck } : {}),
+      ...(cause ??
+        (this.pressed ? { press: this.pressed } : this.moved ? { changed: this.moved } : {})),
+      ...(!cause && this.struck ? { firedAt: this.struck } : {}),
       ...parts,
     };
     this.entries.push(entry);
@@ -1529,6 +1500,18 @@ interface Run {
   unanswerable: string[];
   /** Straight past every wait, for trying a rule out. */
   hurry?: boolean;
+  /** The waits gone through so far, added up. */
+  waited?: number;
+}
+
+/** What set a run off, as its log lines tell it. */
+function causeOf(fired: Fired): Pick<LogEntry, 'changed' | 'firedAt'> {
+  return {
+    ...(fired.trigger ? { changed: said(fired.trigger, fired.value) } : {}),
+    ...(fired.time
+      ? { firedAt: { at: fired.time.at, ...(fired.time.offset ? { offset: fired.time.offset } : {}) } }
+      : {}),
+  };
 }
 
 /** Whether a rule waits anywhere, before its outcomes or between them. */

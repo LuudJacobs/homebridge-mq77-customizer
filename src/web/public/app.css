@@ -929,12 +929,11 @@ table.buttons td.in-homekit {
 
 /*
  * Columns rather than a run of words, so every description starts at the
- * same place instead of shifting with the length of the time and the tag
- * before it.
+ * same place instead of shifting with the length of the time before it.
  */
 .log-line {
   display: grid;
-  grid-template-columns: 5.5rem 5.5rem 1fr;
+  grid-template-columns: 5.5rem 1fr;
   gap: 0.6rem;
   align-items: baseline;
   padding: 0.15rem 0.75rem;
@@ -947,21 +946,58 @@ table.buttons td.in-homekit {
   border-bottom: none;
 }
 
-.log-line .tag {
-  margin: 0;
-  flex: none;
-}
-
 .log-time {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--muted);
   white-space: nowrap;
 }
 
-/* Kept off the line spacing of the row, which would stretch the pill. */
-.log-line .tag {
-  justify-self: end;
-  line-height: 1.3;
+/*
+ * Which kinds of device a line may be set off by: one dropdown of ticks, so
+ * a house with twelve kinds of device has one control for them, not twelve.
+ * Drawn like the boxes beside it.
+ */
+.kind-picker {
+  position: relative;
+}
+
+.kind-picker > summary {
+  display: flex;
+  align-items: center;
+  height: 2.3rem;
+  padding: 0 1.6rem 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg) var(--caret) no-repeat right 0.6rem center / 0.6rem auto;
+  color: var(--text);
+  white-space: nowrap;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kind-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kind-picker-list {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  min-width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+
+.kind-picker-list .hint {
+  margin: 0;
+  white-space: nowrap;
 }
 
 /* Smaller than the lists they sit above, being a filter and not the point. */
@@ -980,9 +1016,14 @@ table.buttons td.in-homekit {
   color: var(--error);
 }
 
-.log-line.rateLimited,
-.log-line.conditionsFailed {
+.log-line.ignored {
   color: var(--muted);
+}
+
+/* A line about a rule goes to it, and looks like every other line. */
+a.log-line {
+  color: inherit;
+  text-decoration: none;
 }
 
 .device-seen {
@@ -1637,14 +1678,10 @@ table.buttons td.in-homekit {
     pointer-events: auto;
   }
 
-  /* When it happened and what it was, then what it did underneath. */
+  /* When it happened, and beside it what happened, a part to a line. */
   .log-line {
     grid-template-columns: auto 1fr;
     line-height: 1.6;
-  }
-
-  .log-line > span:last-child {
-    grid-column: 1 / -1;
   }
 
   /*
