@@ -55,7 +55,7 @@ What was described is logged at startup, so a topic that matches no device is vi
 
 Open `http://<your-homebridge-host>:8888`, or whichever port you set, and sign in with the password from the settings.
 
-The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide. Every tab has an address of its own, `/rules`, `/guide` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Guide, every rule on a button is a link to it.
+The tabs are Devices, Rules, Mirrors, Sliders, Home, Log and Guide. Every tab has an address of its own, `/rules`, `/guide` and so on, and opening a device or a rule adds its `#`, so the address bar is always a link to what is open. Following one opens the tab, unfolds the section and scrolls to it. In Guide, every rule on a button is a link to it, and in Log every line about a rule is.
 
 Keep it on your own network. Anybody who gets past that one password can switch every device the plugin publishes, so the port does not belong on the open internet or behind a port forward. Reach it from outside through a VPN, the way you would reach Homebridge itself.
 
@@ -101,7 +101,7 @@ Every device takes a name, a room and a kind, set in its panel. They are for thi
 
 Devices with no kind set are listed first, under Unknown Devices, whatever the list is sorted or grouped by. Every heading in a list says how many are under it and folds them away when clicked. Headings start closed, except Unknown Devices, and open while a filter finds something under them.
 
-Marking a device as a Controller puts its button presses in the Log, with their own filter. Only marked devices: every remote in the house reporting in would bury the rules.
+Marking a device as a Controller puts its button presses that set nothing off in the Log, as ignored: `Kantoor Mini Schakelaar: Triple → ignored: not configured`. Only marked devices: every remote in the house reporting in would bury the rules.
 
 The name reaches HomeKit only where the source names nothing itself, which is the flat JSON publishers. Zigbee2MQTT owns its own names, so one set here stays in this interface. Renaming never changes an accessory's identity, so nothing is lost in the Home app either way.
 
@@ -128,7 +128,7 @@ Under Home, States are values the plugin keeps itself, for what the house is doi
 
 Changing the type starts the value again from false or 0.
 
-A state is picked in a rule from States, under the rooms in a row's first dropdown. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, every change has a line in the log, and deleting one leaves the rules that used it saying what is missing.
+A state is picked in a rule from States, under the rooms in a row's first dropdown. A Boolean can also be a member of a mirror or a trigger of a slider. Its value is kept across restarts, and deleting one leaves the rules that used it saying what is missing.
 
 ### Zigbee map
 
@@ -138,7 +138,9 @@ A scan questions every device in turn, so it takes minutes on a mesh of any size
 
 ### Log
 
-The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line, and each entry says which kind of rule it was. Presses that set nothing off have a filter of their own, off by default, and so do Ignored rules: every line that reads ignored, whether the rule ran into Ignore, no condition held, it was held back by its rate limit or a slider had nothing left to do. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
+The Log tab lists what the rules have been doing, newest first, including the ones that decided not to run and why. Every line is its time and what happened, and goes to its rule. It says what set the rule off, in the same shape whatever it was: the device and the button pressed on it, the device and the reading that moved, or the time of day. A press and the rule it set off read as one line. A rule that waits has one line once the wait is over, its waits added up: `waited 02:00 and ran: 1 action sent`, or `wait called off`.
+
+Everything shows except what counts as ignored, which is dimmed and behind the one filter, Ignored rules: a rule that ran into Ignore, found no condition holding or was held back by its rate limit, a slider with nothing left to do, a wait called off, and a press nothing answered. The filter box finds a line by anything it says, and by the name or topic of any device it is about.
 
 ## Rules
 

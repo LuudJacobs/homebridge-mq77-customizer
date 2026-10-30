@@ -342,8 +342,6 @@ export function isMirror(rule: AnyRule): rule is MirrorRule {
 
 export type LogOutcome =
   | 'fired'
-  /** A rule with a wait is counting down before it asks anything. */
-  | 'waiting'
   /** A wait was called off before it got there. */
   | 'cancelled'
   | 'rateLimited'
@@ -357,10 +355,9 @@ export interface LogEntry {
   at: number;
   ruleId: string;
   ruleName: string;
-  /** Which list the rule lives in, so the run log can be split the same way. */
-  /** `action` is not a rule at all, but a button press worth seeing. */
-  /** Nor is `state`: a state toggle changing, by hand or by a rule. */
-  ruleKind: 'standard' | 'mirror' | 'slider' | 'action' | 'state';
+  /** Which list the rule lives in, so a line can go to it. */
+  /** `action` is not a rule at all, but a button press nothing answered. */
+  ruleKind: 'standard' | 'mirror' | 'slider' | 'action';
   outcome: LogOutcome;
   /** Why, in a sentence. What the Homebridge log gets, and the last resort. */
   detail: string;
@@ -394,8 +391,11 @@ export interface LogEntry {
   step?: LogStep;
   /** What a mirror copied, and where to. */
   copy?: LogCopy;
-  /** A state toggle somebody flipped in the interface. */
-  byHand?: boolean;
+  /**
+   * How long the rule waited before getting here, its waits added up: the one
+   * before its first outcome and any between outcomes it went past.
+   */
+  waitedMs?: number;
 }
 
 /** The time a rule was set off by, in parts. */

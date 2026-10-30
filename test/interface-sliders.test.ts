@@ -232,12 +232,6 @@ describe('the sliders tab', () => {
     const hints = [...ui.document.querySelectorAll('#sliders .hint')].map((node) => node.textContent);
     expect(hints.some((text) => text?.includes('cannot'))).toBe(true);
   });
-
-  it('offers sliders in the activity filter', async () => {
-    const ui = await openInterface({ state: { devices }, rules: [slider()] });
-    await ui.click(ui.byText('button.tab', 'Log'));
-    expect(ui.document.querySelector('#kind-slider')).not.toBeNull();
-  });
 });
 
 describe('the cycle button', () => {

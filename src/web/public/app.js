@@ -27,8 +27,6 @@ const state = {
   filter: '',
   /** Hides everything that is not currently published to HomeKit. */
   /** Hides rules that are switched off. */
-  /** Which kinds the activity list shows. */
-  activityKinds: { standard: true, mirror: true, slider: true, action: false, state: true },
   /** Lines that read `ignored`, left out until they are asked for. */
   showIgnored: false,
   /** Whether the controller overview lists buttons nothing is bound to. */
@@ -98,10 +96,6 @@ const el = {
   status: document.getElementById('status'),
   kindFilters: document.getElementById('kind-filters'),
   tools: document.getElementById('tab-tools'),
-  kindAutomation: document.getElementById('kind-automation'),
-  kindMirror: document.getElementById('kind-mirror'),
-  kindSlider: document.getElementById('kind-slider'),
-  kindAction: document.getElementById('kind-action'),
   kindIgnored: document.getElementById('kind-ignored'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
@@ -153,7 +147,6 @@ const el = {
   addMirror: document.getElementById('add-mirror'),
   addSlider: document.getElementById('add-slider'),
   addState: document.getElementById('add-state'),
-  kindState: document.getElementById('kind-state'),
   zigbee2mqttLink: document.getElementById('zigbee2mqtt-link'),
   build: document.getElementById('build'),
 };
@@ -1975,31 +1968,6 @@ el.sort.addEventListener('change', () => {
   repaint();
 });
 
-el.kindAutomation.addEventListener('change', () => {
-  state.activityKinds.standard = el.kindAutomation.checked;
-  renderLog();
-});
-
-el.kindMirror.addEventListener('change', () => {
-  state.activityKinds.mirror = el.kindMirror.checked;
-  renderLog();
-});
-
-el.kindSlider.addEventListener('change', () => {
-  state.activityKinds.slider = el.kindSlider.checked;
-  renderLog();
-});
-
-el.kindAction.addEventListener('change', () => {
-  state.activityKinds.action = el.kindAction.checked;
-  renderLog();
-});
-
-el.kindState.addEventListener('change', () => {
-  state.activityKinds.state = el.kindState.checked;
-  renderLog();
-});
-
 el.kindIgnored.addEventListener('change', () => {
   state.showIgnored = el.kindIgnored.checked;
   renderLog();
@@ -2084,23 +2052,26 @@ const OUTCOME_LABELS = {
   // that decided not to.
   rateLimited: 'ignored',
   conditionsFailed: 'ignored',
-  waiting: 'waiting',
   failed: 'failed',
   disabled: 'turned off',
   skipped: 'ignored',
   started: 'started',
-  cancelled: 'called off',
+  cancelled: 'wait called off',
 };
 
 /**
- * Whether a line reads `ignored`: a rule held back, with no outcome to take,
- * or one that ran into Ignore, and a slider with nothing left to do. A press
- * that set it off is on the same line, and goes with it.
+ * Whether a line counts as ignored, dimmed and left out until asked for: a
+ * rule held back, with no outcome to take, or one that ran into Ignore, a
+ * slider with nothing left to do, a wait called off, and a press nothing
+ * answered. A press that set a rule off is on the rule's line, and goes with
+ * it.
  */
 function isIgnored(entry) {
   return (
     OUTCOME_LABELS[entry.outcome] === 'ignored' ||
-    (entry.outcome === 'fired' && entry.detail === 'ignored')
+    (entry.outcome === 'fired' && entry.detail === 'ignored') ||
+    entry.outcome === 'cancelled' ||
+    entry.ruleKind === 'action'
   );
 }
 
@@ -2119,24 +2090,17 @@ const WORDLESS = new Set(['cancelled']);
 function logParts(entry) {
   const words = (text) => document.createTextNode(text);
 
-  // A press of its own: nothing answered it, so it is the whole line.
+  // A press nothing answered, read the way one that set a rule off is, with
+  // nothing to have set off.
   if (entry.ruleKind === 'action') {
     const device = findDevice(entry.press ?? refOf(entry.ruleId));
+    const pressed = pressWords(entry.press) ?? entry.detail;
     return [
-      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
+      phrase(
+        ...(device ? deviceParts(device, `: ${pressed} →`) : [words(`${entry.ruleName}: ${pressed} →`)]),
+      ),
       words(' '),
-      phrase(words(pressWords(entry.press) ?? entry.detail)),
-    ];
-  }
-
-  // A toggle changing: where it stands now, and whether somebody did it.
-  if (entry.ruleKind === 'state') {
-    const device = findDevice(entry.changed ?? refOf(entry.ruleId));
-    const value = entry.changed?.value ?? '';
-    return [
-      phrase(...(device ? deviceParts(device, ':') : [words(`${entry.ruleName}:`)])),
-      words(' '),
-      phrase(words(entry.byHand ? `${value} (by hand)` : value)),
+      phrase(words('ignored: not configured')),
     ];
   }
 
@@ -2180,10 +2144,9 @@ function logParts(entry) {
     parts.push(phrase(chunk), words(' '));
   }
 
-  // `waiting 00:30` is a sentence, not a heading over one, so it is the one
-  // outcome whose words follow without a colon.
-  const joined = entry.outcome === 'waiting' ? '' : ':';
-  parts.push(phrase(words(`${named} - ${branch}${outcome}${said ? joined : ''}`)));
+  // A run that waited is one line, said once it is over.
+  const waited = entry.waitedMs ? `waited ${describeWait(entry.waitedMs)} and ` : '';
+  parts.push(phrase(words(`${named} - ${waited}${branch}${outcome}${said ? ':' : ''}`)));
   if (said) {
     parts.push(words(' '), phrase(words(said)));
   }
@@ -5419,14 +5382,6 @@ function valueInput(property, current, onChange, options = {}) {
   return input;
 }
 
-const KIND_LABELS = {
-  standard: 'rule',
-  mirror: 'mirror',
-  slider: 'slider',
-  action: 'action',
-  state: 'state',
-};
-
 function renderLog() {
   const container = el.activityLog;
   container.replaceChildren();
@@ -5434,7 +5389,6 @@ function renderLog() {
 
   // Drawn first and matched after, so the filter reads what is on screen.
   const lines = state.log
-    .filter((entry) => state.activityKinds[entry.ruleKind ?? 'standard'])
     .filter((entry) => state.showIgnored || !isIgnored(entry))
     .map(logLine)
     .filter((line) => !term || line.search.includes(term));
@@ -5456,21 +5410,22 @@ function renderLog() {
  * more than the line says of them.
  */
 function logLine(entry) {
-  const line = document.createElement('div');
-  line.className = `log-line ${entry.outcome}`;
+  // A line about a rule goes to it. A press nothing answered has nowhere to go.
+  const rule =
+    entry.ruleKind === 'action' ? undefined : state.rules.find((candidate) => candidate.id === entry.ruleId);
+  const line = document.createElement(rule ? 'a' : 'div');
+  if (rule) {
+    linkToRule(line, rule);
+  }
+  line.className = `log-line ${entry.outcome}${isIgnored(entry) ? ' ignored' : ''}`;
   const when = document.createElement('span');
   when.className = 'log-time';
   when.textContent = new Date(entry.at).toLocaleTimeString();
-  // Both kinds share this list now, and two rules can share a name, so each
-  // entry says which it came from.
-  const kind = document.createElement('span');
-  kind.className = 'tag';
-  kind.textContent = KIND_LABELS[entry.ruleKind ?? 'standard'];
 
   const what = document.createElement('span');
   what.className = 'log-what';
   what.replaceChildren(...logParts(entry));
-  line.append(when, kind, what);
+  line.append(when, what);
 
   // The drawings carry titles, which are not words on the line.
   const said = line.cloneNode(true);
@@ -5494,8 +5449,8 @@ function logRefs(entry) {
     entry.copy?.from,
     ...(entry.copy?.to ?? []),
     ...(rule ? ruleRefs(rule) : []),
-    // A press or a state on a line of its own is named by its key.
-    ...(entry.ruleKind === 'action' || entry.ruleKind === 'state' ? [refOf(entry.ruleId)] : []),
+    // A press on a line of its own is named by its key.
+    ...(entry.ruleKind === 'action' ? [refOf(entry.ruleId)] : []),
   ].filter(Boolean);
 }
 
@@ -5594,6 +5549,11 @@ function ruleLink(rule, text) {
   const link = document.createElement('a');
   link.className = 'rule-link';
   link.textContent = text;
+  return linkToRule(link, rule);
+}
+
+/** Makes a link go to a rule, the way {@link ruleLink} does. */
+function linkToRule(link, rule) {
   link.href = addressOf(viewOfRule(rule), shortLink(rule.id));
   link.addEventListener('click', (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
