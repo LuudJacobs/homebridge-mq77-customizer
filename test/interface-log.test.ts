@@ -475,7 +475,8 @@ describe('trigger devices', () => {
   const log = [
     entry({ press }),
     entry({ ruleId: 'g1', ruleName: 'Gang aan', changed: { ...ref('0xs', 'occupancy'), value: 'true' } }),
-    entry({ ruleId: 'm1', ruleName: 'Lichten', ruleKind: 'mirror', changed: { ...ref('0xa'), value: 'ON' } }),
+    // A mirror's line says what it copied, from one member to the rest.
+    entry({ ruleId: 'm1', ruleName: 'Lichten', ruleKind: 'mirror', copy: { from: ref('0xa'), to: [ref('0xb')] } }),
     entry({ ruleId: 'w1', ruleName: 'Aanrecht', firedAt: { at: '22:00' } }),
   ];
 
@@ -529,6 +530,12 @@ describe('trigger devices', () => {
       'Woonkamer Remote: 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
       expect.stringContaining('Aanrecht'),
     ]);
+  });
+
+  it('leaves out a mirror by the member it copied from', async () => {
+    const ui = await open();
+    await untick(ui, 'Lights');
+    expect(names(ui).some((line) => line?.includes('Lichten'))).toBe(false);
   });
 
   it('keeps what it leaves out in this browser', async () => {

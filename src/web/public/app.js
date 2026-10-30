@@ -5538,9 +5538,12 @@ function leftOutByKind(rule, hiding) {
   return kinds.size > 0 && [...kinds].every((kind) => hiding.has(kind));
 }
 
-/** The kind of device that set a line off, or undefined for the clock and a hand. */
+/**
+ * The kind of device that set a line off, or undefined for the clock and a
+ * hand. A mirror's line says what it copied from, which is what set it off.
+ */
 function setOffByKind(entry) {
-  const cause = entry.press ?? entry.changed;
+  const cause = entry.press ?? entry.changed ?? entry.copy?.from;
   const device = cause ? findDevice(cause) : undefined;
   return device ? (device.exposure.type ?? '') : undefined;
 }
