@@ -3294,7 +3294,7 @@ function ruleFooter(rule, draft, body) {
     try {
       await api('/api/rules', {
         method: 'PUT',
-        body: JSON.stringify({ ...draft, enabled: stored.enabled }),
+        body: JSON.stringify({ ...forSaving(draft), enabled: stored.enabled }),
       });
       state.ruleDrafts.delete(rule.id);
       // Saved, so it has a name worth sorting by and can take its place.
@@ -3454,10 +3454,6 @@ function drawWhenThen(body, draft) {
   drawTriggers();
   body.append(triggers);
 
-  // Between what sets the rule off and what it asks: the wait runs first, and
-  // the conditions are asked when it runs out.
-  body.append(waitRow(draft, { label: 'Optional wait time (mm:ss)' }));
-
   // One outcome or several. The first branch that holds runs, so else if is
   // exclusive by construction rather than by carefully written conditions.
   draft.branches = draft.branches?.length
@@ -3466,30 +3462,157 @@ function drawWhenThen(body, draft) {
   delete draft.when;
   delete draft.conditions;
   delete draft.actions;
+  draft.branches = withWaits(draft);
 
-  const branches = document.createElement('div');
-  const drawBranches = () => {
-    branches.replaceChildren();
-    draft.branches.forEach((branch, index) => {
-      branches.append(renderBranch(branch, index, draft.branches, drawBranches));
+  const blocks = document.createElement('div');
+  const drawBlocks = () => {
+    blocks.replaceChildren();
+    draft.branches.forEach((block, position) => {
+      blocks.append(
+        isWaitBlock(block)
+          ? renderWaitBlock(block, position, draft.branches, drawBlocks)
+          : renderBranch(block, position, draft.branches, drawBlocks),
+      );
     });
-    branches.append(
+    const adds = document.createElement('div');
+    adds.className = 'block-buttons';
+    adds.append(
       addButton('+ outcome', () => {
         draft.branches.push({ actions: [{ ...emptyRef(), value: '' }] });
-        drawBranches();
+        drawBlocks();
+      }),
+      addButton('+ wait', () => {
+        draft.branches.push({ kind: 'wait', waitMs: NEW_WAIT_MS });
+        drawBlocks();
       }),
     );
+    blocks.append(adds);
   };
-  drawBranches();
-  body.append(branches);
+  drawBlocks();
+  body.append(blocks);
+}
+
+/** What a wait added in the editor starts at, the same as the server's own. */
+const NEW_WAIT_MS = 30_000;
+
+const isWaitBlock = (block) => block?.kind === 'wait';
+
+/**
+ * The outcomes with the waits in among them, as the editor has them.
+ *
+ * Stored, the rule's own wait is the one before its first outcome and any
+ * other is on the outcome it comes before. Edited, they are all blocks of
+ * their own, to be moved about like the outcomes. Drawing a rule again takes
+ * the blocks as they are.
+ */
+function withWaits(draft) {
+  const blocks = draft.waitMs ? [{ kind: 'wait', waitMs: draft.waitMs }] : [];
+  delete draft.waitMs;
+  for (const [index, entry] of draft.branches.entries()) {
+    if (!isWaitBlock(entry) && entry.waitMs && index > 0) {
+      blocks.push({ kind: 'wait', waitMs: entry.waitMs });
+    }
+    if (!isWaitBlock(entry)) {
+      delete entry.waitMs;
+    }
+    blocks.push(entry);
+  }
+  return blocks;
+}
+
+/**
+ * And back into what is stored, refusing waits that would wait for nothing:
+ * one with no time, one with no outcome after it, or two in a row.
+ */
+function forSaving(draft) {
+  if (!draft.branches?.some(isWaitBlock)) {
+    return draft;
+  }
+  const branches = [];
+  let waitMs;
+  let pending;
+  for (const block of draft.branches) {
+    if (isWaitBlock(block)) {
+      if (!block.waitMs) {
+        throw new Error('A wait needs a time');
+      }
+      if (pending !== undefined) {
+        throw new Error('Two waits in a row: make them one');
+      }
+      pending = block.waitMs;
+      continue;
+    }
+    if (pending !== undefined && branches.length === 0) {
+      waitMs = pending;
+    }
+    branches.push(pending !== undefined && branches.length > 0 ? { ...block, waitMs: pending } : block);
+    pending = undefined;
+  }
+  if (pending !== undefined) {
+    throw new Error('A wait needs an outcome after it');
+  }
+  return { ...draft, branches, ...(waitMs ? { waitMs } : {}) };
+}
+
+/**
+ * Up and down a place, past whatever is next to it, outcome or wait. Neither
+ * at the ends, where there is no place to go.
+ */
+function moveButtons(position, blocks, redraw, what) {
+  const move = (text, to) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'add-row move';
+    button.textContent = text;
+    button.title = `Move ${what} ${to < position ? 'up' : 'down'}`;
+    button.disabled = to < 0 || to >= blocks.length;
+    button.addEventListener('click', () => {
+      [blocks[position], blocks[to]] = [blocks[to], blocks[position]];
+      redraw();
+    });
+    return button;
+  };
+  return [move('\u2191', position - 1), move('\u2193', position + 1)];
+}
+
+/** A wait between two outcomes, or before the first: a time, and nothing else. */
+function renderWaitBlock(block, position, blocks, redraw) {
+  const box = document.createElement('div');
+  box.className = 'wait-block';
+
+  const head = document.createElement('div');
+  head.className = 'branch-head';
+  const left = document.createElement('div');
+  left.className = 'branch-head-left';
+  left.append(waitRow(block, { label: 'Wait (mm:ss)' }));
+
+  const right = document.createElement('div');
+  right.className = 'branch-head-right';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'add-row';
+  remove.textContent = '\u2715';
+  remove.title = 'Remove wait';
+  remove.addEventListener('click', () => {
+    blocks.splice(position, 1);
+    redraw();
+  });
+  right.append(...moveButtons(position, blocks, redraw, 'wait'), remove);
+
+  head.append(left, right);
+  box.append(head);
+  return box;
 }
 
 /** One outcome: what has to hold, and what to do when it does. */
-function renderBranch(branch, index, branches, redraw) {
+function renderBranch(branch, position, blocks, redraw) {
   const box = document.createElement('div');
   box.className = 'branch';
 
-  const only = branches.length === 1;
+  // Counted among the outcomes alone: a wait is not one.
+  const outcomes = blocks.filter((block) => !isWaitBlock(block));
+  const index = outcomes.indexOf(branch);
+  const only = outcomes.length === 1;
 
   const head = document.createElement('div');
   head.className = 'branch-head';
@@ -3516,7 +3639,7 @@ function renderBranch(branch, index, branches, redraw) {
   name.addEventListener('input', () => {
     branch.label = name.value.trim() || undefined;
   });
-  right.append(name);
+  right.append(name, ...moveButtons(position, blocks, redraw, 'outcome'));
 
   if (!only) {
     const remove = document.createElement('button');
@@ -3525,7 +3648,7 @@ function renderBranch(branch, index, branches, redraw) {
     remove.textContent = '✕';
     remove.title = `Remove outcome ${index + 1}`;
     remove.addEventListener('click', () => {
-      branches.splice(index, 1);
+      blocks.splice(position, 1);
       redraw();
     });
     right.append(remove);
@@ -3610,8 +3733,7 @@ function powerOf(ref) {
 /**
  * Two boxes and a colon: a wait, said the way a clock says it.
  *
- * Empty is what it starts as and what it goes back to, with `00` shown
- * behind rather than typed in, since most rules act at once.
+ * Empty is no time at all, with `00` shown behind rather than typed in.
  */
 function waitRow(draft, { label }) {
   const row = document.createElement('div');
@@ -3643,7 +3765,7 @@ function waitRow(draft, { label }) {
 
   const readWait = () => {
     const both = (Number(minutes.value) || 0) * 60 + (Number(seconds.value) || 0);
-    // Nothing typed is no wait at all, which is how most rules run.
+    // Nothing typed is no time, which a wait cannot be saved with.
     if (both > 0) {
       draft.waitMs = both * 1000;
     } else {
@@ -3662,7 +3784,7 @@ function waitRow(draft, { label }) {
     });
     input.addEventListener('blur', () => {
       // One box filled in wants the other to read `00` beside it; both empty
-      // stay empty, since empty is what having no wait looks like.
+      // stay empty, since empty is what having no time looks like.
       const said = Number(input.value) || 0;
       input.value =
         said > 0 || Number(minutes.value) || Number(seconds.value) ? pad(said) : '';
@@ -4173,18 +4295,24 @@ function drawMirror(body, draft) {
 }
 
 /**
- * Two levels: any of several groups, each all of several tests.
+ * Two levels: an outcome's groups, each of several tests, and on both a line
+ * saying how they are taken together.
  *
  * Deeper nesting would express nothing new, since every boolean expression can
- * be written as an or of ands, and it would cost a much heavier editor.
+ * be written as groups of tests, and it would cost a much heavier editor.
  */
 function conditionEditor(draft, slot) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
+  // A rule saved before expressions existed still carries a flat list, and the
+  // interface is handed rules exactly as stored. Reading only `when` would
+  // show it as having no conditions and drop them on the next save.
+  const read = readConditions(draft.when ?? asExpression(draft.conditions));
+
   // Stored to any depth, so anything hand written that does not fit two levels
   // is left alone rather than quietly flattened.
-  if (draft.when && !isTwoLevel(draft.when)) {
+  if (!read) {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent = `Condition edited by hand: ${draft.when.kind}. Leaving it as it is.`;
@@ -4192,26 +4320,35 @@ function conditionEditor(draft, slot) {
     return wrap;
   }
 
-  // A rule saved before expressions existed still carries a flat list, and the
-  // interface is handed rules exactly as stored. Reading only `when` would
-  // show it as having no conditions and drop them on the next save.
-  const groups = toGroups(draft.when ?? asExpression(draft.conditions));
+  const groups = read.groups;
+  let mode = read.mode;
 
   const draw = () => {
     wrap.replaceChildren();
 
+    // Only once there is something to take together.
+    if (groups.length > 0) {
+      wrap.append(
+        combinationLine(mode, (picked) => {
+          mode = picked;
+          commit();
+          draw();
+        }),
+      );
+    }
+
     groups.forEach((group, index) => {
       if (index > 0) {
-        const or = document.createElement('p');
-        or.className = 'joiner';
-        or.textContent = 'or';
-        wrap.append(or);
+        const joiner = document.createElement('p');
+        joiner.className = 'joiner';
+        joiner.textContent = joinedBy(mode);
+        wrap.append(joiner);
       }
       wrap.append(renderGroup(group, groups, index, commit, draw));
     });
 
-    const add = addButton(groups.length === 0 ? '+ condition' : 'Add or', () => {
-      groups.push({ negated: false, tests: [newTest()] });
+    const add = addButton(groups.length === 0 ? '+ condition' : '+ condition group', () => {
+      groups.push({ mode: 'all', tests: [newTest()] });
       commit();
       draw();
     });
@@ -4227,11 +4364,55 @@ function conditionEditor(draft, slot) {
   };
 
   function commit() {
-    draft.when = fromGroups(groups);
+    draft.when = writeConditions(mode, groups);
   }
 
   draw();
   return wrap;
+}
+
+/** How the tests of a group, or the groups of an outcome, are taken together. */
+const COMBINATIONS = [
+  ['all', 'All'],
+  ['any', 'At least 1'],
+  ['none', 'None'],
+  ['notAll', 'Not all'],
+];
+
+/**
+ * The word between two of them: all of them is this and that, at least one
+ * is this or that. None is neither this nor that, and not all is not both
+ * this and that, so each reads the way the one it turns round does.
+ */
+const joinedBy = (mode) => (mode === 'any' || mode === 'none' ? 'or' : 'and');
+
+/** `All are true`, as a sentence with the dropdown in it. */
+function combinationLine(mode, onChange) {
+  const line = document.createElement('div');
+  line.className = 'combination';
+
+  const pick = document.createElement('select');
+  for (const [value, text] of COMBINATIONS) {
+    const choice = document.createElement('option');
+    choice.value = value;
+    choice.textContent = text;
+    pick.append(choice);
+  }
+  pick.value = mode;
+
+  // At least 1 is one of them, so it is.
+  const verb = document.createElement('span');
+  const paint = () => {
+    verb.textContent = pick.value === 'any' ? 'is true' : 'are true';
+  };
+  paint();
+  pick.addEventListener('change', () => {
+    paint();
+    onChange(pick.value);
+  });
+
+  line.append(pick, verb);
+  return line;
 }
 
 function renderGroup(group, groups, index, commit, redraw) {
@@ -4240,18 +4421,13 @@ function renderGroup(group, groups, index, commit, redraw) {
 
   const head = document.createElement('div');
   head.className = 'group-head';
-  const negate = document.createElement('label');
-  negate.className = 'toggle';
-  const negateBox = document.createElement('input');
-  negateBox.type = 'checkbox';
-  negateBox.checked = group.negated;
-  negateBox.addEventListener('change', () => {
-    group.negated = negateBox.checked;
-    commit();
-  });
-  negate.append(negateBox, document.createTextNode('Not'));
-  negate.title = 'Holds when this group does not';
-  head.append(negate);
+  head.append(
+    combinationLine(group.mode, (picked) => {
+      group.mode = picked;
+      commit();
+      redraw();
+    }),
+  );
 
   head.append(
     addButton('Remove group', () => {
@@ -4270,7 +4446,7 @@ function renderGroup(group, groups, index, commit, redraw) {
         withMatch: true,
         onChange: commit,
         // A condition can ask the time, said as a side of one rather than as
-        // a range: a night is after 22:00 or before 06:00, in one `any` group.
+        // a range: a night is after 22:00 or before 06:00, at least 1 true.
         allowTime: true,
         asCondition: true,
         redraw,
@@ -4282,7 +4458,7 @@ function renderGroup(group, groups, index, commit, redraw) {
                 redraw();
               }
             : undefined,
-        joiner: last ? undefined : 'and',
+        joiner: last ? undefined : joinedBy(group.mode),
         trailing: last
           ? addButton('+ condition', () => {
               group.tests.push(newTest());
@@ -4309,53 +4485,108 @@ function asExpression(conditions) {
   return { kind: 'all', nodes: conditions.map((condition) => ({ kind: 'test', ...condition })) };
 }
 
-/** True when the stored expression is something this editor can show. */
-function isTwoLevel(when) {
-  // A row is a device test or a time. Anything else is somebody's own work,
-  // written by hand, and is left alone rather than flattened into rows.
-  const rowish = (node) => node.kind === 'test' || node.kind === 'time';
+/** A row is a device test or a time. Anything else is a group of them, or more. */
+const isRow = (node) => node?.kind === 'test' || node?.kind === 'time';
 
-  const groupish = (node) =>
-    rowish(node) ||
-    (node.kind === 'not' && groupish(node.node)) ||
-    (node.kind === 'all' && node.nodes.every(rowish));
-
-  if (when.kind === 'any') {
-    return when.nodes.every(groupish);
+/**
+ * A group as stored, read back into its rows and how they are taken
+ * together: all, any, or either of those turned round. Undefined for
+ * anything deeper, which is not a group this editor can draw.
+ *
+ * A single row turned round is how Not was stored before there was a choice,
+ * and Not was not all of them.
+ */
+function readGroup(node) {
+  const rows = (list) => list.nodes.map((child) => structuredClone(child));
+  if (isRow(node)) {
+    return { mode: 'all', tests: [structuredClone(node)] };
   }
-  return groupish(when);
+  if ((node?.kind === 'all' || node?.kind === 'any') && node.nodes.every(isRow)) {
+    return { mode: node.kind, tests: rows(node) };
+  }
+  if (node?.kind === 'not' && isRow(node.node)) {
+    return { mode: 'notAll', tests: [structuredClone(node.node)] };
+  }
+  if (node?.kind === 'not' && (node.node?.kind === 'all' || node.node?.kind === 'any')) {
+    const inner = node.node;
+    if (inner.nodes.every(isRow)) {
+      return { mode: inner.kind === 'all' ? 'notAll' : 'none', tests: rows(inner) };
+    }
+  }
+  return undefined;
 }
 
-/** Reads the stored expression into the rows the editor works with. */
-function toGroups(when) {
+/**
+ * The stored expression, read into an outcome's groups and how they are taken
+ * together. Undefined for one written by hand that does not fit.
+ *
+ * Any of several is how every outcome with more than one group was stored
+ * before there was a choice, so it stays at least 1 of them. One group alone
+ * is all of one.
+ */
+function readConditions(when) {
   if (!when) {
-    return [];
+    return { mode: 'all', groups: [] };
   }
-  const asGroup = (node) => {
-    if (node.kind === 'not') {
-      return { ...asGroup(node.node), negated: true };
-    }
-    if (node.kind === 'all') {
-      return { negated: false, tests: node.nodes.map((child) => structuredClone(child)) };
-    }
-    return { negated: false, tests: [structuredClone(node)] };
+  const groupsOf = (list) => {
+    const groups = list.nodes.map(readGroup);
+    return groups.every(Boolean) ? groups : undefined;
   };
-  return when.kind === 'any' ? when.nodes.map(asGroup) : [asGroup(when)];
-}
-
-/** And back again, in the simplest form that says the same thing. */
-function fromGroups(groups) {
-  const nodes = groups
-    .filter((group) => group.tests.length > 0)
-    .map((group) => {
-      const inner = group.tests.length === 1 ? group.tests[0] : { kind: 'all', nodes: group.tests };
-      return group.negated ? { kind: 'not', node: inner } : inner;
-    });
-
-  if (nodes.length === 0) {
+  if (when.kind === 'any') {
+    const groups = groupsOf(when);
+    return groups && { mode: 'any', groups };
+  }
+  const single = readGroup(when);
+  if (single) {
+    return { mode: 'all', groups: [single] };
+  }
+  // All of the groups, or none or not all of them. Any of them was read above.
+  const turned = when.kind === 'not';
+  const list = turned ? when.node : when;
+  if (list?.kind !== 'all' && !(turned && list?.kind === 'any')) {
     return undefined;
   }
-  return nodes.length === 1 ? nodes[0] : { kind: 'any', nodes };
+  const mode = !turned ? 'all' : list.kind === 'all' ? 'notAll' : 'none';
+  const groups = groupsOf(list);
+  return groups && { mode, groups };
+}
+
+/**
+ * And back again, in a form that reads back as the same choices.
+ *
+ * The forms earlier versions wrote are kept where they say the same thing,
+ * a lone row bare and several groups any of which will do as an `any`. Any
+ * other group is written whole, so that a group of one row is still a group
+ * when it is read back.
+ */
+function writeConditions(mode, groups) {
+  const kept = groups.filter((group) => group.tests.length > 0);
+  if (kept.length === 0) {
+    return undefined;
+  }
+  if (mode === 'all' && kept.length === 1 && kept[0].mode !== 'any') {
+    return writeGroup(kept[0], true);
+  }
+  const nodes = kept.map((group) => writeGroup(group, mode === 'any'));
+  if (mode === 'all' || mode === 'any') {
+    return { kind: mode, nodes };
+  }
+  return { kind: 'not', node: { kind: mode === 'none' ? 'any' : 'all', nodes } };
+}
+
+/** One group, a lone row left bare where that reads back as the same. */
+function writeGroup(group, bare) {
+  const lone = bare && group.tests.length === 1;
+  switch (group.mode) {
+    case 'any':
+      return { kind: 'any', nodes: group.tests };
+    case 'none':
+      return { kind: 'not', node: { kind: 'any', nodes: group.tests } };
+    case 'notAll':
+      return { kind: 'not', node: lone ? group.tests[0] : { kind: 'all', nodes: group.tests } };
+    default:
+      return lone ? group.tests[0] : { kind: 'all', nodes: group.tests };
+  }
 }
 
 function sectionTitle(text) {
