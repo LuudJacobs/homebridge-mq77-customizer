@@ -929,12 +929,11 @@ table.buttons td.in-homekit {
 
 /*
  * Columns rather than a run of words, so every description starts at the
- * same place instead of shifting with the length of the time and the tag
- * before it.
+ * same place instead of shifting with the length of the time before it.
  */
 .log-line {
   display: grid;
-  grid-template-columns: 5.5rem 5.5rem 1fr;
+  grid-template-columns: 5.5rem 1fr;
   gap: 0.6rem;
   align-items: baseline;
   padding: 0.15rem 0.75rem;
@@ -947,21 +946,10 @@ table.buttons td.in-homekit {
   border-bottom: none;
 }
 
-.log-line .tag {
-  margin: 0;
-  flex: none;
-}
-
 .log-time {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--muted);
   white-space: nowrap;
-}
-
-/* Kept off the line spacing of the row, which would stretch the pill. */
-.log-line .tag {
-  justify-self: end;
-  line-height: 1.3;
 }
 
 /* Smaller than the lists they sit above, being a filter and not the point. */
@@ -980,9 +968,14 @@ table.buttons td.in-homekit {
   color: var(--error);
 }
 
-.log-line.rateLimited,
-.log-line.conditionsFailed {
+.log-line.ignored {
   color: var(--muted);
+}
+
+/* A line about a rule goes to it, and looks like every other line. */
+a.log-line {
+  color: inherit;
+  text-decoration: none;
 }
 
 .device-seen {
@@ -1637,14 +1630,10 @@ table.buttons td.in-homekit {
     pointer-events: auto;
   }
 
-  /* When it happened and what it was, then what it did underneath. */
+  /* When it happened, and beside it what happened, a part to a line. */
   .log-line {
     grid-template-columns: auto 1fr;
     line-height: 1.6;
-  }
-
-  .log-line > span:last-child {
-    grid-column: 1 / -1;
   }
 
   /*

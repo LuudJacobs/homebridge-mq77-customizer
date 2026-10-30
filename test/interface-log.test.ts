@@ -124,13 +124,11 @@ async function lines(log: unknown[]) {
   const ui = await openInterface({ state: { devices }, rules, log });
   await ui.click(ui.byText('button.tab', 'Log'));
 
-  // Presses of their own and ignored rules are left out by default, and here
-  // the list itself is what is under test.
-  for (const id of ['kind-action', 'kind-ignored']) {
-    const box = ui.document.getElementById(id) as HTMLInputElement;
-    box.checked = true;
-    box.dispatchEvent(new ui.window.Event('change'));
-  }
+  // Ignored lines, presses nothing answered among them, are left out by
+  // default, and here the list itself is what is under test.
+  const box = ui.document.getElementById('kind-ignored') as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new ui.window.Event('change'));
   await ui.settle();
 
   return [...ui.document.querySelectorAll('#activity-log .log-line .log-what')].map((node) => {
@@ -156,7 +154,7 @@ describe('what a log line says', () => {
     ]);
   });
 
-  it('reads a press that set nothing off as the device and the button', async () => {
+  it('reads a press that set nothing off as the device and the button, ignored', async () => {
     const noted = entry({
       ruleId: 'zigbee:0xr',
       ruleName: 'remote',
@@ -164,7 +162,7 @@ describe('what a log line says', () => {
       detail: 'Action 2_triple',
       press: { ...press, value: '2_triple' },
     });
-    expect(await lines([noted])).toEqual(['Woonkamer Remote: 2 Triple']);
+    expect(await lines([noted])).toEqual(['Woonkamer Remote: 2 Triple → ignored: not configured']);
   });
 
   it('says which function a mirror read and which it wrote', async () => {
@@ -210,20 +208,18 @@ describe('what a log line says', () => {
     ]);
   });
 
-  it('says a wait was called off without saying why again', async () => {
-    const line = (outcome: string, detail: string) =>
-      entry({ ruleId: 'w1', ruleName: 'Aanrecht', ruleKind: 'standard', outcome, detail });
+  it('says a wait once it is over, as one line: waited and ran, or called off', async () => {
+    const line = (outcome: string, detail: string, over = {}) =>
+      entry({ ruleId: 'w1', ruleName: 'Aanrecht', ruleKind: 'standard', outcome, detail, ...over });
 
     expect(
       await lines([
-        line('waiting', '00:02'),
         line('cancelled', 'is "OFF" no longer'),
-        line('fired', '1 action sent'),
+        line('fired', '1 action sent', { waitedMs: 2000 }),
       ]),
     ).toEqual([
-      'Keuken: Aanrecht - waiting 00:02',
-      'Keuken: Aanrecht - called off',
-      'Keuken: Aanrecht - ran: 1 action sent',
+      'Keuken: Aanrecht - wait called off',
+      'Keuken: Aanrecht - waited 00:02 and ran: 1 action sent',
     ]);
   });
 
@@ -319,10 +315,15 @@ describe('what a log line says', () => {
     expect(line[0]).toContain('4 Single Long');
   });
 
-  it('says a rule is waiting without a colon after the word', async () => {
-    // `waiting 00:30` is a sentence rather than a heading over one.
-    expect(await lines([entry({ outcome: 'waiting', detail: '00:30' })])).toEqual([
-      'Woonkamer: All Off - waiting 00:30',
+  it('says how long a rule waited ahead of the outcome it came to, all its waits added up', async () => {
+    expect(
+      await lines([
+        entry({ branch: 'avond', waitedMs: 120_000 }),
+        entry({ outcome: 'conditionsFailed', detail: 'outcome 1: no', waitedMs: 60_000 }),
+      ]),
+    ).toEqual([
+      "Woonkamer: All Off - waited 02:00 and 'avond' ran: 2 actions sent",
+      'Woonkamer: All Off - waited 01:00 and ignored: Conditions not met',
     ]);
   });
 
@@ -332,7 +333,7 @@ describe('what a log line says', () => {
     ).toEqual(['Woonkamer: All Off - ignored: Fired 651ms ago, minimum 1000ms']);
   });
 
-  it('leaves presses out of the list until they are asked for', async () => {
+  it('leaves a press nothing answered out with the ignored lines', async () => {
     const ui = await openInterface({
       state: { devices },
       rules,
@@ -346,6 +347,58 @@ describe('what a log line says', () => {
     // A press that set a rule off is on that rule line, so the list opens
     // without a column of presses beside it.
     expect(ui.document.querySelectorAll('#activity-log .log-line')).toHaveLength(1);
+  });
+
+  it('is the time and the line, with no column saying what kind it is', async () => {
+    const ui = await openInterface({ state: { devices }, rules, log: [entry({ press })] });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    const line = ui.document.querySelector('#activity-log .log-line') as HTMLElement;
+    expect([...line.children].map((part) => part.className)).toEqual(['log-time', 'log-what']);
+  });
+});
+
+describe('a log line as a link', () => {
+  it('goes to its rule, opened in its tab', async () => {
+    const ui = await openInterface({ state: { devices }, rules, log: [entry({ press })] });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    const line = ui.document.querySelector('#activity-log .log-line') as HTMLAnchorElement;
+    expect(line.tagName).toBe('A');
+    expect(line.getAttribute('href')).toMatch(/^\/rules#[A-Z0-9]{8}$/);
+
+    await ui.click(line);
+    expect(ui.document.querySelector('button.tab.active')?.textContent).toBe('Rules');
+    const open = [...ui.document.querySelectorAll('#automation details.rule')].filter(
+      (card) => (card as HTMLDetailsElement).open,
+    );
+    expect(open.map((card) => card.querySelector('summary')?.textContent)).toEqual([
+      expect.stringContaining('All Off'),
+    ]);
+  });
+
+  it('goes to a slider in Sliders', async () => {
+    const line = entry({ ruleId: 's1', ruleName: 'Ceiling', ruleKind: 'slider', detail: '1 action sent' });
+    const ui = await openInterface({ state: { devices }, rules, log: [line] });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    const link = ui.document.querySelector('#activity-log .log-line') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toMatch(/^\/sliders#/);
+  });
+
+  it('is no link for a press nothing answered, or a rule no longer there', async () => {
+    const ui = await openInterface({
+      state: { devices },
+      rules,
+      log: [
+        entry({ ruleId: 'zigbee:0xr', ruleKind: 'action', ruleName: 'remote', press }),
+        entry({ ruleId: 'gone', ruleName: 'Gone' }),
+      ],
+    });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    const box = ui.document.getElementById('kind-ignored') as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+    const tags = [...ui.document.querySelectorAll('#activity-log .log-line')].map((line) => line.tagName);
+    expect(tags).toEqual(['DIV', 'DIV']);
   });
 });
 
@@ -361,6 +414,8 @@ describe('ignored rules', () => {
       outcome: 'skipped',
       detail: 'already at the top',
     }),
+    entry({ outcome: 'cancelled', detail: 'is ON no longer' }),
+    entry({ ruleId: 'zigbee:0xr', ruleKind: 'action', ruleName: 'remote', press }),
     entry({ press }),
   ];
 
@@ -377,35 +432,29 @@ describe('ignored rules', () => {
       return node.textContent?.replace(/\s+/g, ' ').trim();
     });
 
-  it('sits after Action, unticked', async () => {
+  it('is the only filter, unticked', async () => {
     const ui = await open();
     const labels = [...ui.document.querySelectorAll('#kind-filters label')].map((label) =>
       label.textContent?.trim(),
     );
-    expect(labels.slice(-2)).toEqual(['Action', 'Ignored rules']);
+    expect(labels).toEqual(['Ignored rules']);
     expect((ui.document.getElementById('kind-ignored') as HTMLInputElement).checked).toBe(false);
   });
 
-  it('leaves out every line that reads ignored, and the press on it', async () => {
+  it('leaves out every line that counts as ignored: a wait called off and a press nothing answered too', async () => {
     const ui = await open();
     expect(shown(ui)).toEqual([
       'Woonkamer Remote: 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
     ]);
-
-    // Not even as a press of its own, with presses asked for.
-    const presses = ui.document.getElementById('kind-action') as HTMLInputElement;
-    presses.checked = true;
-    presses.dispatchEvent(new ui.window.Event('change'));
-    await ui.settle();
-    expect(shown(ui)).toHaveLength(1);
   });
 
-  it('shows them all once ticked', async () => {
+  it('shows them all once ticked, dimmed', async () => {
     const ui = await open();
     const box = ui.document.getElementById('kind-ignored') as HTMLInputElement;
     box.checked = true;
     box.dispatchEvent(new ui.window.Event('change'));
     await ui.settle();
-    expect(shown(ui)).toHaveLength(5);
+    expect(shown(ui)).toHaveLength(7);
+    expect(ui.document.querySelectorAll('#activity-log .log-line.ignored')).toHaveLength(6);
   });
 });
