@@ -136,15 +136,49 @@ describe('the condition editor', () => {
     expect(outcomeLine(ui)).toBeNull();
   });
 
-  it('starts a later outcome at or, and says or when once it has a condition', async () => {
+  it('starts a later outcome at or else, straight into its actions, and says or when then once it has a condition', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ outcome'));
     const later = () =>
       ui.document.querySelectorAll('.branch .branch-head-left')[1] as HTMLElement;
+    const then = (index: number) =>
+      [...ui.document.querySelectorAll('.branch')][index]?.querySelector(':scope > p.group-title') as HTMLElement;
 
-    expect(later().textContent?.replace(/\s+/g, ' ').trim()).toBe('Or+ condition');
+    // Or else what is above it, which reads on into the actions as it is.
+    expect(later().textContent?.replace(/\s+/g, ' ').trim()).toBe('Or else+ condition');
+    expect(then(1).textContent).toBe('Then');
+    expect(then(1).hidden).toBe(true);
+    // The first outcome says then whatever it has.
+    expect(then(0).hidden).toBe(false);
+
     await ui.click(later().querySelector('button.add-row'));
     expect(later().querySelector('p.group-title')?.textContent).toBe('Or when');
+    expect(then(1).hidden).toBe(false);
+
+    // And back again once its only group goes.
+    const second = [...ui.document.querySelectorAll('.branch')][1] as HTMLElement;
+    await ui.click([...second.querySelectorAll('button.add-row')].find((button) => button.textContent === 'Remove group'));
+    expect(later().textContent?.replace(/\s+/g, ' ').trim()).toBe('Or else+ condition');
+    expect(then(1).hidden).toBe(true);
+  });
+
+  it('will not save an outcome after one without a condition, which would never be asked', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
+    // The new one, up above the one with a condition.
+    await ui.click(ui.document.querySelectorAll('.branch-head button[title="Move outcome up"]')[1]);
+    const before = ui.requests.length;
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+
+    expect(ui.byText('span.error', 'Only the last outcome can go without a condition')).not.toBeNull();
+    expect(ui.requests.slice(before).some((request) => request.body !== undefined)).toBe(false);
+  });
+
+  it('keeps a condition taken off an old rule off when the outcomes are drawn again', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', 'Remove group', '.conditions'));
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
+    expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(0);
   });
 
   it('opens a row with a room picker and then a device picker', async () => {
