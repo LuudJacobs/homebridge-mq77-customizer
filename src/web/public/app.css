@@ -952,6 +952,54 @@ table.buttons td.in-homekit {
   white-space: nowrap;
 }
 
+/*
+ * Which kinds of device a line may be set off by: one dropdown of ticks, so
+ * a house with twelve kinds of device has one control for them, not twelve.
+ * Drawn like the boxes beside it.
+ */
+.kind-picker {
+  position: relative;
+}
+
+.kind-picker > summary {
+  display: flex;
+  align-items: center;
+  height: 2.3rem;
+  padding: 0 1.6rem 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg) var(--caret) no-repeat right 0.6rem center / 0.6rem auto;
+  color: var(--text);
+  white-space: nowrap;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kind-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kind-picker-list {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  min-width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+
+.kind-picker-list .hint {
+  margin: 0;
+  white-space: nowrap;
+}
+
 /* Smaller than the lists they sit above, being a filter and not the point. */
 .kind-filters .toggle {
   font-size: 0.78rem;

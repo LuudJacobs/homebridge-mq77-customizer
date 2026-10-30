@@ -27,6 +27,8 @@ export async function openInterface(options: {
   at?: string;
   /** What the browser says it is, for what only one kind of device does. */
   userAgent?: string;
+  /** What this browser kept from an earlier visit. */
+  stored?: Record<string, string>;
 }) {
   // Anything the page throws is collected rather than swallowed, since a
   // handler that fails silently is the whole difficulty with this code.
@@ -120,6 +122,9 @@ export async function openInterface(options: {
     Object.defineProperty(window.navigator, 'userAgent', { value: options.userAgent });
   }
 
+  for (const [key, value] of Object.entries(options.stored ?? {})) {
+    window.localStorage.setItem(key, value);
+  }
   window.eval(read('app.js'));
   await settle(window);
 
