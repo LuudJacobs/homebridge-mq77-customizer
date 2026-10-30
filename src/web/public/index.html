@@ -63,10 +63,6 @@
 
       <div id="tab-tools" class="tab-tools">
         <span id="kind-filters" class="kind-filters" hidden>
-          <details id="trigger-kinds" class="kind-picker">
-            <summary id="trigger-kinds-label">All trigger devices</summary>
-            <div id="trigger-kinds-list" class="kind-picker-list"></div>
-          </details>
           <label class="toggle" for="kind-ignored">
             <input id="kind-ignored" type="checkbox" />
             Ignored rules
@@ -82,6 +78,10 @@
         </label>
         <select id="sort" title="Sort the list"></select>
         <input id="filter" type="search" />
+        <details id="trigger-kinds" class="kind-picker" hidden>
+          <summary id="trigger-kinds-label">All trigger devices</summary>
+          <div id="trigger-kinds-list" class="kind-picker-list"></div>
+        </details>
       </div>
 
       <section id="view-devices">
