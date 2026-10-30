@@ -458,3 +458,94 @@ describe('ignored rules', () => {
     expect(ui.document.querySelectorAll('#activity-log .log-line.ignored')).toHaveLength(6);
   });
 });
+
+describe('trigger devices', () => {
+  // The remote, a light and the motion sensor each set something off.
+  const withSensor = [
+    ...rules,
+    {
+      id: 'g1',
+      kind: 'standard',
+      name: 'Gang aan',
+      enabled: true,
+      triggers: [{ ...ref('0xs', 'occupancy'), match: { kind: 'changedTo', value: true } }],
+      actions: [{ ...ref('0xa'), value: 'ON' }],
+    },
+  ];
+  const log = [
+    entry({ press }),
+    entry({ ruleId: 'g1', ruleName: 'Gang aan', changed: { ...ref('0xs', 'occupancy'), value: 'true' } }),
+    entry({ ruleId: 'm1', ruleName: 'Lichten', ruleKind: 'mirror', changed: { ...ref('0xa'), value: 'ON' } }),
+    entry({ ruleId: 'w1', ruleName: 'Aanrecht', firedAt: { at: '22:00' } }),
+  ];
+
+  async function open(stored?: Record<string, string>) {
+    const ui = await openInterface({ state: { devices }, rules: withSensor, log, stored });
+    await ui.click(ui.byText('button.tab', 'Log'));
+    return ui;
+  }
+  const label = (ui: Awaited<ReturnType<typeof open>>) =>
+    ui.document.getElementById('trigger-kinds-label')?.textContent;
+  const names = (ui: Awaited<ReturnType<typeof open>>) =>
+    [...ui.document.querySelectorAll('#activity-log .log-line .log-what')].map((node) => {
+      // The icons' titles are not part of what the line reads as.
+      for (const icon of node.querySelectorAll('svg')) {
+        icon.remove();
+      }
+      return node.textContent?.replace(/\s+/g, ' ').trim();
+    });
+  const ticks = async (ui: Awaited<ReturnType<typeof open>>) => {
+    await ui.openCard(ui.document.getElementById('trigger-kinds'));
+    return [...ui.document.querySelectorAll('#trigger-kinds-list label')] as HTMLLabelElement[];
+  };
+  const untick = async (ui: Awaited<ReturnType<typeof open>>, kind: string) => {
+    const box = (await ticks(ui)).find((label) => label.textContent === kind)?.querySelector('input');
+    (box as HTMLInputElement).checked = false;
+    box!.dispatchEvent(new ui.window.Event('change'));
+    await ui.settle();
+  };
+
+  it('lists every kind of device that sets something off, all shown to begin with', async () => {
+    const ui = await open();
+    expect(label(ui)).toBe('All trigger devices');
+    const listed = await ticks(ui);
+    expect(listed.map((tick) => tick.textContent)).toEqual(['Controllers', 'Lights', 'Sensors']);
+    expect(listed.every((tick) => tick.querySelector('input')!.checked)).toBe(true);
+    expect(names(ui)).toHaveLength(4);
+  });
+
+  it('leaves out the lines a kind set off once it is unticked, and says how many are shown', async () => {
+    const ui = await open();
+    await untick(ui, 'Sensors');
+    expect(label(ui)).toBe('2/3 trigger devices');
+    expect(names(ui).some((line) => line?.includes('Gang aan'))).toBe(false);
+    expect(names(ui)).toHaveLength(3);
+
+    // Down to one, it says which.
+    await untick(ui, 'Lights');
+    expect(label(ui)).toBe('Only Controllers');
+    // The clock is no device, so a rule it set off stays.
+    expect(names(ui)).toEqual([
+      'Woonkamer Remote: 4 Single Long → Woonkamer: All Off - ran: 2 actions sent',
+      expect.stringContaining('Aanrecht'),
+    ]);
+  });
+
+  it('keeps what it leaves out in this browser', async () => {
+    const ui = await open();
+    await untick(ui, 'Sensors');
+    expect(ui.window.localStorage.getItem('mq77.log.hiddenKinds')).toBe('["sensor"]');
+
+    const again = await open({ 'mq77.log.hiddenKinds': '["sensor"]' });
+    expect(label(again)).toBe('2/3 trigger devices');
+    expect(names(again)).toHaveLength(3);
+  });
+
+  it('goes away when somebody clicks elsewhere', async () => {
+    const ui = await open();
+    const picker = ui.document.getElementById('trigger-kinds') as HTMLDetailsElement;
+    await ui.openCard(picker);
+    await ui.click(ui.document.getElementById('activity-log'));
+    expect(picker.open).toBe(false);
+  });
+});

@@ -29,6 +29,8 @@ const state = {
   /** Hides rules that are switched off. */
   /** Lines that read `ignored`, left out until they are asked for. */
   showIgnored: false,
+  /** Kinds of device whose rules' lines the log leaves out. */
+  hiddenKinds: new Set(),
   /** Whether the controller overview lists buttons nothing is bound to. */
   unusedButtons: false,
   /** Whether it says of a button that HomeKit hears it. */
@@ -96,6 +98,9 @@ const el = {
   status: document.getElementById('status'),
   kindFilters: document.getElementById('kind-filters'),
   tools: document.getElementById('tab-tools'),
+  triggerKinds: document.getElementById('trigger-kinds'),
+  triggerKindsLabel: document.getElementById('trigger-kinds-label'),
+  triggerKindsList: document.getElementById('trigger-kinds-list'),
   kindIgnored: document.getElementById('kind-ignored'),
   sort: document.getElementById('sort'),
   logout: document.getElementById('logout'),
@@ -1971,6 +1976,54 @@ el.sort.addEventListener('change', () => {
 el.kindIgnored.addEventListener('change', () => {
   state.showIgnored = el.kindIgnored.checked;
   renderLog();
+});
+
+/**
+ * Which kinds of device the log leaves out, kept in this browser.
+ *
+ * Kept in a browser rather than with the settings: it is about what one
+ * person cares to read, not about what the house does.
+ */
+const HIDDEN_KINDS_KEY = 'mq77.log.hiddenKinds';
+
+function readHiddenKinds() {
+  try {
+    const kept = JSON.parse(localStorage.getItem(HIDDEN_KINDS_KEY) ?? '[]');
+    return new Set(Array.isArray(kept) ? kept.filter((kind) => typeof kind === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function keepHiddenKinds() {
+  try {
+    localStorage.setItem(HIDDEN_KINDS_KEY, JSON.stringify([...state.hiddenKinds]));
+  } catch {
+    // A browser that keeps nothing still leaves them out until the page goes.
+  }
+}
+
+state.hiddenKinds = readHiddenKinds();
+
+// The list is drawn as it opens, so a tick is never redrawn under the pointer.
+el.triggerKinds.addEventListener('toggle', () => {
+  if (el.triggerKinds.open) {
+    drawTriggerKindList();
+  }
+});
+
+// A dropdown, so it goes away when somebody is done with it.
+document.addEventListener('click', (event) => {
+  if (el.triggerKinds.open && !el.triggerKinds.contains(event.target)) {
+    el.triggerKinds.open = false;
+  }
+});
+
+el.triggerKinds.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && el.triggerKinds.open) {
+    el.triggerKinds.open = false;
+    el.triggerKindsLabel.focus();
+  }
 });
 
 /** Whether any panel, of a device or a rule, holds something not saved. */
@@ -5386,10 +5439,12 @@ function renderLog() {
   const container = el.activityLog;
   container.replaceChildren();
   const term = (state.filters.activity ?? '').trim().toLowerCase();
+  const hiding = drawTriggerKinds();
 
   // Drawn first and matched after, so the filter reads what is on screen.
   const lines = state.log
     .filter((entry) => state.showIgnored || !isIgnored(entry))
+    .filter((entry) => !hiding.has(setOffByKind(entry)))
     .map(logLine)
     .filter((line) => !term || line.search.includes(term));
 
@@ -5402,6 +5457,88 @@ function renderLog() {
   }
 
   container.append(...lines.slice(0, 100).map((line) => line.node));
+}
+
+/** What a kind of device is called when there are several of them. */
+const KIND_PLURALS = { '': 'Devices with no kind', other: 'Other devices', tv: 'TVs' };
+
+function kindsWord(kind) {
+  return KIND_PLURALS[kind] ?? `${KINDS.find(([value]) => value === kind)?.[1] ?? kind}s`;
+}
+
+/**
+ * The kinds of device that set a rule, mirror or slider off, in the order
+ * the kinds are listed in. A rule set off by the clock has no device to
+ * count.
+ */
+function triggerKinds() {
+  const found = new Set();
+  for (const rule of state.rules) {
+    const refs = rule.kind === 'mirror' ? ruleRefs(rule) : startsOf(rule);
+    for (const ref of refs) {
+      const device = ref?.deviceId ? findDevice(ref) : undefined;
+      if (device) {
+        found.add(device.exposure.type ?? '');
+      }
+    }
+  }
+  return KINDS.map(([kind]) => kind).filter((kind) => found.has(kind));
+}
+
+/** The kind of device that set a line off, or undefined for the clock and a hand. */
+function setOffByKind(entry) {
+  const cause = entry.press ?? entry.changed;
+  const device = cause ? findDevice(cause) : undefined;
+  return device ? (device.exposure.type ?? '') : undefined;
+}
+
+/**
+ * Says on the dropdown what the log is showing, and hands back the kinds it
+ * leaves out. Only kinds still setting something off count, so a kind left
+ * out once and gone since cannot hide lines with no tick to bring them back.
+ */
+function drawTriggerKinds() {
+  const kinds = triggerKinds();
+  const shown = kinds.filter((kind) => !state.hiddenKinds.has(kind));
+  el.triggerKindsLabel.textContent =
+    shown.length === kinds.length
+      ? 'All trigger devices'
+      : shown.length === 1
+        ? `Only ${kindsWord(shown[0])}`
+        : `${shown.length}/${kinds.length} trigger devices`;
+  return new Set(kinds.filter((kind) => state.hiddenKinds.has(kind)));
+}
+
+/** A tick for every kind of device that sets something off. */
+function drawTriggerKindList() {
+  const kinds = triggerKinds();
+  if (kinds.length === 0) {
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.textContent = 'Nothing is set off by a device yet.';
+    el.triggerKindsList.replaceChildren(none);
+    return;
+  }
+  el.triggerKindsList.replaceChildren(
+    ...kinds.map((kind) => {
+      const label = document.createElement('label');
+      label.className = 'toggle';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = !state.hiddenKinds.has(kind);
+      box.addEventListener('change', () => {
+        if (box.checked) {
+          state.hiddenKinds.delete(kind);
+        } else {
+          state.hiddenKinds.add(kind);
+        }
+        keepHiddenKinds();
+        renderLog();
+      });
+      label.append(box, kindsWord(kind));
+      return label;
+    }),
+  );
 }
 
 /**
