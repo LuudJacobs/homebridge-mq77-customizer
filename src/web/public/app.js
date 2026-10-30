@@ -3525,6 +3525,11 @@ function withWaits(draft) {
  * one with no time, one with no outcome after it, or two in a row.
  */
 function forSaving(draft) {
+  // An outcome with nothing to ask always runs, so none after it ever would.
+  const outcomes = (draft.branches ?? []).filter((block) => !isWaitBlock(block));
+  if (outcomes.slice(0, -1).some((branch) => !(branch.when ?? asExpression(branch.conditions)))) {
+    throw new Error('Only the last outcome can go without a condition');
+  }
   if (!draft.branches?.some(isWaitBlock)) {
     return draft;
   }
@@ -3654,9 +3659,10 @@ function renderBranch(branch, position, blocks, redraw) {
   head.append(right);
 
   box.append(head);
-  box.append(conditionEditor(branch, left, index === 0));
+  const then = sectionTitle('Then');
+  box.append(conditionEditor(branch, left, index === 0, then));
 
-  box.append(sectionTitle('Then'));
+  box.append(then);
   box.append(actionEditor(branch));
   return box;
 }
@@ -4298,7 +4304,7 @@ function drawMirror(body, draft) {
  * Deeper nesting would express nothing new, since every boolean expression can
  * be written as groups of tests, and it would cost a much heavier editor.
  */
-function conditionEditor(draft, heading, first) {
+function conditionEditor(draft, heading, first, then) {
   const wrap = document.createElement('div');
   wrap.className = 'conditions';
 
@@ -4339,12 +4345,14 @@ function conditionEditor(draft, heading, first) {
 
     // With no conditions set there is no row to hang the button off, so it
     // goes up on the heading's line instead of alone on a line of its own,
-    // after `Or` on any outcome but the first. Once there are conditions the
-    // heading says so, and how the groups are taken together once there is
-    // more than one of them to take.
+    // after `Or else` on any outcome but the first, which reads on into the
+    // actions with no `Then` between. Once there are conditions the heading
+    // says so, and how the groups are taken together once there is more than
+    // one of them to take.
     heading.replaceChildren();
+    then.hidden = !first && groups.length === 0;
     if (groups.length === 0) {
-      heading.append(...(first ? [] : [sectionTitle('Or')]), add);
+      heading.append(...(first ? [] : [sectionTitle('Or else')]), add);
       return;
     }
     wrap.append(add);
@@ -4366,6 +4374,9 @@ function conditionEditor(draft, heading, first) {
       mode = 'all';
     }
     draft.when = writeConditions(mode, groups);
+    // Read into the groups above, so what is left of it says nothing new and
+    // would bring back on the next draw what was just taken out.
+    delete draft.conditions;
   }
 
   draw();
