@@ -107,24 +107,44 @@ describe('the condition editor', () => {
 
   it('starts a rule with no conditions at one button, and builds from it', async () => {
     const ui = await openRule({ ...legacyRule, conditions: [] });
+    const heading = () => ui.document.querySelector('.branch .branch-head-left') as HTMLElement;
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(0);
 
-    // With no rows yet the button has nowhere to sit but beside the heading.
+    // With no rows yet the button has nowhere to sit but the heading's line,
+    // and on the first outcome it is the whole of it.
     expect(ui.byText('button.add-row', '+ condition', '.branch-head')).not.toBeNull();
+    expect(heading().textContent?.trim()).toBe('+ condition');
 
     await ui.click(ui.byText('button.add-row', '+ condition', '.branch-head'));
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(1);
-    // Once there is a row to hang it off, it is no longer up in the heading.
+    // Once there is a row to hang it off, it is no longer up in the heading,
+    // which says what follows instead.
     expect(ui.byText('button.add-row', '+ condition', '.branch-head')).toBeNull();
-    // Only now is a second group worth offering, and a line saying how the
-    // groups are taken together.
+    expect(ui.byText('p.group-title', 'And when', '.branch-head')).not.toBeNull();
     expect(ui.byText('button.add-row', '+ condition group', '.conditions')).not.toBeNull();
+    // One group is all of one, with nothing to choose.
+    expect(outcomeLine(ui)).toBeNull();
+
+    // Two are worth saying how to take together, on the heading's own line.
+    await ui.click(ui.byText('button.add-row', '+ condition group', '.conditions'));
     expect(outcomeLine(ui).value).toBe('all');
-    // On the heading's own line, beside the title, rather than under it.
-    const heading = ui.document.querySelector('.branch .branch-head-left') as HTMLElement;
-    expect(heading.textContent).toContain('And, optionally');
-    expect(heading.contains(outcomeLine(ui))).toBe(true);
+    expect(heading().contains(outcomeLine(ui))).toBe(true);
     expect(ui.document.querySelector('.branch .conditions > .combination')).toBeNull();
+
+    // And none again once one of them goes.
+    await ui.click(ui.byText('button.add-row', 'Remove group', '.conditions'));
+    expect(outcomeLine(ui)).toBeNull();
+  });
+
+  it('starts a later outcome at or, and says or when once it has a condition', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
+    const later = () =>
+      ui.document.querySelectorAll('.branch .branch-head-left')[1] as HTMLElement;
+
+    expect(later().textContent?.replace(/\s+/g, ' ').trim()).toBe('Or+ condition');
+    await ui.click(later().querySelector('button.add-row'));
+    expect(later().querySelector('p.group-title')?.textContent).toBe('Or when');
   });
 
   it('opens a row with a room picker and then a device picker', async () => {
@@ -154,21 +174,46 @@ describe('the condition editor', () => {
     expect(ui.document.querySelector('.condition-group label.toggle')).toBeNull();
   });
 
-  it('says is true for at least 1, and joins its conditions with or', async () => {
+  it('says is true for at least 1, and joins its conditions the way the line says', async () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ condition', '.conditions'));
     const line = () => ui.document.querySelector('.condition-group .combination') as HTMLElement;
+    const words = () =>
+      [...ui.document.querySelectorAll('.condition-group span.joiner')].map((word) => word.textContent);
+
+    expect(words()).toEqual(['and']);
 
     await ui.pick(line().querySelector('select'), 'any');
     expect(line().textContent).toContain('is true');
-    expect(ui.byText('.condition-group span.joiner', 'or')).not.toBeNull();
+    expect(words()).toEqual(['or']);
 
-    // None is neither this nor that; not all is not both this and that.
+    // None says not in front of the first one as well.
     await ui.pick(line().querySelector('select'), 'none');
     expect(line().textContent).toContain('are true');
-    expect(ui.byText('.condition-group span.joiner', 'or')).not.toBeNull();
+    expect(words()).toEqual(['not', 'and not']);
+    const first = ui.document.querySelector('.condition-group .rule-row') as HTMLElement;
+    expect(first.firstElementChild?.textContent).toBe('not');
+
     await ui.pick(line().querySelector('select'), 'notAll');
-    expect(ui.byText('.condition-group span.joiner', 'and')).not.toBeNull();
+    expect(words()).toEqual(['or']);
+  });
+
+  it('joins the groups of an outcome the same way, not in front of the first for none', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ condition group', '.conditions'));
+    const words = () =>
+      [...ui.document.querySelectorAll('.conditions > p.joiner')].map((word) => word.textContent);
+
+    expect(words()).toEqual(['and']);
+    await ui.pick(outcomeLine(ui), 'any');
+    expect(words()).toEqual(['or']);
+    await ui.pick(outcomeLine(ui), 'none');
+    expect(words()).toEqual(['not', 'and not']);
+    // In front of the first group, not after it.
+    const conditions = ui.document.querySelector('.branch .conditions') as HTMLElement;
+    expect(conditions.firstElementChild?.textContent).toBe('not');
+    await ui.pick(outcomeLine(ui), 'notAll');
+    expect(words()).toEqual(['or']);
   });
 
   it('reads a saved not as not all, and several groups as at least 1 of them', async () => {
@@ -194,23 +239,36 @@ describe('the condition editor', () => {
 
     const saved = () =>
       ui.requests.findLast((request) => request.body !== undefined)?.body as {
-        branches: { when: unknown }[];
+        branches: { when: { kind: string; node?: { kind: string; nodes: unknown[] } } }[];
       };
     // A group of one still says at least 1, so it reads back as it was left.
     expect(saved().branches[0]?.when).toEqual({ kind: 'all', nodes: [{ kind: 'any', nodes: [test_('0xb')] }] });
 
     const again = await openRule({ ...legacyRule, conditions: undefined, when: saved().branches[0]?.when });
     expect((again.document.querySelector('.condition-group .combination select') as HTMLSelectElement).value).toBe('any');
-    expect(outcomeLine(again).value).toBe('all');
 
     // Saving reloads the rule as it was handed out, a group of all of one,
     // which under none is still written as a group of its own.
+    await ui.click(ui.byText('button.add-row', '+ condition group', '.conditions'));
     await ui.pick(outcomeLine(ui), 'none');
     await ui.click(ui.byText('button.primary', 'Save', '#automation'));
-    expect(saved().branches[0]?.when).toEqual({
-      kind: 'not',
-      node: { kind: 'any', nodes: [{ kind: 'all', nodes: [test_('0xb')] }] },
-    });
+    const when = saved().branches[0]?.when;
+    expect(when?.kind).toBe('not');
+    expect(when?.node?.kind).toBe('any');
+    expect(when?.node?.nodes).toHaveLength(2);
+    expect(when?.node?.nodes[0]).toEqual({ kind: 'all', nodes: [test_('0xb')] });
+  });
+
+  it('reads one group under a line of its own as that group, turned round where the line said so', async () => {
+    const one = { kind: 'all', nodes: [test_('0xb'), test_('0xc')] };
+    const read = async (when: unknown) => {
+      const ui = await openRule({ ...legacyRule, conditions: undefined, when });
+      expect(outcomeLine(ui)).toBeNull();
+      return (ui.document.querySelector('.condition-group .combination select') as HTMLSelectElement).value;
+    };
+    expect(await read({ kind: 'not', node: { kind: 'any', nodes: [one] } })).toBe('notAll');
+    expect(await read({ kind: 'not', node: { kind: 'all', nodes: [{ kind: 'any', nodes: [test_('0xb')] }] } })).toBe('none');
+    expect(await read({ kind: 'any', nodes: [{ kind: 'not', node: { kind: 'any', nodes: [test_('0xb')] } }] })).toBe('none');
   });
 
   it('sends an expression when saved, not a flat list', async () => {
@@ -544,7 +602,11 @@ describe('branches', () => {
       (input) => (input as HTMLInputElement).value,
     );
     expect(names).toEqual(['second', '']);
-    expect(ui.byText('p.group-title', 'And, optionally', '.branch')).not.toBeNull();
+    // First now, with no condition, it is a button and nothing else; the one
+    // below it with a condition is or when.
+    const headings = [...ui.document.querySelectorAll('.branch .branch-head-left')];
+    expect(headings[0]?.querySelector('p.group-title')).toBeNull();
+    expect(headings[1]?.querySelector('p.group-title')?.textContent).toBe('Or when');
   });
 
   it('sends a list of branches when saved', async () => {
