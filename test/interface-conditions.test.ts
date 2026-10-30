@@ -49,6 +49,10 @@ const legacyRule = {
   actions: [{ ...ref('0xc'), value: 'ON' }],
 };
 
+/** The line on top of the first outcome, saying how its groups are taken together. */
+const outcomeLine = (ui: { document: Document }) =>
+  ui.document.querySelector('.branch .conditions > .combination select') as HTMLSelectElement;
+
 async function openRule(rule: unknown) {
   const ui = await openInterface({ state: { devices }, rules: [rule] });
   await ui.click(ui.byText('button.tab', 'Rules'));
@@ -67,13 +71,16 @@ describe('the condition editor', () => {
     expect(ui.document.querySelectorAll('.condition-group .rule-row')).toHaveLength(1);
   });
 
-  it('offers a second group once there is one, and joins them with or', async () => {
+  it('offers a second group once there is one, joined the way the outcome line says', async () => {
     const ui = await openRule(legacyRule);
-    expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
+    expect(ui.byText('button.add-row', '+ condition group', '.conditions')).not.toBeNull();
 
-    await ui.click(ui.byText('button.add-row', 'Add or', '.conditions'));
-
+    await ui.click(ui.byText('button.add-row', '+ condition group', '.conditions'));
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(2);
+    // All of them by default, so this and that.
+    expect(ui.byText('p.joiner', 'and')).not.toBeNull();
+
+    await ui.pick(outcomeLine(ui), 'any');
     expect(ui.byText('p.joiner', 'or')).not.toBeNull();
   });
 
@@ -109,8 +116,10 @@ describe('the condition editor', () => {
     expect(ui.document.querySelectorAll('.condition-group')).toHaveLength(1);
     // Once there is a row to hang it off, it is no longer up in the heading.
     expect(ui.byText('button.add-row', '+ condition', '.branch-head')).toBeNull();
-    // Only now is a second group worth offering.
-    expect(ui.byText('button.add-row', 'Add or', '.conditions')).not.toBeNull();
+    // Only now is a second group worth offering, and a line saying how the
+    // groups are taken together.
+    expect(ui.byText('button.add-row', '+ condition group', '.conditions')).not.toBeNull();
+    expect(outcomeLine(ui).value).toBe('all');
   });
 
   it('opens a row with a room picker and then a device picker', async () => {
@@ -124,15 +133,85 @@ describe('the condition editor', () => {
     expect(device!.classList.contains('device')).toBe(false);
   });
 
-  it('offers a not toggle per group', async () => {
+  it('says per group how its conditions are taken together, all of them to begin with', async () => {
     const ui = await openRule(legacyRule);
-    const negate = ui.byText('.condition-group label.toggle', 'Not');
-    expect(negate).not.toBeNull();
+    const line = ui.document.querySelector('.condition-group .combination') as HTMLElement;
+    const pick = line.querySelector('select') as HTMLSelectElement;
+
+    expect([...pick.options].map((option) => option.textContent)).toEqual([
+      'All',
+      'At least 1',
+      'None',
+      'Not all',
+    ]);
+    expect(pick.value).toBe('all');
+    expect(line.textContent).toContain('are true');
+    expect(ui.document.querySelector('.condition-group label.toggle')).toBeNull();
+  });
+
+  it('says is true for at least 1, and joins its conditions with or', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ condition', '.conditions'));
+    const line = () => ui.document.querySelector('.condition-group .combination') as HTMLElement;
+
+    await ui.pick(line().querySelector('select'), 'any');
+    expect(line().textContent).toContain('is true');
+    expect(ui.byText('.condition-group span.joiner', 'or')).not.toBeNull();
+
+    // None is neither this nor that; not all is not both this and that.
+    await ui.pick(line().querySelector('select'), 'none');
+    expect(line().textContent).toContain('are true');
+    expect(ui.byText('.condition-group span.joiner', 'or')).not.toBeNull();
+    await ui.pick(line().querySelector('select'), 'notAll');
+    expect(ui.byText('.condition-group span.joiner', 'and')).not.toBeNull();
+  });
+
+  it('reads a saved not as not all, and several groups as at least 1 of them', async () => {
+    const ui = await openRule({
+      ...legacyRule,
+      conditions: undefined,
+      when: {
+        kind: 'any',
+        nodes: [{ kind: 'not', node: { kind: 'all', nodes: [test_('0xb'), test_('0xc')] } }, test_('0xc')],
+      },
+    });
+
+    expect(outcomeLine(ui).value).toBe('any');
+    const groups = [...ui.document.querySelectorAll('.condition-group .combination select')] as HTMLSelectElement[];
+    expect(groups.map((pick) => pick.value)).toEqual(['notAll', 'all']);
+  });
+
+  it('saves what the lines say, and reads it back the same', async () => {
+    const ui = await openRule(legacyRule);
+    const groupLine = () => ui.document.querySelector('.condition-group .combination select');
+    await ui.pick(groupLine(), 'any');
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+
+    const saved = () =>
+      ui.requests.findLast((request) => request.body !== undefined)?.body as {
+        branches: { when: unknown }[];
+      };
+    // A group of one still says at least 1, so it reads back as it was left.
+    expect(saved().branches[0]?.when).toEqual({ kind: 'all', nodes: [{ kind: 'any', nodes: [test_('0xb')] }] });
+
+    const again = await openRule({ ...legacyRule, conditions: undefined, when: saved().branches[0]?.when });
+    expect((again.document.querySelector('.condition-group .combination select') as HTMLSelectElement).value).toBe('any');
+    expect(outcomeLine(again).value).toBe('all');
+
+    // Saving reloads the rule as it was handed out, a group of all of one,
+    // which under none is still written as a group of its own.
+    await ui.pick(outcomeLine(ui), 'none');
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    expect(saved().branches[0]?.when).toEqual({
+      kind: 'not',
+      node: { kind: 'any', nodes: [{ kind: 'all', nodes: [test_('0xb')] }] },
+    });
   });
 
   it('sends an expression when saved, not a flat list', async () => {
     const ui = await openRule(legacyRule);
-    await ui.click(ui.byText('button.add-row', 'Add or', '.conditions'));
+    await ui.click(ui.byText('button.add-row', '+ condition group', '.conditions'));
+    await ui.pick(outcomeLine(ui), 'any');
     await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
     // The first request to that path is the listing, which carries no body.
@@ -148,7 +227,7 @@ describe('the condition editor', () => {
     const deep = {
       ...legacyRule,
       conditions: undefined,
-      when: { kind: 'any', nodes: [{ kind: 'any', nodes: [test_('0xb')] }] },
+      when: { kind: 'any', nodes: [{ kind: 'all', nodes: [{ kind: 'any', nodes: [test_('0xb')] }] }] },
     };
     const ui = await openRule(deep);
 
@@ -228,7 +307,7 @@ describe('branches', () => {
     const ui = await openRule(legacyRule);
     await ui.click(ui.byText('button.add-row', '+ outcome'));
 
-    const buttons = [...ui.document.querySelectorAll('.branch-head-right button.add-row')];
+    const buttons = [...ui.document.querySelectorAll('.branch-head-right button[title^="Remove"]')];
     // A plain cross, with the number kept in the tooltip.
     expect(buttons.map((button) => button.textContent)).toEqual(['✕', '✕']);
     expect(buttons.map((button) => button.getAttribute('title'))).toEqual([
@@ -286,53 +365,87 @@ describe('branches', () => {
     ).toBe(rows()[before]);
   });
 
-  it('offers a wait between what sets it off and what it asks, empty to begin with', async () => {
+  it('adds a wait next to an outcome, half a minute to begin with', async () => {
     const ui = await openRule(legacyRule);
+    // No wait until one is asked for.
+    expect(ui.document.querySelectorAll('#automation .wait-box')).toHaveLength(0);
+    const add = ui.byText('button.add-row', '+ wait', '#automation');
+    expect(add?.parentElement).toBe(ui.byText('button.add-row', '+ outcome', '#automation')?.parentElement);
 
-    const boxes = [...ui.document.querySelectorAll('#automation .wait-box')] as HTMLInputElement[];
-    expect(boxes).toHaveLength(2);
-    // Nothing typed, with the shape shown behind rather than filled in.
-    expect(boxes.map((box) => box.value)).toEqual(['', '']);
-    expect(boxes.map((box) => box.placeholder)).toEqual(['00', '00']);
-    expect(ui.byText('label', 'Optional wait time (mm:ss)', '#automation')).not.toBeNull();
-
-    // Between the triggers and the first outcome, which is the order a rule
-    // runs in: wait, then ask, then act.
-    const row = ui.document.querySelector('#automation .wait') as HTMLElement;
+    await ui.click(add);
+    const boxes = [...ui.document.querySelectorAll('#automation .wait-block .wait-box')] as HTMLInputElement[];
+    expect(boxes.map((box) => box.value)).toEqual(['00', '30']);
+    expect(ui.byText('label', 'Wait (mm:ss)', '#automation .wait-block')).not.toBeNull();
+    // After the outcome it was added below.
     const branch = ui.document.querySelector('#automation .branch') as HTMLElement;
-    expect(row.compareDocumentPosition(branch) & 4).toBeTruthy();
+    const wait = ui.document.querySelector('#automation .wait-block') as HTMLElement;
+    expect(branch.compareDocumentPosition(wait) & 4).toBeTruthy();
   });
 
-  it('sends a wait when one is typed, and nothing when it is emptied again', async () => {
+  it('sends a wait above the first outcome as the rule’s own, and one lower down on its outcome', async () => {
     const ui = await openRule(legacyRule);
-    const [minutes, seconds] = [
-      ...ui.document.querySelectorAll('#automation .wait-box'),
-    ] as HTMLInputElement[];
-
-    minutes!.value = '1';
-    minutes!.dispatchEvent(new ui.window.Event('input'));
-    seconds!.value = '30';
-    seconds!.dispatchEvent(new ui.window.Event('input'));
-    await ui.settle();
-    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
-
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
+    await ui.click(ui.byText('button.add-row', '+ wait'));
     const saved = () =>
-      ui.requests.findLast((request) => request.body !== undefined)?.body as { waitMs?: number };
-    expect(saved().waitMs).toBe(90_000);
+      ui.requests.findLast((request) => request.body !== undefined)?.body as {
+        waitMs?: number;
+        branches: { waitMs?: number }[];
+      };
 
-    minutes!.value = '';
-    minutes!.dispatchEvent(new ui.window.Event('input'));
-    seconds!.value = '';
-    seconds!.dispatchEvent(new ui.window.Event('input'));
-    await ui.settle();
+    // Up past the second outcome: between the two.
+    await ui.click(ui.document.querySelector('.wait-block button[title="Move wait up"]'));
+    await ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    expect(saved().waitMs).toBeUndefined();
+    expect(saved().branches.map((branch) => branch.waitMs)).toEqual([undefined, 30_000]);
+    // Nothing of the editor's own blocks goes with it.
+    expect(saved().branches).toHaveLength(2);
+  });
+
+  it('sends a wait moved to the top as the rule’s own', async () => {
+    const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ wait'));
+    await ui.click(ui.document.querySelector('.wait-block button[title="Move wait up"]'));
     await ui.click(ui.byText('button.primary', 'Save', '#automation'));
 
-    // Emptied is no wait at all, rather than a wait of nothing.
-    expect(saved().waitMs).toBeUndefined();
+    const saved = ui.requests.findLast((request) => request.body !== undefined)?.body as {
+      waitMs?: number;
+      branches: { waitMs?: number }[];
+    };
+    expect(saved.waitMs).toBe(30_000);
+    expect(saved.branches.map((branch) => branch.waitMs)).toEqual([undefined]);
+  });
+
+  it('will not save a wait with no outcome after it, two in a row, or one with no time', async () => {
+    const ui = await openRule(legacyRule);
+    const error = () => ui.document.querySelector('#automation .rule-footer .error')?.textContent;
+    const save = () => ui.click(ui.byText('button.primary', 'Save', '#automation'));
+    const sent = () => ui.requests.filter((request) => request.body !== undefined).length;
+    const before = sent();
+
+    await ui.click(ui.byText('button.add-row', '+ wait'));
+    await save();
+    expect(error()).toBe('A wait needs an outcome after it');
+
+    await ui.click(ui.document.querySelector('.wait-block button[title="Move wait up"]'));
+    await ui.click(ui.byText('button.add-row', '+ wait'));
+    await ui.click(ui.document.querySelectorAll('.wait-block button[title="Move wait up"]')[1]!);
+    await save();
+    expect(error()).toBe('Two waits in a row: make them one');
+
+    await ui.click(ui.document.querySelector('.wait-block button[title="Remove wait"]'));
+    for (const box of ui.document.querySelectorAll('.wait-block .wait-box') as NodeListOf<HTMLInputElement>) {
+      box.value = '';
+      box.dispatchEvent(new ui.window.Event('input'));
+    }
+    await ui.settle();
+    await save();
+    expect(error()).toBe('A wait needs a time');
+    expect(sent()).toBe(before);
   });
 
   it('will not take more than fifty nine seconds', async () => {
     const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ wait'));
     const [, seconds] = [
       ...ui.document.querySelectorAll('#automation .wait-box'),
     ] as HTMLInputElement[];
@@ -345,12 +458,15 @@ describe('branches', () => {
     expect(seconds!.value).toBe('59');
   });
 
-  it('fills the box beside a wait in, and leaves both empty when there is none', async () => {
+  it('fills the box beside a wait in, and leaves both empty once emptied', async () => {
     const ui = await openRule(legacyRule);
+    await ui.click(ui.byText('button.add-row', '+ wait'));
     const [minutes, seconds] = [
       ...ui.document.querySelectorAll('#automation .wait-box'),
     ] as HTMLInputElement[];
 
+    seconds!.value = '';
+    seconds!.dispatchEvent(new ui.window.Event('input'));
     minutes!.value = '2';
     minutes!.dispatchEvent(new ui.window.Event('input'));
     seconds!.dispatchEvent(new ui.window.Event('blur'));
@@ -366,14 +482,64 @@ describe('branches', () => {
     }
     await ui.settle();
 
-    // Empty is what having no wait looks like.
+    // Empty is what having no time looks like.
     expect([minutes!.value, seconds!.value]).toEqual(['', '']);
   });
 
-  it('reads a stored wait back as a clock', async () => {
+  it('reads a stored wait back as a clock, in a block above the first outcome', async () => {
     const ui = await openRule({ ...legacyRule, waitMs: 125_000 });
-    const boxes = [...ui.document.querySelectorAll('#automation .wait-box')] as HTMLInputElement[];
+    const boxes = [...ui.document.querySelectorAll('#automation .wait-block .wait-box')] as HTMLInputElement[];
     expect(boxes.map((box) => box.value)).toEqual(['02', '05']);
+    const branch = ui.document.querySelector('#automation .branch') as HTMLElement;
+    const wait = ui.document.querySelector('#automation .wait-block') as HTMLElement;
+    expect(wait.compareDocumentPosition(branch) & 4).toBeTruthy();
+  });
+
+  it('reads a wait stored on an outcome back as a block in front of it', async () => {
+    const outcome = { actions: [{ ...ref('0xc'), value: 'ON' }] };
+    const ui = await openRule({
+      ...legacyRule,
+      conditions: undefined,
+      branches: [outcome, { ...outcome, waitMs: 10_000 }],
+    });
+    const order = [...ui.document.querySelectorAll('#automation .branch, #automation .wait-block')].map(
+      (block) => block.className,
+    );
+    expect(order).toEqual(['branch', 'wait-block', 'branch']);
+  });
+
+  it('moves an outcome up and down a place, but not past either end', async () => {
+    const ui = await openRule(legacyRule);
+    const up = (index: number) =>
+      ui.document.querySelectorAll('.branch button[title="Move outcome up"]')[index] as HTMLButtonElement;
+    const down = (index: number) =>
+      ui.document.querySelectorAll('.branch button[title="Move outcome down"]')[index] as HTMLButtonElement;
+
+    // Between the name and the cross.
+    const right = ui.document.querySelector('.branch .branch-head-right') as HTMLElement;
+    expect([...right.children].map((child) => child.textContent || child.className)).toEqual([
+      'outcome-name',
+      '\u2191',
+      '\u2193',
+    ]);
+    expect(up(0).disabled).toBe(true);
+    expect(down(0).disabled).toBe(true);
+
+    await ui.click(ui.byText('button.add-row', '+ outcome'));
+    const name = ui.document.querySelectorAll('input.outcome-name')[1] as HTMLInputElement;
+    name.value = 'second';
+    name.dispatchEvent(new ui.window.Event('input'));
+    expect(up(0).disabled).toBe(true);
+    expect(down(0).disabled).toBe(false);
+    expect(up(1).disabled).toBe(false);
+    expect(down(1).disabled).toBe(true);
+
+    await ui.click(up(1));
+    const names = [...ui.document.querySelectorAll('input.outcome-name')].map(
+      (input) => (input as HTMLInputElement).value,
+    );
+    expect(names).toEqual(['second', '']);
+    expect(ui.byText('p.group-title', 'And, optionally', '.branch')).not.toBeNull();
   });
 
   it('sends a list of branches when saved', async () => {

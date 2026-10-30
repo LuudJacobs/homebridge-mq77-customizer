@@ -1364,7 +1364,8 @@ table.buttons td.in-homekit {
   padding: 0 0.15rem;
 }
 
-.branch {
+.branch,
+.wait-block {
   border-left: 3px solid var(--line);
   border-radius: 0 7px 7px 0;
   background: var(--sunken);
@@ -1399,7 +1400,55 @@ table.buttons td.in-homekit {
   font-size: 0.87rem;
 }
 
-/* Not on the left, remove on the right, as on an outcome. */
+/*
+ * `All are true`: a sentence with a dropdown in it, so the dropdown is as
+ * narrow as its words and sits on the line rather than across it.
+ */
+.combination {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.87rem;
+}
+
+.combination select {
+  width: auto;
+  height: 2rem;
+  padding-left: 0.5rem;
+  font-size: 0.87rem;
+}
+
+.conditions > .combination {
+  margin: 0.1rem 0 0.35rem;
+}
+
+/* A wait is a line of its own between outcomes, not an outcome. */
+.wait-block {
+  padding-bottom: 0.35rem;
+}
+
+.wait-block .branch-head,
+.wait-block .branch-head-left,
+.wait-block .branch-head-right {
+  align-items: center;
+}
+
+.add-row.move {
+  padding: 0.2rem 0.45rem;
+}
+
+/* At the top or the bottom, with nowhere to go that way. */
+.add-row.move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.block-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* How they are taken together on the left, remove on the right, as on an outcome. */
 .group-head {
   display: flex;
   align-items: center;
