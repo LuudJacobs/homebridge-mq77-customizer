@@ -179,7 +179,7 @@ describe('the condition editor', () => {
     await ui.click(ui.byText('button.add-row', '+ condition', '.conditions'));
     const line = () => ui.document.querySelector('.condition-group .combination') as HTMLElement;
     const words = () =>
-      [...ui.document.querySelectorAll('.condition-group span.joiner')].map((word) => word.textContent);
+      [...ui.document.querySelectorAll('.condition-group .joiner')].map((word) => word.textContent);
 
     expect(words()).toEqual(['and']);
 
@@ -187,12 +187,14 @@ describe('the condition editor', () => {
     expect(line().textContent).toContain('is true');
     expect(words()).toEqual(['or']);
 
-    // None says not in front of the first one as well.
+    // None says not in front of the first one as well, on a line of its own.
     await ui.pick(line().querySelector('select'), 'none');
     expect(line().textContent).toContain('are true');
     expect(words()).toEqual(['not', 'and not']);
     const first = ui.document.querySelector('.condition-group .rule-row') as HTMLElement;
-    expect(first.firstElementChild?.textContent).toBe('not');
+    expect(first.previousElementSibling?.matches('p.joiner')).toBe(true);
+    expect(first.previousElementSibling?.textContent).toBe('not');
+    expect(first.querySelector('.joiner')?.textContent).toBe('and not');
 
     await ui.pick(line().querySelector('select'), 'notAll');
     expect(words()).toEqual(['or']);
