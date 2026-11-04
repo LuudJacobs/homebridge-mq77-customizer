@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- A test build is named after the commit it was built from, instead of a patch above it
+
 ## [3.1.0] - 2026-10-30
 
 ### Added
